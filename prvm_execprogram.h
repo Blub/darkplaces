@@ -1339,7 +1339,7 @@ ptrvalB = 0;
 			case OP_LOADP_C:
 				if (PTR_ISGBL(OPA->_int))
 				{
-					ptrval_t p = PTR_VALUE(OPA->_int) + OPB->_int;
+					ptrval_t p = PTR_VALUE(OPA->_int) + (int)OPB->_float;
 #if PRVMBOUNDSCHECK
 					if (p < 0 || p + 4 > GLOBALSIZE)
 					{
@@ -1353,7 +1353,7 @@ ptrvalB = 0;
 				}
 				else
 				{
-					ptrval_t p = PTR_VALUE(OPA->_int) + OPB->_int;
+					ptrval_t p = PTR_VALUE(OPA->_int) + (int)OPB->_float;
 #if PRVMBOUNDSCHECK
 					if (p < 0 || p + 4 > prog->edictareasize)
 					{
