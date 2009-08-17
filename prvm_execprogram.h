@@ -1,6 +1,15 @@
+#undef RUNAWAYCHECK
+#undef GLOBALSIZE
+#undef PTR_GBL
+#undef PTR_FLD
+#undef PTR_ISGBL
+#undef PTR_ISFLD
+#undef PTR_FROMPTR
+#undef PTR_VALUE
+#undef PTR_ISVALID
+
 #if PRVMRUNAWAYCHECK
-#  ifndef RUNAWAYCHECK
-#    define RUNAWAYCHECK()						\
+#  define RUNAWAYCHECK()						\
 	do {								\
 		if (++jumpcount == 10000000)				\
 		{							\
@@ -9,11 +18,8 @@
 			PRVM_ERROR("%s runaway loop counter hit limit of %d jumps\ntip: read above for list of most-executed functions", PRVM_NAME, jumpcount);	\
 		}							\
 	} while(0)
-#  endif
 #else
-#  ifndef RUNAWAYCHECK
 #    define RUNAWAYCHECK()
-#  endif
 #endif
 #define GLOBALSIZE ((signed)sizeof(*prog->globals.generic)*prog->progs->numglobals)
 #define PTR_GBL(x) (x)
