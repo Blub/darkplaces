@@ -107,7 +107,208 @@ char *prvm_opnames[] =
 "^2OR",
 
 "BITAND",
-"BITOR"
+"BITOR",
+"OP_MULSTORE_F",
+"OP_MULSTORE_V",
+"OP_MULSTOREP_F",
+"OP_MULSTOREP_V",
+
+"OP_DIVSTORE_F",	//70
+"OP_DIVSTOREP_F",
+
+"OP_ADDSTORE_F",
+"OP_ADDSTORE_V",
+"OP_ADDSTOREP_F",
+"OP_ADDSTOREP_V",
+
+"OP_SUBSTORE_F",
+"OP_SUBSTORE_V",
+"OP_SUBSTOREP_F",
+"OP_SUBSTOREP_V",
+
+"OP_FETCH_GBL_F",	//80
+"OP_FETCH_GBL_V",
+"OP_FETCH_GBL_S",
+"OP_FETCH_GBL_E",
+"OP_FETCH_GBL_FNC",
+
+"OP_CSTATE",
+"OP_CWSTATE",
+
+"OP_THINKTIME",
+
+"OP_BITSET",
+"OP_BITSETP",
+"OP_BITCLR",		//90
+"OP_BITCLRP",
+
+"OP_RAND0",
+"OP_RAND1",
+"OP_RAND2",
+"OP_RANDV0",
+"OP_RANDV1",
+"OP_RANDV2",
+
+"OP_SWITCH_F",
+"OP_SWITCH_V",
+"OP_SWITCH_S",	//100
+"OP_SWITCH_E",
+"OP_SWITCH_FNC",
+
+"OP_CASE",
+"OP_CASERANGE",
+
+
+
+
+
+	//the rest are added
+	//mostly they are various different ways of adding two vars with conversions.
+
+"OP_CALL1H",
+"OP_CALL2H",
+"OP_CALL3H",
+"OP_CALL4H",
+"OP_CALL5H",
+"OP_CALL6H",		//110
+"OP_CALL7H",
+"OP_CALL8H",
+
+
+"OP_STORE_I",
+"OP_STORE_IF",
+"OP_STORE_FI",
+
+"OP_ADD_I",
+"OP_ADD_FI",
+"OP_ADD_IF",		//110
+
+"OP_SUB_I",
+"OP_SUB_FI",
+"OP_SUB_IF",
+
+"OP_CONV_ITOF",
+"OP_CONV_FTOI",
+"OP_CP_ITOF",
+"OP_CP_FTOI",
+"OP_LOAD_I",
+"OP_STOREP_I",
+"OP_STOREP_IF",	//120
+"OP_STOREP_FI",
+
+"OP_BITAND_I",
+"OP_BITOR_I",
+
+"OP_MUL_I",
+"OP_DIV_I",
+"OP_EQ_I",
+"OP_NE_I",
+
+"OP_IFNOTS",
+"OP_IFS",
+
+"OP_NOT_I",		//130
+
+"OP_DIV_VF",
+
+"OP_POWER_I",
+"OP_RSHIFT_I",
+"OP_LSHIFT_I",
+
+"OP_GLOBALADDRESS",
+"OP_POINTER_ADD",	//32 bit pointers
+
+"OP_LOADA_F",
+"OP_LOADA_V",
+"OP_LOADA_S",
+"OP_LOADA_ENT",	//140
+"OP_LOADA_FLD",
+"OP_LOADA_FNC",
+"OP_LOADA_I",
+
+"OP_STORE_P",
+"OP_LOAD_P",
+
+"OP_LOADP_F",
+"OP_LOADP_V",
+"OP_LOADP_S",
+"OP_LOADP_ENT",
+"OP_LOADP_FLD",	//150
+"OP_LOADP_FNC",
+"OP_LOADP_I",
+
+"OP_LE_I",
+"OP_GE_I",
+"OP_LT_I",
+"OP_GT_I",
+
+"OP_LE_IF",
+"OP_GE_IF",
+"OP_LT_IF",
+"OP_GT_IF",		//160
+
+"OP_LE_FI",
+"OP_GE_FI",
+"OP_LT_FI",
+"OP_GT_FI",
+
+"OP_EQ_IF",
+"OP_EQ_FI",
+
+	//-------------------------------------
+	//string manipulation.
+"OP_ADD_SF",	//(char*)c = (char*)a + (float)b
+"OP_SUB_S",	//(float)c = (char*)a - (char*)b
+"OP_STOREP_C",//(float)c = *(char*)b = (float)a
+"OP_LOADP_C",	//(float)c = *(char*)					//170
+	//-------------------------------------
+
+
+"OP_MUL_IF",
+"OP_MUL_FI",
+"OP_MUL_VI",
+"OP_MUL_IV",
+"OP_DIV_IF",
+"OP_DIV_FI",
+"OP_BITAND_IF",
+"OP_BITOR_IF",
+"OP_BITAND_FI",
+"OP_BITOR_FI",		//180
+"OP_AND_I",
+"OP_OR_I",
+"OP_AND_IF",
+"OP_OR_IF",
+"OP_AND_FI",
+"OP_OR_FI",
+"OP_NE_IF",
+"OP_NE_FI",
+
+//erm... FTEQCC doesn't make use of these... These are for DP.
+"OP_GSTOREP_I",
+"OP_GSTOREP_F",		//190
+"OP_GSTOREP_ENT",
+"OP_GSTOREP_FLD",		// integers
+"OP_GSTOREP_S",
+"OP_GSTOREP_FNC",		// pointers
+"OP_GSTOREP_V",
+"OP_GADDRESS",
+"OP_GLOAD_I",
+"OP_GLOAD_F",
+"OP_GLOAD_FLD",
+"OP_GLOAD_ENT",		//200
+"OP_GLOAD_S",
+"OP_GLOAD_FNC",
+"OP_BOUNDCHECK",
+
+//back to ones that we do use.
+"OP_STOREP_P",
+"OP_PUSH",	//push 4octets onto the local-stack (which is ALWAYS poped on function return). Returns a pointer.
+"OP_POP",		//pop those ones that were pushed (don't over do it). Needs assembler.
+
+"^5OP_IF_I",
+"^5OP_IFNOT_I",
+
+"OP_NUMOPS"
 };
 
 char *PRVM_GlobalString (int ofs);
@@ -180,6 +381,8 @@ void PRVM_PrintStatement (dstatement_t *s)
 		}
 		if (s->c)
 		{
+			if(!s->b) // added for debugging --blub
+				Con_Print(", (nil)");
 			Con_Print(", ");
 			Con_Print(PRVM_GlobalStringNoContents((unsigned short) s->c));
 		}
@@ -579,6 +782,23 @@ void PRVM_Init_Exec(void)
 	prog->localstack_used = 0;
 	// reset the string table
 	// nothing here yet
+}
+
+void CStateOp(prvm_prog_t *prog, float vara, float varb, mfunction_t *currentFunc)
+{
+	// This function should not be called...
+	PRVM_ERROR("CStateOp not implemented.\n");
+}
+
+void CWStateOp(prvm_prog_t *prog, float vara, float varb, mfunction_t *currentFunc)
+{
+	// This function should not be called...
+	PRVM_ERROR("CWStateOp not implemented.\n");
+}
+
+void ThinkTimeOp(prvm_prog_t *prog, prvm_edict_t *ent, float varb)
+{
+	ent->fields.server->nextthink = prog->globals.server->time + varb;
 }
 
 /*

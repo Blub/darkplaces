@@ -1,6 +1,51 @@
+#if PRVMRUNAWAYCHECK
+#  ifndef RUNAWAYCHECK
+#    define RUNAWAYCHECK()						\
+	do {								\
+		if (++jumpcount == 10000000)				\
+		{							\
+			prog->xstatement = st - prog->statements;	\
+			PRVM_Profile(1<<30, 1000000);			\
+			PRVM_ERROR("%s runaway loop counter hit limit of %d jumps\ntip: read above for list of most-executed functions", PRVM_NAME, jumpcount);	\
+		}							\
+	} while(0)
+#  endif
+#else
+#  ifndef RUNAWAYCHECK
+#    define RUNAWAYCHECK()
+#  endif
+#endif
+#define GLOBALSIZE ((signed)sizeof(*prog->globals.generic)*prog->progs->numglobals)
+#define PTR_GBL(x) (x)
+#define PTR_ISGBL(x) (!((x) & 0x80000000))
+
+#define PTR_FLD(x) ((x) | 0x80000000)
+#define PTR_ISFLD(x) ((x) & 0x80000000)
+
+#define PTR_VALUE(x) ((x) & 0x7FFFFFFF)
+#define PTR_FROMPTR(x)							\
+	(								\
+	ptrvalA = ((unsigned char *)(x) - (unsigned char *)prog->edictsfields), \
+	ptrvalB = ((unsigned char *)(x) - (unsigned char *)prog->globals.generic), \
+	(ptrvalA >= 0 && ptrvalA + 4 <= prog->edictareasize) ? ptrvalA : \
+	(ptrvalB >= 0 && ptrvalB + 4 <= GLOBALSIZE) ? ptrvalB : \
+	0 )
+#define PTR_ISVALID(x)							\
+	(								\
+	ptrvalA = ((unsigned char *)(x) - (unsigned char *)prog->edictsfields), \
+	ptrvalB = ((unsigned char *)(x) - (unsigned char *)prog->globals.generic), \
+	(ptrvalA >= 0 && ptrvalA + 4 <= prog->edictareasize) ? 1 : \
+	(ptrvalB >= 0 && ptrvalB + 4 <= GLOBALSIZE) ? 1 : \
+	0 )
+
+typedef long ptrval_t;
 
 // This code isn't #ifdef/#define protectable, don't try.
-
+prvm_eval_t *swtch = NULL;
+int swtchtype = 0;
+ptrval_t ptrvalA, ptrvalB;
+ptrvalA = 0; // get rid of the unused-warning for now
+ptrvalB = 0;
 		while (1)
 		{
 			st++;
@@ -139,6 +184,7 @@
 			case OP_STORE_FLD:		// integers
 			case OP_STORE_S:
 			case OP_STORE_FNC:		// pointers
+			case OP_STORE_P:
 				OPB->_int = OPA->_int;
 				break;
 			case OP_STORE_V:
@@ -152,29 +198,66 @@
 			case OP_STOREP_FLD:		// integers
 			case OP_STOREP_S:
 			case OP_STOREP_FNC:		// pointers
-#if PRVMBOUNDSCHECK
-				if (OPB->_int < 0 || OPB->_int + 4 > prog->edictareasize)
+			case OP_STOREP_P:
+				if (PTR_ISGBL(OPB->_int))
 				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, OPB->_int);
-					goto cleanup;
-				}
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > GLOBALSIZE)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
 #endif
-				ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + OPB->_int);
+					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
+				}
+				else
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > prog->edictareasize)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
+				}
 				ptr->_int = OPA->_int;
 				break;
 			case OP_STOREP_V:
-#if PRVMBOUNDSCHECK
-				if (OPB->_int < 0 || OPB->_int + 12 > prog->edictareasize)
+				if (PTR_ISGBL(OPB->_int))
 				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, OPB->_int);
-					goto cleanup;
-				}
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > GLOBALSIZE)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
 #endif
-				ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + OPB->_int);
+					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
+				}
+				else
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > prog->edictareasize)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
+				}
 				ptr->ivector[0] = OPA->ivector[0];
 				ptr->ivector[1] = OPA->ivector[1];
 				ptr->ivector[2] = OPA->ivector[2];
@@ -198,7 +281,7 @@
 					goto cleanup;
 				}
 				ed = PRVM_PROG_TO_EDICT(OPA->edict);
-				OPC->_int = (unsigned char *)((int *)ed->fields.vp + OPB->_int) - (unsigned char *)prog->edictsfields;
+				OPC->_int = PTR_FLD((unsigned char *)((int *)ed->fields.vp + OPB->_int) - (unsigned char *)prog->edictsfields);
 				break;
 
 			case OP_LOAD_F:
@@ -206,6 +289,7 @@
 			case OP_LOAD_ENT:
 			case OP_LOAD_S:
 			case OP_LOAD_FNC:
+			case OP_LOAD_P:
 #if PRVMBOUNDSCHECK
 				if ((unsigned int)(OPB->_int) >= (unsigned int)(prog->progs->entityfields))
 				{
@@ -246,14 +330,7 @@
 					prog->xfunction->profile += (st - startst);
 					st += st->b - 1;	// offset the s++
 					startst = st;
-#if PRVMRUNAWAYCHECK
-					if (++jumpcount == 10000000)
-					{
-						prog->xstatement = st - prog->statements;
-						PRVM_Profile(1<<30, 1000000);
-						PRVM_ERROR("%s runaway loop counter hit limit of %d jumps\ntip: read above for list of most-executed functions", PRVM_NAME, jumpcount);
-					}
-#endif
+					RUNAWAYCHECK();
 				}
 				break;
 
@@ -266,14 +343,27 @@
 					prog->xfunction->profile += (st - startst);
 					st += st->b - 1;	// offset the s++
 					startst = st;
-#if PRVMRUNAWAYCHECK
-					if (++jumpcount == 10000000)
-					{
-						prog->xstatement = st - prog->statements;
-						PRVM_Profile(1<<30, 1000000);
-						PRVM_ERROR("%s runaway loop counter hit limit of %d jumps\ntip: read above for list of most-executed functions", PRVM_NAME, jumpcount);
-					}
-#endif
+					RUNAWAYCHECK();
+				}
+				break;
+
+			case OP_IFNOT_I:
+				if (!OPA->_int)
+				{
+					prog->xfunction->profile += (st - startst);
+					st += st->b - 1;	// offset the s++
+					startst = st;
+					RUNAWAYCHECK();
+				}
+				break;
+
+			case OP_IF_I:
+				if (OPA->_int)
+				{
+					prog->xfunction->profile += (st - startst);
+					st += st->b - 1;	// offset the s++
+					startst = st;
+					RUNAWAYCHECK();
 				}
 				break;
 
@@ -281,14 +371,7 @@
 				prog->xfunction->profile += (st - startst);
 				st += st->a - 1;	// offset the s++
 				startst = st;
-#if PRVMRUNAWAYCHECK
-				if (++jumpcount == 10000000)
-				{
-					prog->xstatement = st - prog->statements;
-					PRVM_Profile(1<<30, 1000000);
-					PRVM_ERROR("%s runaway loop counter hit limit of %d jumps\ntip: read above for list of most-executed functions", PRVM_NAME, jumpcount);
-				}
-#endif
+				RUNAWAYCHECK();
 				break;
 
 			case OP_CALL0:
@@ -359,7 +442,7 @@
 				break;
 
 // LordHavoc: to be enabled when Progs version 7 (or whatever it will be numbered) is finalized
-/*
+
 			case OP_ADD_I:
 				OPC->_int = OPA->_int + OPB->_int;
 				break;
@@ -409,11 +492,11 @@
 			case OP_DIV_FI:
 				OPC->_float = OPA->_float / (float) OPB->_int;
 				break;
-			case OP_CONV_IF:
-				OPC->_float = OPA->_int;
+			case OP_STORE_IF:
+				OPB->_float = OPA->_int;
 				break;
-			case OP_CONV_FI:
-				OPC->_int = OPA->_float;
+			case OP_STORE_FI:
+				OPB->_int = OPA->_float;
 				break;
 			case OP_BITAND_I:
 				OPC->_int = OPA->_int & OPB->_int;
@@ -512,28 +595,46 @@
 				OPB->_int = OPA->_int;
 				break;
 			case OP_STOREP_I:
-#if PRBOUNDSCHECK
-				if (OPB->_int < 0 || OPB->_int + 4 > pr_edictareasize)
+				if (PTR_ISGBL(OPB->_int))
 				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to write to an out of bounds edict", PRVM_NAME);
-					goto cleanup;
-				}
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > GLOBALSIZE)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
 #endif
-				ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + OPB->_int);
+					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
+				}
+				else
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > prog->edictareasize)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
+				}
 				ptr->_int = OPA->_int;
 				break;
 			case OP_LOAD_I:
-#if PRBOUNDSCHECK
-				if (OPA->edict < 0 || OPA->edict >= pr_edictareasize)
+#if PRVMBOUNDSCHECK
+				if (OPA->edict < 0 || OPA->edict >= prog->edictareasize)
 				{
 					prog->xfunction->profile += (st - startst);
 					prog->xstatement = st - prog->statements;
 					PRVM_ERROR ("%s Progs attempted to read an out of bounds edict number", PRVM_NAME);
 					goto cleanup;
 				}
-				if (OPB->_int < 0 || OPB->_int >= progs->entityfields)
+				if (OPB->_int < 0 || OPB->_int >= prog->progs->entityfields)
 				{
 					prog->xfunction->profile += (st - startst);
 					prog->xstatement = st - prog->statements;
@@ -542,16 +643,50 @@
 				}
 #endif
 				ed = PRVM_PROG_TO_EDICT(OPA->edict);
-				OPC->_int = ((prvm_eval_t *)((int *)ed->v + OPB->_int))->_int;
+				OPC->_int = ((prvm_eval_t *)((int *)ed->fields.vp + OPB->_int))->_int;
+				break;
+			case OP_LOADA_I:
+			case OP_LOADA_F:
+			case OP_LOADA_FLD:
+			case OP_LOADA_ENT:
+			case OP_LOADA_S:
+			case OP_LOADA_FNC:
+				ptr = (prvm_eval_t *)(&OPA->_int + OPB->_int);
+#if PRVMBOUNDSCHECK
+				if (!PTR_ISVALID(ptr))
+				{
+					prog->xfunction->profile += (st - startst);
+					prog->xstatement = st - prog->statements;
+					PRVM_ERROR ("%s Progs attempted to write to an out of bounds pointer (%i)", PRVM_NAME, OPB->_int);
+					goto cleanup;
+				}
+#endif
+				OPC->_int = ptr->_int;
 				break;
 
+			case OP_LOADA_V:
+				ptr = (prvm_eval_t *)(&OPA->_int + OPB->_int);
+#if PRVMBOUNDSCHECK
+				if (!PTR_ISVALID(ptr))
+				{
+					prog->xfunction->profile += (st - startst);
+					prog->xstatement = st - prog->statements;
+					PRVM_ERROR ("%s Progs attempted to write to an out of bounds pointer (%i)", PRVM_NAME, OPB->_int);
+					goto cleanup;
+				}
+#endif
+				OPC->vector[0] = ptr->vector[0];
+				OPC->vector[1] = ptr->vector[1];
+				OPC->vector[2] = ptr->vector[2];
+				break;
+/*
 			case OP_GSTOREP_I:
 			case OP_GSTOREP_F:
 			case OP_GSTOREP_ENT:
 			case OP_GSTOREP_FLD:		// integers
 			case OP_GSTOREP_S:
 			case OP_GSTOREP_FNC:		// pointers
-#if PRBOUNDSCHECK
+#if PRVMBOUNDSCHECK
 				if (OPB->_int < 0 || OPB->_int >= pr_globaldefs)
 				{
 					prog->xfunction->profile += (st - startst);
@@ -563,7 +698,7 @@
 				pr_iglobals[OPB->_int] = OPA->_int;
 				break;
 			case OP_GSTOREP_V:
-#if PRBOUNDSCHECK
+#if PRVMBOUNDSCHECK
 				if (OPB->_int < 0 || OPB->_int + 2 >= pr_globaldefs)
 				{
 					prog->xfunction->profile += (st - startst);
@@ -578,8 +713,10 @@
 				break;
 
 			case OP_GADDRESS:
+			{
+				int i;
 				i = OPA->_int + (int) OPB->_float;
-#if PRBOUNDSCHECK
+#if PRVMBOUNDSCHECK
 				if (i < 0 || i >= pr_globaldefs)
 				{
 					prog->xfunction->profile += (st - startst);
@@ -590,6 +727,7 @@
 #endif
 				OPC->_int = pr_iglobals[i];
 				break;
+			}
 
 			case OP_GLOAD_I:
 			case OP_GLOAD_F:
@@ -597,7 +735,7 @@
 			case OP_GLOAD_ENT:
 			case OP_GLOAD_S:
 			case OP_GLOAD_FNC:
-#if PRBOUNDSCHECK
+#if PRVMBOUNDSCHECK
 				if (OPA->_int < 0 || OPA->_int >= pr_globaldefs)
 				{
 					prog->xfunction->profile += (st - startst);
@@ -610,7 +748,7 @@
 				break;
 
 			case OP_GLOAD_V:
-#if PRBOUNDSCHECK
+#if PRVMBOUNDSCHECK
 				if (OPA->_int < 0 || OPA->_int + 2 >= pr_globaldefs)
 				{
 					prog->xfunction->profile += (st - startst);
@@ -623,7 +761,7 @@
 				OPC->ivector[1] = pr_iglobals[OPA->_int+1];
 				OPC->ivector[2] = pr_iglobals[OPA->_int+2];
 				break;
-
+*/
 			case OP_BOUNDCHECK:
 				if (OPA->_int < 0 || OPA->_int >= st->b)
 				{
@@ -634,11 +772,527 @@
 				}
 				break;
 
+				// CALLxH used and tested, they do work!
+			case OP_CALL8H:
+			case OP_CALL7H:
+			case OP_CALL6H:
+			case OP_CALL5H:
+			case OP_CALL4H:
+			case OP_CALL3H:
+			case OP_CALL2H:
+				PRVM_G_VECTOR(OFS_PARM1)[0] = OPC->vector[0];
+				PRVM_G_VECTOR(OFS_PARM1)[1] = OPC->vector[1];
+				PRVM_G_VECTOR(OFS_PARM1)[2] = OPC->vector[2];
+			case OP_CALL1H:
+				PRVM_G_VECTOR(OFS_PARM0)[0] = OPB->vector[0];
+				PRVM_G_VECTOR(OFS_PARM0)[1] = OPB->vector[1];
+				PRVM_G_VECTOR(OFS_PARM0)[2] = OPB->vector[2];
+
+				prog->xfunction->profile += (st - startst);
+				startst = st;
+				prog->xstatement = st - prog->statements;
+				prog->argc = st->op - (OP_CALL1H-1);
+				if (!OPA->function)
+					PRVM_ERROR("NULL function in %s", PRVM_NAME);
+
+				newf = &prog->functions[OPA->function];
+				newf->callcount++;
+
+				if (newf->first_statement < 0)
+				{
+					// negative statements are built in functions
+					int builtinnumber = -newf->first_statement;
+					prog->xfunction->builtinsprofile++;
+					if (builtinnumber < prog->numbuiltins && prog->builtins[builtinnumber])
+						prog->builtins[builtinnumber]();
+					else
+						PRVM_ERROR("No such builtin #%i in %s; most likely cause: outdated engine build. Try updating!", builtinnumber, PRVM_NAME);
+				}
+				else
+					st = prog->statements + PRVM_EnterFunction(newf);
+				startst = st;
+				break;
+
+			case OP_RAND0: // random number between 0 and 1
+				PRVM_G_FLOAT(OFS_RETURN) = lhrandom(0,1);
+				break;
+			case OP_RAND1: // random number between 0 and OPA
+				PRVM_G_FLOAT(OFS_RETURN) = lhrandom(0,OPA->_float);
+				break;
+			case OP_RAND2: // random number between OPA and OPB
+				if(OPA->_float < OPB->_float)
+					PRVM_G_FLOAT(OFS_RETURN) = lhrandom(OPA->_float, OPB->_float);
+				else
+					PRVM_G_FLOAT(OFS_RETURN) = lhrandom(OPB->_float, OPA->_float);
+				break;
+			case OP_RANDV0: // random vector between 0 and 1
+				PRVM_G_VECTOR(OFS_RETURN)[0] = lhrandom(0,1);
+				PRVM_G_VECTOR(OFS_RETURN)[1] = lhrandom(0,1);
+				PRVM_G_VECTOR(OFS_RETURN)[2] = lhrandom(0,1);
+				break;
+			case OP_RANDV1: // random vector between 0 and OPA
+				PRVM_G_VECTOR(OFS_RETURN)[0] = lhrandom(0,OPA->vector[0]);
+				PRVM_G_VECTOR(OFS_RETURN)[1] = lhrandom(0,OPA->vector[1]);
+				PRVM_G_VECTOR(OFS_RETURN)[2] = lhrandom(0,OPA->vector[2]);
+				break;
+			case OP_RANDV2: // random vector between OPA and OPB
+			{
+				int i;
+				for(i = 0; i < 3; ++i)
+				{
+					if(OPA->vector[i] < OPB->vector[i])
+						PRVM_G_VECTOR(OFS_RETURN)[i] = lhrandom(OPA->vector[i], OPB->vector[i]);
+					else
+						PRVM_G_VECTOR(OFS_RETURN)[i] = lhrandom(OPB->vector[i], OPA->vector[i]);
+				}
+				break;
+			}
+
+			case OP_BITSET: // b |= a
+				OPB->_float = (float)((int)OPB->_float | (int)OPA->_float);
+				break;
+			case OP_BITCLR: // b &= ~a
+				OPB->_float = (float)((int)OPB->_float & ~((int)OPA->_float));
+				break;
+
+			case OP_SWITCH_F:
+			case OP_SWITCH_V:
+			case OP_SWITCH_S:
+			case OP_SWITCH_E:
+			case OP_SWITCH_I:
+			case OP_SWITCH_FNC:
+			{
+				swtch = OPA;
+				swtchtype = st->op;
+				RUNAWAYCHECK();
+				//prog->xfunction->profile += (st - startst);
+				st += st->b - 1;	// offset the s++
+				break;
+			}
+			case OP_CASE:
+			{
+				switch(swtchtype)
+				{
+				case OP_SWITCH_F:
+					if(swtch->_float == OPA->_float)
+					{
+						RUNAWAYCHECK();
+						st += st->b - 1;
+					}
+					break;
+				case OP_SWITCH_E:
+				case OP_SWITCH_I:
+				case OP_SWITCH_FNC:
+					if(swtch->_int == OPA->_int)
+					{
+						RUNAWAYCHECK();
+						st += st->b-1;
+					}
+					break;
+				case OP_SWITCH_S:
+					if(swtch->_int == OPA->_int)
+					{
+						RUNAWAYCHECK();
+						st += st->b-1;
+					}
+					// switch(string) case "string" ->
+					// one of them may be null, not both
+					if((!swtch->_int && PRVM_GetString(OPA->string)) || (!OPA->_int && PRVM_GetString(swtch->string)))
+						break;
+					if(!strcmp(PRVM_GetString(swtch->string), PRVM_GetString(OPA->string)))
+					{
+						RUNAWAYCHECK();
+						st += st->b-1;
+					}
+					break;
+				case OP_SWITCH_V:
+					if(swtch->vector[0] == OPA->vector[0] &&
+					   swtch->vector[1] == OPA->vector[1] &&
+					   swtch->vector[2] == OPA->vector[2])
+					{
+						RUNAWAYCHECK();
+						st += st->b-1;
+					}
+					break;
+				default:
+					PRVM_ERROR("OP_CASE with bad/missing OP_SWITCH %i", swtchtype);
+					break;
+				}
+				break;
+			}
+
+			case OP_CASERANGE:
+				switch(swtchtype)
+				{
+				case OP_SWITCH_F:
+					if(swtch->_float >= OPA->_float && swtch->_float <= OPB->_float)
+					{
+						RUNAWAYCHECK();
+						st += st->c-1;
+					}
+					break;
+				default:
+					PRVM_ERROR("OP_CASERANGE with bad/missing OP_SWITCH %i", swtchtype);
+				}
+				break;
+
+			case OP_ADDSTORE_F:
+				OPB->_float += OPA->_float;
+				break;
+			case OP_ADDSTORE_V:
+				OPB->vector[0] += OPA->vector[0];
+				OPB->vector[1] += OPA->vector[1];
+				OPB->vector[2] += OPA->vector[2];
+				break;
+			case OP_ADDSTOREP_F:
+				if (PTR_ISGBL(OPB->_int))
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > GLOBALSIZE)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
+				}
+				else
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > prog->edictareasize)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
+				}
+				OPC->_float = (ptr->_float += OPA->_float);
+				break;
+			case OP_ADDSTOREP_V:
+				if (PTR_ISGBL(OPB->_int))
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > GLOBALSIZE)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
+				}
+				else
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > prog->edictareasize)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
+				}
+				OPC->vector[0] = (ptr->vector[0] += OPA->vector[0]);
+				OPC->vector[1] = (ptr->vector[1] += OPA->vector[1]);
+				OPC->vector[2] = (ptr->vector[2] += OPA->vector[2]);
+				break;
+			case OP_SUBSTORE_F:
+				OPB->_float -= OPA->_float;
+				break;
+			case OP_SUBSTORE_V:
+				OPB->vector[0] -= OPA->vector[0];
+				OPB->vector[1] -= OPA->vector[1];
+				OPB->vector[2] -= OPA->vector[2];
+				break;
+			case OP_SUBSTOREP_F:
+				if (PTR_ISGBL(OPB->_int))
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > GLOBALSIZE)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
+				}
+				else
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > prog->edictareasize)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
+				}
+				OPC->_float = (ptr->_float -= OPA->_float);
+				break;
+			case OP_SUBSTOREP_V:
+				if (PTR_ISGBL(OPB->_int))
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > GLOBALSIZE)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
+				}
+				else
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > prog->edictareasize)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
+				}
+				OPC->vector[0] = (ptr->vector[0] -= OPA->vector[0]);
+				OPC->vector[1] = (ptr->vector[1] -= OPA->vector[1]);
+				OPC->vector[2] = (ptr->vector[2] -= OPA->vector[2]);
+				break;
+
+			case OP_CONV_ITOF:
+				OPC->_float = (float)OPA->_int;
+				break;
+			case OP_CONV_FTOI:
+				OPC->_int = (int)(OPA->_float);
+				break;
+
+			case OP_MULSTORE_F:
+				OPB->_float *= OPA->_float;
+				break;
+			case OP_MULSTORE_V:
+				OPB->vector[0] *= OPA->vector[0];
+				OPB->vector[1] *= OPA->vector[1];
+				OPB->vector[2] *= OPA->vector[2];
+				break;
+			case OP_MULSTOREP_F:
+				if (PTR_ISGBL(OPB->_int))
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > GLOBALSIZE)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
+				}
+				else
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > prog->edictareasize)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
+				}
+				OPC->_float = (ptr->_float *= OPA->_float);
+				break;
+			case OP_MULSTOREP_V:
+				// e.v *= a_float!
+				if (PTR_ISGBL(OPB->_int))
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > GLOBALSIZE)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
+				}
+				else
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > prog->edictareasize)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
+				}
+				OPC->vector[0] = (ptr->vector[0] -= OPA->_float);
+				OPC->vector[1] = (ptr->vector[1] -= OPA->_float);
+				OPC->vector[2] = (ptr->vector[2] -= OPA->_float);
+				break;
+			case OP_DIVSTORE_F:
+				OPB->_float /= OPA->_float;
+				break;
+			case OP_DIVSTOREP_F:
+				if (PTR_ISGBL(OPB->_int))
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > GLOBALSIZE)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
+				}
+				else
+				{
+					ptrval_t p = PTR_VALUE(OPB->_int);
+#if PRVMBOUNDSCHECK
+					if (p < 0 || p + 4 > prog->edictareasize)
+					{
+						prog->xfunction->profile += (st - startst);
+						prog->xstatement = st - prog->statements;
+						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
+						goto cleanup;
+					}
+#endif
+					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
+				}
+				OPC->_float = (ptr->_float /= OPA->_float);
+				break;
+			case OP_IFNOTS:
+				if(!OPA->string || !PRVM_GetString(OPA->string))
+					st += st->b-1;
+				break;
+			case OP_IFS:
+				if(OPA->string && PRVM_GetString(OPA->string))
+					st += st->b-1;
+				break;
+
+			case OP_GLOBALADDRESS:
+				OPC->_int = (unsigned char*)(&(OPA->_int) + OPB->_int) - (unsigned char*)prog->globals.generic;
+#if PRVMBOUNDSCHECK
+				if (OPC->_int < 0 || OPC->_int + 4 > GLOBALSIZE)
+				{
+					prog->xfunction->profile += (st - startst);
+					prog->xstatement = st - prog->statements;
+					PRVM_ERROR("%s attempted to address an invalid global (%i)", PRVM_NAME, OPC->_int);
+					goto cleanup;
+				}
+#endif
+				OPC->_int = PTR_GBL(OPC->_int);
+				break;
+
+			case OP_POINTER_ADD:
+				OPC->_int = OPA->_int + OPB->_int*4;
+				break;
+
+			case OP_ADD_SF: //(char*)c = (char*)a + (float)b
+				OPC->_int = OPA->_int + (int)OPB->_float;
+				break;
+			case OP_SUB_S:  //(float)c = (char*)a - (char*)b
+				OPC->_int = OPA->_int - OPB->_int;
+				break;
+
+			case OP_LOADP_I:
+			case OP_LOADP_F:
+			case OP_LOADP_FLD:
+			case OP_LOADP_ENT:
+			case OP_LOADP_S:
+			case OP_LOADP_FNC:
+#if PRVMBOUNDSCHECK
+				if ((OPB->_int + OPA->_int) < 0 || (OPB->_int + OPA->_int) + 4 > prog->edictareasize)
+				{
+					prog->xfunction->profile += (st - startst);
+					prog->xstatement = st - prog->statements;
+					PRVM_ERROR ("%s Progs attempted to load from an out of bounds edict", PRVM_NAME);
+					goto cleanup;
+				}
+#endif
+				ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + (OPA->_int + OPB->_int));
+				OPC->_int = ptr->_int;
+				break;
+			case OP_LOADP_V:
+#if PRVMBOUNDSCHECK
+				if ((OPB->_int + OPA->_int) < 0 || (OPB->_int + OPA->_int) + 4 > prog->edictareasize)
+				{
+					prog->xfunction->profile += (st - startst);
+					prog->xstatement = st - prog->statements;
+					PRVM_ERROR ("%s Progs attempted to load from an out of bounds edict", PRVM_NAME);
+					goto cleanup;
+				}
+#endif
+				ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + (OPA->_int + OPB->_int));
+				OPC->vector[0] = ptr->vector[0];
+				OPC->vector[1] = ptr->vector[1];
+				OPC->vector[2] = ptr->vector[2];
+				break;
+
+			case OP_POWER_I:
+				OPC->_int = OPA->_int ^ OPB->_int;
+				break;
+			case OP_RSHIFT_I:
+				OPC->_int = OPA->_int >> OPB->_int;
+				break;
+			case OP_LSHIFT_I:
+				OPC->_int = OPA->_int << OPB->_int;
+				break;
+
+			// hexen2 opcodes.. afaik fteqcc shouldn't use those
+/*
+			case OP_CSTATE:
+				CStateOp(prog, OPA->_float, OPB->_float, newf);
+				break;
+
+			case OP_CWSTATE:
+				CWStateOp(prog, OPA->_float, OPB->_float, newf);
+				break;
 */
+			case OP_THINKTIME:
+				ThinkTimeOp(prog, PRVM_PROG_TO_EDICT(OPA->edict), OPB->_float);
+				break;
 
 			default:
 				prog->xfunction->profile += (st - startst);
 				prog->xstatement = st - prog->statements;
+				// prvm_opnames
+				if(st->op < OP_NUMOPS)
+					PRVM_ERROR("Instruction %i: %s\n", st->op, prvm_opnames[st->op]);
 				PRVM_ERROR ("Bad opcode %i in %s", st->op, PRVM_NAME);
 				goto cleanup;
 			}

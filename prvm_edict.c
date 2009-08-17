@@ -1716,8 +1716,8 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 	for (i = 0;i < (int) sizeof(*prog->progs) / 4;i++)
 		((int *)prog->progs)[i] = LittleLong ( ((int *)prog->progs)[i] );
 
-	if (prog->progs->version != PROG_VERSION)
-		PRVM_ERROR ("%s: %s has wrong version number (%i should be %i)", PRVM_NAME, filename, prog->progs->version, PROG_VERSION);
+	if (prog->progs->version != PROG_VERSION && prog->progs->version != PROG_EXTENDED)
+		PRVM_ERROR ("%s: %s has wrong version number (%i should be %i or %i)", PRVM_NAME, filename, prog->progs->version, PROG_VERSION, PROG_EXTENDED);
 	if (prog->progs->crc != prog->headercrc && prog->progs->crc != prog->headercrc2)
 		PRVM_ERROR ("%s: %s system vars have been modified (CRC of progs.dat systemvars %i != engine %i), progdefs.h is out of date", PRVM_NAME, filename, prog->progs->crc, prog->headercrc);
 
@@ -1830,7 +1830,12 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 		case OP_IF:
 		case OP_IFNOT:
 			if ((unsigned short) st->a >= prog->progs->numglobals || st->b + i < 0 || st->b + i >= prog->progs->numstatements)
-				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (statement %d) in %s", i, PRVM_NAME);
+				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (float) (statement %d) in %s", i, PRVM_NAME);
+			break;
+		case OP_IF_I:
+		case OP_IFNOT_I:
+			if ((unsigned short) st->a >= prog->progs->numglobals || st->b + i < 0 || st->b + i >= prog->progs->numstatements)
+				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (int) (statement %d) in %s", i, PRVM_NAME);
 			break;
 		case OP_GOTO:
 			if (st->a + i < 0 || st->a + i >= prog->progs->numstatements)
@@ -1910,11 +1915,20 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 		case OP_CALL6:
 		case OP_CALL7:
 		case OP_CALL8:
+		case OP_CALL1H:
+		case OP_CALL2H:
+		case OP_CALL3H:
+		case OP_CALL4H:
+		case OP_CALL5H:
+		case OP_CALL6H:
+		case OP_CALL7H:
+		case OP_CALL8H:
 		case OP_DONE:
 		case OP_RETURN:
 			if ((unsigned short) st->a >= prog->progs->numglobals)
 				PRVM_ERROR("PRVM_LoadProgs: out of bounds global index (statement %d) in %s", i, PRVM_NAME);
 			break;
+			// TODO: add fte instruction support here too
 		default:
 			Con_DPrintf("PRVM_LoadProgs: unknown opcode %d at statement %d in %s\n", st->op, i, PRVM_NAME);
 			break;
