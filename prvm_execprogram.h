@@ -23,13 +23,29 @@
 #    define RUNAWAYCHECK()
 #endif
 #define GLOBALSIZE ((signed)sizeof(*prog->globals.generic)*prog->progs->numglobals)
-#define PTR_GBL(x) (x)
-#define PTR_ISGBL(x) (!((x) & 0x80000000))
 
-#define PTR_FLD(x) ((x) | 0x80000000)
-#define PTR_ISFLD(x) ((x) & 0x80000000)
+#define PTR_VALUE(x) ((x) & 0x3FFFFFFF)
 
-#define PTR_VALUE(x) ((x) & 0x7FFFFFFF)
+// Pointer:
+// [type: 2 bits] [value: 30 bits]
+// types:
+//   0  -  Global area
+//   1  -  Entity field area
+//   2  -  Tempstring area
+//   3  -  Malloc()ed area
+
+#define PTR_GBL(x)   PTR_VALUE(x)
+#define PTR_ISGBL(x) ( ((x)>>30) == 0 )
+
+#define PTR_FLD(x)   (PTR_VALUE(x) | (1<<30))
+#define PTR_ISFLD(x) ( ((x)>>30) == 1 )
+
+#define PTR_STR(x)   (PTR_VALUE(x) | (2<<30))
+#define PTR_ISSTR(x) ( ((x)>>30) == 2 )
+
+#define PTR_MEM(x)   (PTR_VALUE(x) | (3<<30))
+#define PTR_ISMEM(x) ( ((x)>>30) == 3 )
+
 #define PTR_FROMPTR(x)							\
 	(								\
 	ptrvalA = ((unsigned char *)(x) - (unsigned char *)prog->edictsfields), \
@@ -61,6 +77,30 @@
 		}							\
 		ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p); \
 	}								\
+	else if (PTR_ISSTR(from))					\
+	{								\
+		ptrval_t p = PTR_VALUE(from) + (off);			\
+		if (p < 0 || p + 4 > vm_tempstringsbuf.maxsize)		\
+		{							\
+			prog->xfunction->profile += (st - startst);	\
+			prog->xstatement = st - prog->statements;	\
+			PRVM_ERROR("%s attempted to write to an out of bounds string (%i)", PRVM_NAME, (int)p); \
+			goto cleanup;					\
+		}							\
+		ptr = (prvm_eval_t *)((unsigned char *)vm_tempstringsbuf.data + p); \
+	}								\
+	else if (PTR_ISMEM(from))					\
+	{								\
+		ptrval_t p = PTR_VALUE(from) + (off);			\
+		if (p < 0 || p + 4 > 0 /* TODO: FILL IN */)		\
+		{							\
+			prog->xfunction->profile += (st - startst);	\
+			prog->xstatement = st - prog->statements;	\
+			PRVM_ERROR("%s attempted to write to out of bounds memory (%i)", PRVM_NAME, (int)p); \
+			goto cleanup;					\
+		}							\
+		ptr = (prvm_eval_t *)((unsigned char *)0 /* TODO: FILL IN*/ + p /* TODO: REMOVE: */ * 0); \
+	}								\
 	else								\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
@@ -80,6 +120,16 @@
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
 		ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p); \
+	}								\
+	else if (PTR_ISSTR(from))					\
+	{								\
+		ptrval_t p = PTR_VALUE(from) + (off);			\
+		ptr = (prvm_eval_t *)((unsigned char *)vm_tempstringsbuf.data + p); \
+	}								\
+	else if (PTR_ISMEM(from))					\
+	{								\
+		ptrval_t p = PTR_VALUE(from) + (off);			\
+		ptr = (prvm_eval_t *)((unsigned char *)0 /* TODO: FILL IN*/ + p /* TODO: REMOVE: */ * 0); \
 	}								\
 	else								\
 	{								\
