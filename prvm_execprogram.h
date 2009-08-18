@@ -2,8 +2,12 @@
 #undef GLOBALSIZE
 #undef PTR_GBL
 #undef PTR_FLD
+#undef PTR_STR
+#undef PTR_MEM
 #undef PTR_ISGBL
 #undef PTR_ISFLD
+#undef PTR_ISSTR
+#undef PTR_ISMEM
 #undef PTR_FROMPTR
 #undef PTR_VALUE
 #undef PTR_ISVALID
