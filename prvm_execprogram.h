@@ -152,7 +152,15 @@ ptrvalA = 0; // get rid of the unused-warning for now
 ptrvalB = 0;
 		while (1)
 		{
-			st++; // TODO bounds check
+			st++;
+#if PRVMBOUNDSCHECK
+			if ( (st - prog->statements) < 0 ||
+			     (st - prog->statements) >= prog->progs->numstatements)
+			{
+				PRVM_ERROR("%s dropped out of the VM", PRVM_NAME);
+				goto cleanup;
+			}
+#endif
 
 #if PRVMTRACE
 			PRVM_PrintStatement(st);
@@ -383,7 +391,9 @@ ptrvalB = 0;
 					goto cleanup;
 				}
 #endif
-				ed = PRVM_PROG_TO_EDICT(OPA->edict); // TODO bounds check entity number
+				// TODO bounds check entity number
+				// -- actually, PRVM_PROG_TO_EDICT does that already
+				ed = PRVM_PROG_TO_EDICT(OPA->edict);
 				OPC->_int = ((prvm_eval_t *)((int *)ed->fields.vp + OPB->_int))->_int;
 				break;
 
@@ -473,6 +483,11 @@ ptrvalB = 0;
 				prog->argc = st->op - OP_CALL0;
 				if (!OPA->function)
 					PRVM_ERROR("NULL function in %s", PRVM_NAME);
+				if (OPA->function >= (unsigned int)prog->progs->numfunctions)
+				{
+					PRVM_ERROR("Call to an out of bounds function in %s", PRVM_NAME);
+					goto cleanup;
+				}
 				newf = &prog->functions[OPA->function]; // TODO bounds check function
 				newf->callcount++;
 
@@ -850,6 +865,11 @@ ptrvalB = 0;
 				prog->argc = st->op - (OP_CALL1H-1);
 				if (!OPA->function)
 					PRVM_ERROR("NULL function in %s", PRVM_NAME);
+				if (OPA->function >= (unsigned int)prog->progs->numfunctions) // TODO: audit this too (must/should match CALLx)
+				{
+					PRVM_ERROR("Call to an out of bounds function in %s", PRVM_NAME);
+					goto cleanup;
+				}
 
 				newf = &prog->functions[OPA->function];
 				newf->callcount++;
