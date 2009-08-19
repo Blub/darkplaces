@@ -153,14 +153,6 @@ ptrvalB = 0;
 		while (1)
 		{
 			st++;
-#if PRVMBOUNDSCHECK
-			if ( (st - prog->statements) < 0 ||
-			     (st - prog->statements) >= prog->progs->numstatements)
-			{
-				PRVM_ERROR("%s dropped out of the VM", PRVM_NAME);
-				goto cleanup;
-			}
-#endif
 
 #if PRVMTRACE
 			PRVM_PrintStatement(st);
@@ -383,6 +375,13 @@ ptrvalB = 0;
 			case OP_LOAD_FNC:
 			case OP_LOAD_P:
 #if PRVMBOUNDSCHECK
+				if (OPA->edict < 0 || OPA->edict >= prog->edictareasize)
+				{
+					prog->xfunction->profile += (st - startst);
+					prog->xstatement = st - prog->statements;
+					PRVM_ERROR ("%s Progs attempted to read an out of bounds edict number", PRVM_NAME);
+					goto cleanup;
+				}
 				if ((unsigned int)(OPB->_int) >= (unsigned int)(prog->progs->entityfields))
 				{
 					prog->xfunction->profile += (st - startst);
@@ -391,14 +390,19 @@ ptrvalB = 0;
 					goto cleanup;
 				}
 #endif
-				// TODO bounds check entity number
-				// -- actually, PRVM_PROG_TO_EDICT does that already
 				ed = PRVM_PROG_TO_EDICT(OPA->edict);
 				OPC->_int = ((prvm_eval_t *)((int *)ed->fields.vp + OPB->_int))->_int;
 				break;
 
 			case OP_LOAD_V:
 #if PRVMBOUNDSCHECK
+				if (OPA->edict < 0 || OPA->edict >= prog->edictareasize)
+				{
+					prog->xfunction->profile += (st - startst);
+					prog->xstatement = st - prog->statements;
+					PRVM_ERROR ("%s Progs attempted to read an out of bounds edict number", PRVM_NAME);
+					goto cleanup;
+				}
 				if (OPB->_int < 0 || OPB->_int + 2 >= prog->progs->entityfields)
 				{
 					prog->xfunction->profile += (st - startst);
@@ -407,7 +411,7 @@ ptrvalB = 0;
 					goto cleanup;
 				}
 #endif
-				ed = PRVM_PROG_TO_EDICT(OPA->edict); // TODO bounds check entity number
+				ed = PRVM_PROG_TO_EDICT(OPA->edict);
 				OPC->ivector[0] = ((prvm_eval_t *)((int *)ed->fields.vp + OPB->_int))->ivector[0];
 				OPC->ivector[1] = ((prvm_eval_t *)((int *)ed->fields.vp + OPB->_int))->ivector[1];
 				OPC->ivector[2] = ((prvm_eval_t *)((int *)ed->fields.vp + OPB->_int))->ivector[2];
@@ -424,6 +428,8 @@ ptrvalB = 0;
 					prog->xfunction->profile += (st - startst);
 					st += st->b - 1;	// offset the s++
 					startst = st;
+					
+					// no bounds check needed, it is done when loading progs
 					RUNAWAYCHECK();
 				}
 				break;
@@ -457,7 +463,9 @@ ptrvalB = 0;
 					prog->xfunction->profile += (st - startst);
 					st += st->b - 1;	// offset the s++
 					startst = st;
+					// no bounds check needed, it is done when loading progs
 					RUNAWAYCHECK();
+
 				}
 				break;
 
@@ -465,6 +473,7 @@ ptrvalB = 0;
 				prog->xfunction->profile += (st - startst);
 				st += st->a - 1;	// offset the s++
 				startst = st;
+				// no bounds check needed, it is done when loading progs
 				RUNAWAYCHECK();
 				break;
 
@@ -483,12 +492,18 @@ ptrvalB = 0;
 				prog->argc = st->op - OP_CALL0;
 				if (!OPA->function)
 					PRVM_ERROR("NULL function in %s", PRVM_NAME);
-				if (OPA->function >= (unsigned int)prog->progs->numfunctions)
+
+#if PRVMBOUNDSCHECK
+				if(!OPA->function || OPA->function >= (unsigned int)prog->progs->numfunctions)
 				{
-					PRVM_ERROR("Call to an out of bounds function in %s", PRVM_NAME);
+					prog->xfunction->profile += (st - startst);
+					prog->xstatement = st - prog->statements; // we better stay on the previously executed statement
+					PRVM_ERROR("%s CALL outside the program", PRVM_NAME);
 					goto cleanup;
 				}
-				newf = &prog->functions[OPA->function]; // TODO bounds check function
+#endif
+
+				newf = &prog->functions[OPA->function];
 				newf->callcount++;
 
 				if (newf->first_statement < 0)
@@ -865,11 +880,16 @@ ptrvalB = 0;
 				prog->argc = st->op - (OP_CALL1H-1);
 				if (!OPA->function)
 					PRVM_ERROR("NULL function in %s", PRVM_NAME);
-				if (OPA->function >= (unsigned int)prog->progs->numfunctions) // TODO: audit this too (must/should match CALLx)
+
+#if PRVMBOUNDSCHECK
+				if(!OPA->function || OPA->function >= (unsigned int)prog->progs->numfunctions)
 				{
-					PRVM_ERROR("Call to an out of bounds function in %s", PRVM_NAME);
+					prog->xfunction->profile += (st - startst);
+					prog->xstatement = st - prog->statements; // we better stay on the previously executed statement
+					PRVM_ERROR("%s CALL outside the program", PRVM_NAME);
 					goto cleanup;
 				}
+#endif
 
 				newf = &prog->functions[OPA->function];
 				newf->callcount++;
