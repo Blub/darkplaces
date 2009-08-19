@@ -28,7 +28,7 @@
 #endif
 #define GLOBALSIZE ((signed)sizeof(*prog->globals.generic)*prog->progs->numglobals)
 
-#define PTR_VALUE(x) ((x) & 0x3FFFFFFF)
+#define PTR_VALUE(x) ((unsigned int)(x) & 0x3FFFFFFF)
 
 // Pointer:
 // [type: 2 bits] [value: 30 bits]
@@ -75,7 +75,7 @@
 			PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, (int)p);	\
 			goto cleanup;					\
 		}							\
-		ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p); \
+		ptr = (prvm_eval_t*)((int *)prog->globals.generic + p);	\
 	}								\
 	else if (PTR_ISMEM(from))					\
 	{								\
@@ -87,7 +87,7 @@
 			PRVM_ERROR("%s attempted to write to out of bounds memory (%i)", PRVM_NAME, (int)p); \
 			goto cleanup;					\
 		}							\
-		ptr = (prvm_eval_t *)((unsigned char *)0 /* TODO: FILL IN*/ + p /* TODO: REMOVE: */ * 0); \
+		ptr = (prvm_eval_t*)((int *)0 /* TODO: FILL IN*/ + p /* TODO: REMOVE: */ * 0); \
 	}								\
 	else								\
 	{								\
@@ -99,7 +99,7 @@
 			PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, (int)p); \
 			goto cleanup;					\
 		}							\
-		ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);	\
+		ptr = (prvm_eval_t*)((int *)prog->edictsfields + p);	\
 	}
 #else
 
@@ -107,17 +107,17 @@
 	if (PTR_ISGBL(from))						\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p); \
+		ptr = (prvm_eval_t *)((int*)prog->globals.generic + p);	\
 	}								\
 	else if (PTR_ISMEM(from))					\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		ptr = (prvm_eval_t *)((unsigned char *)0 /* TODO: FILL IN*/ + p /* TODO: REMOVE: */ * 0); \
+		ptr = (prvm_eval_t *)((int*)0 /* TODO: FILL IN*/ + p /* TODO: REMOVE: */ * 0); \
 	}								\
 	else								\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);	\
+		ptr = (prvm_eval_t *)((int*)prog->edictsfields + p);	\
 	}
 #endif
 
@@ -294,35 +294,7 @@ ptrvalB = 0;
 
 				/*
 			case OP_STOREP_C:
-				if (PTR_ISGBL(OPB->_int))
-				{
-					ptrval_t p = PTR_VALUE(OPB->_int);
-#if PRVMBOUNDSCHECK
-					if (p < 0 || p + 4 > GLOBALSIZE)
-					{
-						prog->xfunction->profile += (st - startst);
-						prog->xstatement = st - prog->statements;
-						PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
-						goto cleanup;
-					}
-#endif
-					ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p);
-				}
-				else
-				{
-					ptrval_t p = PTR_VALUE(OPB->_int);
-#if PRVMBOUNDSCHECK
-					if (p < 0 || p + 4 > prog->edictareasize)
-					{
-						prog->xfunction->profile += (st - startst);
-						prog->xstatement = st - prog->statements;
-						PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, PTR_VALUE(OPB->_int));
-						goto cleanup;
-					}
-#endif
-					ptr = (prvm_eval_t *)((unsigned char *)prog->edictsfields + p);
-				}
-				*(unsigned char*)ptr = (char)OPA->_float;
+				PTR_ptr(OPB->_int, 0);
 				break;
 				*/
 
@@ -344,7 +316,7 @@ ptrvalB = 0;
 					goto cleanup;
 				}
 				ed = PRVM_PROG_TO_EDICT(OPA->edict);
-				OPC->_int = PTR_FLD((unsigned char *)((int *)ed->fields.vp + OPB->_int) - (unsigned char *)prog->edictsfields);
+				OPC->_int = PTR_FLD(((int *)ed->fields.vp + OPB->_int) - (int *)prog->edictsfields);
 				break;
 
 			case OP_LOAD_F:
@@ -1092,7 +1064,7 @@ ptrvalB = 0;
 				break;
 
 			case OP_GLOBALADDRESS:
-				OPC->_int = (unsigned char*)(&(OPA->_int) + OPB->_int) - (unsigned char*)prog->globals.generic;
+				OPC->_int = ((&(OPA->_int) + OPB->_int) - (int*)prog->globals.generic);
 #if PRVMBOUNDSCHECK
 				if (OPC->_int < 0 || OPC->_int + 4 > GLOBALSIZE)
 				{
