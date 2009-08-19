@@ -834,7 +834,7 @@ ptrvalB = 0;
 				break;
 */
 			case OP_BOUNDCHECK:
-				if (OPA->_int < 0 || OPA->_int >= st->b)
+				if ((unsigned int)OPA->_int < (unsigned int)st->c || (unsigned int)OPA->_int >= (unsigned int)st->b)
 				{
 					prog->xfunction->profile += (st - startst);
 					prog->xstatement = st - prog->statements;
@@ -1012,6 +1012,7 @@ ptrvalB = 0;
 				}
 				break;
 
+			// fteqcc somehow doesn't like creating these
 			case OP_ADDSTORE_F:
 				OPB->_float += OPA->_float;
 				break;
@@ -1136,7 +1137,7 @@ ptrvalB = 0;
 				OPC->_int = ptr->_int;
 				break;
 
-			case OP_POWER_I:
+			case OP_XOR_I:
 				OPC->_int = OPA->_int ^ OPB->_int;
 				break;
 			case OP_RSHIFT_I:

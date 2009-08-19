@@ -211,7 +211,7 @@ char *prvm_opnames[] =
 
 "OP_DIV_VF",
 
-"OP_POWER_I",
+"OP_XOR_I",
 "OP_RSHIFT_I",
 "OP_LSHIFT_I",
 

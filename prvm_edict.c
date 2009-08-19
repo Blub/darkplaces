@@ -1837,38 +1837,97 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 			if ((unsigned short) st->a >= prog->progs->numglobals || st->b + i < 0 || st->b + i >= prog->progs->numstatements)
 				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (int) (statement %d) in %s", i, PRVM_NAME);
 			break;
+		case OP_IFS:
+		case OP_IFNOTS:
+			if ((unsigned short) st->a >= prog->progs->numglobals || st->b + i < 0 || st->b + i >= prog->progs->numstatements)
+				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (string not null) (statement %d) in %s", i, PRVM_NAME);
+			break;
 		case OP_GOTO:
 			if (st->a + i < 0 || st->a + i >= prog->progs->numstatements)
 				PRVM_ERROR("PRVM_LoadProgs: out of bounds GOTO (statement %d) in %s", i, PRVM_NAME);
 			break;
+		case OP_CASE:
+			if ((unsigned short) st->a >= prog->progs->numglobals || st->b + i < 0 || st->b + i >= prog->progs->numstatements)
+				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (float) (statement %d) in %s", i, PRVM_NAME);
+			break;
+		case OP_CASERANGE:
+			if ((unsigned short) st->a >= prog->progs->numglobals ||
+			    (unsigned short) st->b >= prog->progs->numglobals ||
+			    st->c + i < 0 || st->c + i >= prog->progs->numstatements)
+				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (float) (statement %d) in %s", i, PRVM_NAME);
+			break;
 		// global global global
 		case OP_ADD_F:
 		case OP_ADD_V:
+		case OP_ADD_I:
+		case OP_ADD_FI:
+		case OP_ADD_IF:
 		case OP_SUB_F:
+		case OP_SUB_I:
+		case OP_SUB_FI:
+		case OP_SUB_IF:
 		case OP_SUB_V:
 		case OP_MUL_F:
 		case OP_MUL_V:
 		case OP_MUL_FV:
 		case OP_MUL_VF:
+		case OP_MUL_I:
+		case OP_MUL_IF:
+		case OP_MUL_FI:
+		case OP_MUL_VI:
 		case OP_DIV_F:
+		case OP_DIV_VF:
+		case OP_DIV_I:
+		case OP_DIV_IF:
+		case OP_DIV_FI:
 		case OP_BITAND:
+		case OP_BITAND_I:
+		case OP_BITAND_IF:
+		case OP_BITAND_FI:
 		case OP_BITOR:
+		case OP_BITOR_I:
+		case OP_BITOR_IF:
+		case OP_BITOR_FI:
 		case OP_GE:
 		case OP_LE:
 		case OP_GT:
 		case OP_LT:
+		case OP_GE_I:
+		case OP_LE_I:
+		case OP_GT_I:
+		case OP_LT_I:
+		case OP_GE_IF:
+		case OP_LE_IF:
+		case OP_GT_IF:
+		case OP_LT_IF:
+		case OP_GE_FI:
+		case OP_LE_FI:
+		case OP_GT_FI:
+		case OP_LT_FI:
 		case OP_AND:
+		case OP_AND_I:
+		case OP_AND_IF:
+		case OP_AND_FI:
 		case OP_OR:
+		case OP_OR_I:
+		case OP_OR_IF:
+		case OP_OR_FI:
 		case OP_EQ_F:
 		case OP_EQ_V:
 		case OP_EQ_S:
 		case OP_EQ_E:
 		case OP_EQ_FNC:
+		case OP_EQ_I:
+		case OP_EQ_IF:
+		case OP_EQ_FI:
 		case OP_NE_F:
 		case OP_NE_V:
 		case OP_NE_S:
 		case OP_NE_E:
 		case OP_NE_FNC:
+		case OP_NE_I:
+		case OP_NE_IF:
+		case OP_NE_FI:
 		case OP_ADDRESS:
 		case OP_LOAD_F:
 		case OP_LOAD_FLD:
@@ -1876,6 +1935,47 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 		case OP_LOAD_S:
 		case OP_LOAD_FNC:
 		case OP_LOAD_V:
+		case OP_LOAD_P:
+		case OP_LOAD_I:
+		case OP_LOADA_I:
+		case OP_LOADA_F:
+		case OP_LOADA_FLD:
+		case OP_LOADA_ENT:
+		case OP_LOADA_S:
+		case OP_LOADA_FNC:
+		case OP_LOADA_V:
+		case OP_LOADP_I:
+		case OP_LOADP_F:
+		case OP_LOADP_FLD:
+		case OP_LOADP_ENT:
+		case OP_LOADP_S:
+		case OP_LOADP_FNC:
+		case OP_LOADP_V:
+		case OP_LOADP_C:
+		/*
+		case OP_GLOAD_I:
+		case OP_GLOAD_F:
+		case OP_GLOAD_FLD:
+		case OP_GLOAD_ENT:
+		case OP_GLOAD_S:
+		case OP_GLOAD_FNC:
+		case OP_GLOAD_V:
+		*/
+		case OP_BOUNDCHECK:
+		case OP_ADDSTOREP_F:
+		case OP_ADDSTOREP_V:
+		case OP_SUBSTOREP_F:
+		case OP_SUBSTOREP_V:
+		case OP_MULSTOREP_F:
+		case OP_MULSTOREP_V:
+		case OP_DIVSTOREP_F:
+		case OP_GLOBALADDRESS:
+		case OP_POINTER_ADD:
+		case OP_ADD_SF:
+		case OP_SUB_S:
+		case OP_XOR_I:
+		case OP_RSHIFT_I:
+		case OP_LSHIFT_I:
 			if ((unsigned short) st->a >= prog->progs->numglobals || (unsigned short) st->b >= prog->progs->numglobals || (unsigned short) st->c >= prog->progs->numglobals)
 				PRVM_ERROR("PRVM_LoadProgs: out of bounds global index (statement %d)", i);
 			break;
@@ -1885,6 +1985,9 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 		case OP_NOT_S:
 		case OP_NOT_FNC:
 		case OP_NOT_ENT:
+		case OP_NOT_I:
+		case OP_CONV_ITOF:
+		case OP_CONV_FTOI:
 			if ((unsigned short) st->a >= prog->progs->numglobals || (unsigned short) st->c >= prog->progs->numglobals)
 				PRVM_ERROR("PRVM_LoadProgs: out of bounds global index (statement %d) in %s", i, PRVM_NAME);
 			break;
@@ -1902,6 +2005,36 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 		case OP_STATE:
 		case OP_STOREP_V:
 		case OP_STORE_V:
+		case OP_STORE_P:
+		case OP_STORE_IF:
+		case OP_STORE_FI:
+		case OP_STOREP_P:
+		case OP_STOREP_I:
+		// case OP_STOREP_C:
+		/*
+		case OP_GSTOREP_I:
+		case OP_GSTOREP_F:
+		case OP_GSTOREP_ENT:
+		case OP_GSTOREP_FLD:
+		case OP_GSTOREP_S:
+		case OP_GSTOREP_FNC:
+		case OP_GSTOREP_V:
+		case OP_GADDRESS:
+		*/
+		case OP_RAND2:
+		case OP_RANDV2:
+		case OP_BITSET:
+		case OP_BITCLR:
+		case OP_ADDSTORE_F:
+		case OP_ADDSTORE_V:
+		case OP_SUBSTORE_F:
+		case OP_SUBSTORE_V:
+		case OP_MULSTORE_F:
+		case OP_MULSTORE_V:
+		case OP_DIVSTORE_F:
+		//case OP_CSTATE:
+		//case OP_CWSTATE:
+		case OP_THINKTIME:
 			if ((unsigned short) st->a >= prog->progs->numglobals || (unsigned short) st->b >= prog->progs->numglobals)
 				PRVM_ERROR("PRVM_LoadProgs: out of bounds global index (statement %d) in %s", i, PRVM_NAME);
 			break;
@@ -1925,10 +2058,22 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 		case OP_CALL8H:
 		case OP_DONE:
 		case OP_RETURN:
+		case OP_RAND1:
+		case OP_RANDV1:
+		case OP_SWITCH_F:
+		case OP_SWITCH_V:
+		case OP_SWITCH_S:
+		case OP_SWITCH_E:
+		case OP_SWITCH_I:
+		case OP_SWITCH_FNC:
 			if ((unsigned short) st->a >= prog->progs->numglobals)
 				PRVM_ERROR("PRVM_LoadProgs: out of bounds global index (statement %d) in %s", i, PRVM_NAME);
 			break;
 			// TODO: add fte instruction support here too
+		case OP_RAND0:
+		case OP_RANDV0:
+			// this writes to OFS_RETURN and has no parameters
+			break;
 		default:
 			Con_DPrintf("PRVM_LoadProgs: unknown opcode %d at statement %d in %s\n", st->op, i, PRVM_NAME);
 			break;
