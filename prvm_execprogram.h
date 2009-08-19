@@ -8,7 +8,6 @@
 #undef PTR_ISFLD
 #undef PTR_ISSTR
 #undef PTR_ISMEM
-#undef PTR_FROMPTR
 #undef PTR_VALUE
 #undef PTR_ISVALID
 #undef PTR_ptr
@@ -46,21 +45,15 @@
 #define PTR_MEM(x)   (PTR_VALUE(x) | (2<<30))
 #define PTR_ISMEM(x) ( ((x)>>30) == 2 )
 
-#define PTR_FROMPTR(x)							\
-	(								\
-	ptrvalA = ((unsigned char *)(x) - (unsigned char *)prog->edictsfields), \
-	ptrvalB = ((unsigned char *)(x) - (unsigned char *)prog->globals.generic), \
-	(ptrvalA >= 0 && ptrvalA + 4 <= prog->edictareasize) ? ptrvalA : \
-	(ptrvalB >= 0 && ptrvalB + 4 <= GLOBALSIZE) ? ptrvalB : \
-	0 )
 #define PTR_ISVALID(x)							\
 	(								\
-	ptrvalA = ((unsigned char *)(x) - (unsigned char *)prog->edictsfields), \
-	ptrvalB = ((unsigned char *)(x) - (unsigned char *)prog->globals.generic), \
-	(ptrvalA >= 0 && ptrvalA + 4 <= prog->edictareasize) ? 1 : \
-	(ptrvalB >= 0 && ptrvalB + 4 <= GLOBALSIZE) ? 1 : \
+	ptrvalA = ((int *)(x) - (int *)prog->edictsfields),		\
+	ptrvalB = ((int *)(x) - (int *)prog->globals.generic),		\
+	ptrvalC = ((int *)(x) - (int *)/* TODO: fill in memory area*/ 0), \
+	(ptrvalA >= 0 && ptrvalA + 4 <= prog->edictareasize) ? 1 :	\
+	(ptrvalB >= 0 && ptrvalB + 4 <= GLOBALSIZE) ? 1 :		\
+	(ptrvalC >= 0 && ptrvalC + 4 <= /* TODO: fill in memory area size */0) ? 1 : \
 	0 )
-
 
 #if PRVMBOUNDSCHECK
 
@@ -126,9 +119,10 @@ typedef long ptrval_t;
 // This code isn't #ifdef/#define protectable, don't try.
 prvm_eval_t *swtch = NULL;
 int swtchtype = 0;
-ptrval_t ptrvalA, ptrvalB;
+ptrval_t ptrvalA, ptrvalB, ptrvalC;
 ptrvalA = 0; // get rid of the unused-warning for now
 ptrvalB = 0;
+ptrvalC = 0;
 		while (1)
 		{
 			st++;
