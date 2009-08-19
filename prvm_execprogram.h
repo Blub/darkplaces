@@ -33,22 +33,18 @@
 // Pointer:
 // [type: 2 bits] [value: 30 bits]
 // types:
-//   0  -  Global area
-//   1  -  Entity field area
-//   2  -  Tempstring area
-//   3  -  Malloc()ed area
+//   0  -  Entity field area
+//   1  -  Global area
+//   2  -  Malloc()ed area
 
-#define PTR_GBL(x)   PTR_VALUE(x)
-#define PTR_ISGBL(x) ( ((x)>>30) == 0 )
+#define PTR_FLD(x)   (PTR_VALUE(x))
+#define PTR_ISFLD(x) ( ((x)>>30) == 0 )
 
-#define PTR_FLD(x)   (PTR_VALUE(x) | (1<<30))
-#define PTR_ISFLD(x) ( ((x)>>30) == 1 )
+#define PTR_GBL(x)   (PTR_VALUE(x) | (1<<30))
+#define PTR_ISGBL(x) ( ((x)>>30) == 1 )
 
-#define PTR_STR(x)   (PTR_VALUE(x) | (2<<30))
-#define PTR_ISSTR(x) ( ((x)>>30) == 2 )
-
-#define PTR_MEM(x)   (PTR_VALUE(x) | (3<<30))
-#define PTR_ISMEM(x) ( ((x)>>30) == 3 )
+#define PTR_MEM(x)   (PTR_VALUE(x) | (2<<30))
+#define PTR_ISMEM(x) ( ((x)>>30) == 2 )
 
 #define PTR_FROMPTR(x)							\
 	(								\
@@ -81,18 +77,6 @@
 		}							\
 		ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p); \
 	}								\
-	else if (PTR_ISSTR(from))					\
-	{								\
-		ptrval_t p = PTR_VALUE(from) + (off);			\
-		if (p < 0 || p + 4 > vm_tempstringsbuf.maxsize)		\
-		{							\
-			prog->xfunction->profile += (st - startst);	\
-			prog->xstatement = st - prog->statements;	\
-			PRVM_ERROR("%s attempted to write to an out of bounds string (%i)", PRVM_NAME, (int)p); \
-			goto cleanup;					\
-		}							\
-		ptr = (prvm_eval_t *)((unsigned char *)vm_tempstringsbuf.data + p); \
-	}								\
 	else if (PTR_ISMEM(from))					\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
@@ -124,11 +108,6 @@
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
 		ptr = (prvm_eval_t*)((unsigned char *)prog->globals.generic + p); \
-	}								\
-	else if (PTR_ISSTR(from))					\
-	{								\
-		ptrval_t p = PTR_VALUE(from) + (off);			\
-		ptr = (prvm_eval_t *)((unsigned char *)vm_tempstringsbuf.data + p); \
 	}								\
 	else if (PTR_ISMEM(from))					\
 	{								\
@@ -1152,10 +1131,12 @@ ptrvalB = 0;
 				OPC->vector[1] = ptr->vector[1];
 				OPC->vector[2] = ptr->vector[2];
 				break;
+			/*
 			case OP_LOADP_C:
 				PTR_ptr(OPA->_int, (int)OPB->_float);
 				OPC->_int = ptr->_int;
 				break;
+			*/
 
 			case OP_XOR_I:
 				OPC->_int = OPA->_int ^ OPB->_int;
