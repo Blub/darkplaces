@@ -27,6 +27,9 @@
 #endif
 #define GLOBALSIZE ((signed)sizeof(*prog->globals.generic)*prog->progs->numglobals)
 
+// TODO: (64bit)
+// 0x3fffffffffffffff
+// ~(3 << 62)
 #define PTR_VALUE(x) ((unsigned int)(x) & 0x3FFFFFFF)
 
 // Pointer:
@@ -36,6 +39,8 @@
 //   1  -  Global area
 //   2  -  Malloc()ed area
 
+// TODO: (64 bit)
+// s/30/62/ in the following lines:
 #define PTR_FLD(x)   (PTR_VALUE(x))
 #define PTR_ISFLD(x) ( ((x)>>30) == 0 )
 
