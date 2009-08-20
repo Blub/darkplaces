@@ -1983,6 +1983,12 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 		case OP_XOR_I:
 		case OP_RSHIFT_I:
 		case OP_LSHIFT_I:
+		case OP_FETCH_GBL_F:
+		case OP_FETCH_GBL_S:
+		case OP_FETCH_GBL_E:
+		case OP_FETCH_GBL_ENT:
+		case OP_FETCH_GBL_FNC:
+		case OP_FETCH_GBL_V:
 			if ((unsigned short) st->a >= prog->progs->numglobals || (unsigned short) st->b >= prog->progs->numglobals || (unsigned short) st->c >= prog->progs->numglobals)
 				PRVM_ERROR("PRVM_LoadProgs: out of bounds global index (statement %d)", i);
 			break;
@@ -2009,6 +2015,7 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 		case OP_STORE_FLD:
 		case OP_STORE_S:
 		case OP_STORE_FNC:
+		case OP_STORE_I:
 		case OP_STATE:
 		case OP_STOREP_V:
 		case OP_STORE_V:
