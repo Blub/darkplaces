@@ -342,14 +342,14 @@ static int Sys_EventFilter( SDL_Event *event )
 
 #ifdef SDL_R_RESTART
 static qboolean sdl_needs_restart;
-static void sdl_start()
+static void sdl_start(void)
 {
 }
-static void sdl_shutdown()
+static void sdl_shutdown(void)
 {
 	sdl_needs_restart = false;
 }
-static void sdl_newmap()
+static void sdl_newmap(void)
 {
 }
 #endif
@@ -530,7 +530,7 @@ static void VID_SetCaption()
 #endif
 	SetClassLongPtr( info.window, GCLP_HICON, (LONG_PTR)icon );
 }
-static void VID_SetIcon()
+static void VID_SetIcon(void)
 {
 }
 #else
@@ -538,7 +538,7 @@ static void VID_SetIcon()
 #include "darkplaces.xpm"
 #include "nexuiz.xpm"
 static SDL_Surface *icon = NULL;
-static void VID_SetIcon()
+static void VID_SetIcon(void)
 {
 	/*
 	 * Somewhat restricted XPM reader. Only supports XPMs saved by GIMP 2.4 at
@@ -640,13 +640,13 @@ static void VID_SetIcon()
 }
 
 
-static void VID_SetCaption()
+static void VID_SetCaption(void)
 {
 	SDL_WM_SetCaption( gamename, NULL );
 }
 #endif
 
-static void VID_OutputVersion()
+static void VID_OutputVersion(void)
 {
 	const SDL_version *version;
 	version = SDL_Linked_Version();
