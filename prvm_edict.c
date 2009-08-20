@@ -1986,7 +1986,6 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 		case OP_FETCH_GBL_F:
 		case OP_FETCH_GBL_S:
 		case OP_FETCH_GBL_E:
-		case OP_FETCH_GBL_ENT:
 		case OP_FETCH_GBL_FNC:
 		case OP_FETCH_GBL_V:
 			if ((unsigned short) st->a >= prog->progs->numglobals || (unsigned short) st->b >= prog->progs->numglobals || (unsigned short) st->c >= prog->progs->numglobals)
