@@ -55,7 +55,7 @@
 	ptrvalA = ((int *)(x) - (int *)prog->edictsfields),		\
 	ptrvalB = ((int *)(x) - (int *)prog->globals.generic),		\
 	ptrvalC = ((int *)(x) - (int *)/* TODO: fill in memory area*/ 0), \
-	(ptrvalA >= 0 && ptrvalA + 4 <= prog->max_edicts) ? 1 :	\
+	(ptrvalA >= 0 && ptrvalA + 4 <= prog->edictareasize) ? 1 :	\
 	(ptrvalB >= 0 && ptrvalB + 4 <= GLOBALSIZE) ? 1 :		\
 	(ptrvalC >= 0 && ptrvalC + 4 <= /* TODO: fill in memory area size */0) ? 1 : \
 	0 )
@@ -90,11 +90,11 @@
 	else								\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		if (p < 0 || p + 4 > prog->max_edicts)		\
+		if (p < 0 || p + 4 > prog->edictareasize)		\
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
-			PRVM_ERROR("%s attempted to write to an out of bounds edict (%i)", PRVM_NAME, (int)p); \
+			PRVM_ERROR("%s attempted to write to an out of bounds edict field (%i)", PRVM_NAME, (int)p); \
 			goto cleanup;					\
 		}							\
 		ptr = (prvm_eval_t*)((int *)prog->edictsfields + p);	\
