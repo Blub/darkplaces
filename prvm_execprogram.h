@@ -392,7 +392,7 @@ ptrvalC = 0;
 				break;
 
 			case OP_IF:
-				if (!(OPA->_int & 0x7FFFFFFF)) // also match "negative zero" floats of value 0x80000000
+				if ((OPA->_int & 0x7FFFFFFF)) // also match "negative zero" floats of value 0x80000000
 				// TODO add an "int-if", and change this one to OPA->_float
 				// although mostly unneeded, thanks to the only float being false being 0x0 and 0x80000000 (negative zero)
 				// and entity, string, field values can never have that value
