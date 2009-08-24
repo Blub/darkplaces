@@ -209,13 +209,13 @@ ptrvalC = 0;
 				OPC->_float = OPA->_float < OPB->_float;
 				break;
 			case OP_AND:
-				OPC->_float = OPA->_float && OPB->_float;
+				OPC->_float = FLOAT_IS_TRUE_FOR_INT(OPA->_int) && FLOAT_IS_TRUE_FOR_INT(OPB->_int); // TODO change this back to float, and add AND_I to be used by fteqcc for anything not a float
 				break;
 			case OP_OR:
-				OPC->_float = OPA->_float || OPB->_float;
+				OPC->_float = FLOAT_IS_TRUE_FOR_INT(OPA->_int) || FLOAT_IS_TRUE_FOR_INT(OPB->_int); // TODO change this back to float, and add OR_I to be used by fteqcc for anything not a float
 				break;
 			case OP_NOT_F:
-				OPC->_float = !OPA->_float;
+				OPC->_float = !FLOAT_IS_TRUE_FOR_INT(OPA->_int);
 				break;
 			case OP_NOT_V:
 				OPC->_float = !OPA->vector[0] && !OPA->vector[1] && !OPA->vector[2];
@@ -377,7 +377,7 @@ ptrvalC = 0;
 		//==================
 
 			case OP_IFNOT:
-				if (!(OPA->_int & 0x7FFFFFFF)) // also match "negative zero" floats of value 0x80000000
+				if(!FLOAT_IS_TRUE_FOR_INT(OPA->_int))
 				// TODO add an "int-if", and change this one to OPA->_float
 				// although mostly unneeded, thanks to the only float being false being 0x0 and 0x80000000 (negative zero)
 				// and entity, string, field values can never have that value
@@ -392,8 +392,8 @@ ptrvalC = 0;
 				break;
 
 			case OP_IF:
-				if ((OPA->_int & 0x7FFFFFFF)) // also match "negative zero" floats of value 0x80000000
-				// TODO add an "int-if", and change this one to OPA->_float
+				if(FLOAT_IS_TRUE_FOR_INT(OPA->_int))
+				// TODO add an "int-if", and change this one, as well as the FLOAT_IS_TRUE_FOR_INT usages, to OPA->_float
 				// although mostly unneeded, thanks to the only float being false being 0x0 and 0x80000000 (negative zero)
 				// and entity, string, field values can never have that value
 				{
