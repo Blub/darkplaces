@@ -55,7 +55,7 @@
 	ptrvalA = ((int *)(x) - (int *)prog->edictsfields),		\
 	ptrvalB = ((int *)(x) - (int *)prog->globals.generic),		\
 	ptrvalC = ((int *)(x) - (int *)/* TODO: fill in memory area*/ 0), \
-	(ptrvalA >= 0 && ptrvalA + 4 <= prog->edictareasize) ? 1 :	\
+	(ptrvalA >= 0 && ptrvalA + 4 <= prog->max_edicts) ? 1 :	\
 	(ptrvalB >= 0 && ptrvalB + 4 <= GLOBALSIZE) ? 1 :		\
 	(ptrvalC >= 0 && ptrvalC + 4 <= /* TODO: fill in memory area size */0) ? 1 : \
 	0 )
@@ -90,7 +90,7 @@
 	else								\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		if (p < 0 || p + 4 > prog->edictareasize)		\
+		if (p < 0 || p + 4 > prog->max_edicts)		\
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
@@ -299,6 +299,13 @@ ptrvalC = 0;
 
 			case OP_ADDRESS:
 #if PRVMBOUNDSCHECK
+				if (OPA->edict < 0 || OPA->edict >= prog->max_edicts)
+				{
+					prog->xfunction->profile += (st - startst);
+					prog->xstatement = st - prog->statements;
+					PRVM_ERROR ("%s Progs attempted to address an out of bounds edict number", PRVM_NAME);
+					goto cleanup;
+				}
 				if ((unsigned int)(OPB->_int) >= (unsigned int)(prog->progs->entityfields))
 				{
 					prog->xfunction->profile += (st - startst);
@@ -325,7 +332,7 @@ ptrvalC = 0;
 			case OP_LOAD_FNC:
 			case OP_LOAD_P:
 #if PRVMBOUNDSCHECK
-				if (OPA->edict < 0 || OPA->edict >= prog->edictareasize)
+				if (OPA->edict < 0 || OPA->edict >= prog->max_edicts)
 				{
 					prog->xfunction->profile += (st - startst);
 					prog->xstatement = st - prog->statements;
@@ -346,7 +353,7 @@ ptrvalC = 0;
 
 			case OP_LOAD_V:
 #if PRVMBOUNDSCHECK
-				if (OPA->edict < 0 || OPA->edict >= prog->edictareasize)
+				if (OPA->edict < 0 || OPA->edict >= prog->max_edicts)
 				{
 					prog->xfunction->profile += (st - startst);
 					prog->xstatement = st - prog->statements;
@@ -370,8 +377,8 @@ ptrvalC = 0;
 		//==================
 
 			case OP_IFNOT:
-				if (!OPA->_float)
-				// TODO add an "int-ifnot"
+				if (!(OPA->_int & 0x7FFFFFFF)) // also match "negative zero" floats of value 0x80000000
+				// TODO add an "int-if", and change this one to OPA->_float
 				// although mostly unneeded, thanks to the only float being false being 0x0 and 0x80000000 (negative zero)
 				// and entity, string, field values can never have that value
 				{
@@ -385,8 +392,8 @@ ptrvalC = 0;
 				break;
 
 			case OP_IF:
-				if (OPA->_float)
-				// TODO add an "int-if"
+				if (!(OPA->_int & 0x7FFFFFFF)) // also match "negative zero" floats of value 0x80000000
+				// TODO add an "int-if", and change this one to OPA->_float
 				// although mostly unneeded, thanks to the only float being false being 0x0 and 0x80000000 (negative zero)
 				// and entity, string, field values can never have that value
 				{
@@ -662,8 +669,8 @@ ptrvalC = 0;
 				ptr->_int = OPA->_int;
 				break;
 			case OP_LOAD_I:
-#if PRVMBOUNDSCHECK
-				if (OPA->edict < 0 || OPA->edict >= prog->edictareasize)
+#if PRBOUNDSCHECK
+				if (OPA->edict < 0 || OPA->edict >= prog->max_edicts)
 				{
 					prog->xfunction->profile += (st - startst);
 					prog->xstatement = st - prog->statements;
