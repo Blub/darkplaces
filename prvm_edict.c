@@ -1855,13 +1855,13 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 			break;
 		case OP_CASE:
 			if ((unsigned short) st->a >= prog->progs->numglobals || st->b + i < 0 || st->b + i >= prog->progs->numstatements)
-				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (float) (statement %d) in %s", i, PRVM_NAME);
+				PRVM_ERROR("PRVM_LoadProgs: out of bounds CASE (statement %d) in %s", i, PRVM_NAME);
 			break;
 		case OP_CASERANGE:
 			if ((unsigned short) st->a >= prog->progs->numglobals ||
 			    (unsigned short) st->b >= prog->progs->numglobals ||
 			    st->c + i < 0 || st->c + i >= prog->progs->numstatements)
-				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (float) (statement %d) in %s", i, PRVM_NAME);
+				PRVM_ERROR("PRVM_LoadProgs: out of bounds CASERANGE (statement %d) in %s", i, PRVM_NAME);
 			break;
 		// global global global
 		case OP_ADD_F:
