@@ -805,6 +805,7 @@ ptrvalC = 0;
 				swtchtype = st->op;
 				RUNAWAYCHECK();
 				prog->xfunction->profile += (st - startst);
+				startst = st;
 				st += st->b - 1;	// offset the s++
 				break;
 			}
