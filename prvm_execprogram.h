@@ -434,6 +434,22 @@ ptrvalC = 0;
 				RUNAWAYCHECK();
 				break;
 
+				// CALLxH used and tested, they do work!
+			case OP_CALL8H:
+			case OP_CALL7H:
+			case OP_CALL6H:
+			case OP_CALL5H:
+			case OP_CALL4H:
+			case OP_CALL3H:
+			case OP_CALL2H:
+				PRVM_G_VECTOR(OFS_PARM1)[0] = OPC->vector[0];
+				PRVM_G_VECTOR(OFS_PARM1)[1] = OPC->vector[1];
+				PRVM_G_VECTOR(OFS_PARM1)[2] = OPC->vector[2];
+			case OP_CALL1H:
+				PRVM_G_VECTOR(OFS_PARM0)[0] = OPB->vector[0];
+				PRVM_G_VECTOR(OFS_PARM0)[1] = OPB->vector[1];
+				PRVM_G_VECTOR(OFS_PARM0)[2] = OPB->vector[2];
+				// fall through
 			case OP_CALL0:
 			case OP_CALL1:
 			case OP_CALL2:
@@ -446,7 +462,11 @@ ptrvalC = 0;
 				prog->xfunction->profile += (st - startst);
 				startst = st;
 				prog->xstatement = st - prog->statements;
-				prog->argc = st->op - OP_CALL0;
+				// handle CALLxH too
+				if (st->op >= OP_CALL1H && st->op <= OP_CALL8H)
+					prog->argc = st->op - (OP_CALL1H-1);
+				else
+					prog->argc = st->op - OP_CALL0;
 				if (!OPA->function)
 					PRVM_ERROR("NULL function in %s", PRVM_NAME);
 
@@ -722,89 +742,6 @@ ptrvalC = 0;
 				OPC->vector[1] = ptr->vector[1];
 				OPC->vector[2] = ptr->vector[2];
 				break;
-/*
-			case OP_GSTOREP_I:
-			case OP_GSTOREP_F:
-			case OP_GSTOREP_ENT:
-			case OP_GSTOREP_FLD:		// integers
-			case OP_GSTOREP_S:
-			case OP_GSTOREP_FNC:		// pointers
-#if PRVMBOUNDSCHECK
-				if (OPB->_int < 0 || OPB->_int >= pr_globaldefs)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to write to an invalid indexed global", PRVM_NAME);
-					goto cleanup;
-				}
-#endif
-				pr_iglobals[OPB->_int] = OPA->_int;
-				break;
-			case OP_GSTOREP_V:
-#if PRVMBOUNDSCHECK
-				if (OPB->_int < 0 || OPB->_int + 2 >= pr_globaldefs)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to write to an invalid indexed global", PRVM_NAME);
-					goto cleanup;
-				}
-#endif
-				pr_iglobals[OPB->_int  ] = OPA->ivector[0];
-				pr_iglobals[OPB->_int+1] = OPA->ivector[1];
-				pr_iglobals[OPB->_int+2] = OPA->ivector[2];
-				break;
-
-			case OP_GADDRESS:
-			{
-				int i;
-				i = OPA->_int + (int) OPB->_float;
-#if PRVMBOUNDSCHECK
-				if (i < 0 || i >= pr_globaldefs)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to address an out of bounds global", PRVM_NAME);
-					goto cleanup;
-				}
-#endif
-				OPC->_int = pr_iglobals[i];
-				break;
-			}
-
-			case OP_GLOAD_I:
-			case OP_GLOAD_F:
-			case OP_GLOAD_FLD:
-			case OP_GLOAD_ENT:
-			case OP_GLOAD_S:
-			case OP_GLOAD_FNC:
-#if PRVMBOUNDSCHECK
-				if (OPA->_int < 0 || OPA->_int >= pr_globaldefs)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to read an invalid indexed global", PRVM_NAME);
-					goto cleanup;
-				}
-#endif
-				OPC->_int = pr_iglobals[OPA->_int];
-				break;
-
-			case OP_GLOAD_V:
-#if PRVMBOUNDSCHECK
-				if (OPA->_int < 0 || OPA->_int + 2 >= pr_globaldefs)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to read an invalid indexed global", PRVM_NAME);
-					goto cleanup;
-				}
-#endif
-				OPC->ivector[0] = pr_iglobals[OPA->_int  ];
-				OPC->ivector[1] = pr_iglobals[OPA->_int+1];
-				OPC->ivector[2] = pr_iglobals[OPA->_int+2];
-				break;
-*/
 			case OP_BOUNDCHECK:
 				if ((unsigned int)OPA->_int < (unsigned int)st->c || (unsigned int)OPA->_int >= (unsigned int)st->b)
 				{
@@ -813,57 +750,6 @@ ptrvalC = 0;
 					PRVM_ERROR ("%s Progs boundcheck failed at line number %d, value is < 0 or >= %d", PRVM_NAME, st->b, st->c);
 					goto cleanup;
 				}
-				break;
-
-				// CALLxH used and tested, they do work!
-			case OP_CALL8H:
-			case OP_CALL7H:
-			case OP_CALL6H:
-			case OP_CALL5H:
-			case OP_CALL4H:
-			case OP_CALL3H:
-			case OP_CALL2H:
-				PRVM_G_VECTOR(OFS_PARM1)[0] = OPC->vector[0];
-				PRVM_G_VECTOR(OFS_PARM1)[1] = OPC->vector[1];
-				PRVM_G_VECTOR(OFS_PARM1)[2] = OPC->vector[2];
-			case OP_CALL1H:
-				PRVM_G_VECTOR(OFS_PARM0)[0] = OPB->vector[0];
-				PRVM_G_VECTOR(OFS_PARM0)[1] = OPB->vector[1];
-				PRVM_G_VECTOR(OFS_PARM0)[2] = OPB->vector[2];
-
-				prog->xfunction->profile += (st - startst);
-				startst = st;
-				prog->xstatement = st - prog->statements;
-				prog->argc = st->op - (OP_CALL1H-1);
-				if (!OPA->function)
-					PRVM_ERROR("NULL function in %s", PRVM_NAME);
-
-#if PRVMBOUNDSCHECK
-				if(!OPA->function || OPA->function >= (unsigned int)prog->progs->numfunctions)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements; // we better stay on the previously executed statement
-					PRVM_ERROR("%s CALL outside the program", PRVM_NAME);
-					goto cleanup;
-				}
-#endif
-
-				newf = &prog->functions[OPA->function];
-				newf->callcount++;
-
-				if (newf->first_statement < 0)
-				{
-					// negative statements are built in functions
-					int builtinnumber = -newf->first_statement;
-					prog->xfunction->builtinsprofile++;
-					if (builtinnumber < prog->numbuiltins && prog->builtins[builtinnumber])
-						prog->builtins[builtinnumber]();
-					else
-						PRVM_ERROR("No such builtin #%i in %s; most likely cause: outdated engine build. Try updating!", builtinnumber, PRVM_NAME);
-				}
-				else
-					st = prog->statements + PRVM_EnterFunction(newf);
-				startst = st;
 				break;
 
 			case OP_RAND0: // random number between 0 and 1
@@ -918,7 +804,7 @@ ptrvalC = 0;
 				swtch = OPA;
 				swtchtype = st->op;
 				RUNAWAYCHECK();
-				//prog->xfunction->profile += (st - startst);
+				prog->xfunction->profile += (st - startst);
 				st += st->b - 1;	// offset the s++
 				break;
 			}
