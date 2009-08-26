@@ -970,6 +970,8 @@ ptrvalC = 0;
 				break;
 
 			case OP_POINTER_ADD:
+				// Should probably be *1, but I don't see where this is generated in fteqcc
+				// I hope this is never used as an optimization for "A = B + C * 4" :P
 				OPC->_int = OPA->_int + OPB->_int*4;
 				break;
 
