@@ -822,6 +822,8 @@ ptrvalC = 0;
 					if(swtch->_float == OPA->_float)
 					{
 						RUNAWAYCHECK();
+						prog->xfunction->profile += (st - startst);
+						startst = st;
 						st += st->b - 1;
 					}
 					break;
@@ -831,6 +833,8 @@ ptrvalC = 0;
 					if(swtch->_int == OPA->_int)
 					{
 						RUNAWAYCHECK();
+						prog->xfunction->profile += (st - startst);
+						startst = st;
 						st += st->b-1;
 					}
 					break;
@@ -838,6 +842,8 @@ ptrvalC = 0;
 					if(swtch->_int == OPA->_int)
 					{
 						RUNAWAYCHECK();
+						prog->xfunction->profile += (st - startst);
+						startst = st;
 						st += st->b-1;
 					}
 					// switch(string) case "string" ->
@@ -847,6 +853,8 @@ ptrvalC = 0;
 					if(!strcmp(PRVM_GetString(swtch->string), PRVM_GetString(OPA->string)))
 					{
 						RUNAWAYCHECK();
+						prog->xfunction->profile += (st - startst);
+						startst = st;
 						st += st->b-1;
 					}
 					break;
@@ -856,6 +864,8 @@ ptrvalC = 0;
 					   swtch->vector[2] == OPA->vector[2])
 					{
 						RUNAWAYCHECK();
+						prog->xfunction->profile += (st - startst);
+						startst = st;
 						st += st->b-1;
 					}
 					break;
