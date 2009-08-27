@@ -272,6 +272,7 @@ ptrvalC = 0;
 			case OP_STORE_S:
 			case OP_STORE_FNC:		// pointers
 			case OP_STORE_P:
+			case OP_STORE_I:
 				OPB->_int = OPA->_int;
 				break;
 			case OP_STORE_V:
@@ -680,9 +681,6 @@ ptrvalC = 0;
 			case OP_NE_FI:
 				OPC->_float = OPA->_float != (float)OPB->_int;
 				break;
-			case OP_STORE_I:
-				OPB->_int = OPA->_int;
-				break;
 			case OP_STOREP_I:
 				PTR_ptr(OPB->_int);
 				ptr->_int = OPA->_int;
@@ -878,44 +876,6 @@ ptrvalC = 0;
 				}
 				break;
 
-			// fteqcc somehow doesn't like creating these
-			case OP_ADDSTORE_F:
-				OPB->_float += OPA->_float;
-				break;
-			case OP_ADDSTORE_V:
-				OPB->vector[0] += OPA->vector[0];
-				OPB->vector[1] += OPA->vector[1];
-				OPB->vector[2] += OPA->vector[2];
-				break;
-			case OP_ADDSTOREP_F:
-				PTR_ptr(OPB->_int);
-				OPC->_float = (ptr->_float += OPA->_float);
-				break;
-			case OP_ADDSTOREP_V:
-				PTR_ptr3(OPB->_int, 0, 3);
-				OPC->vector[0] = (ptr->vector[0] += OPA->vector[0]);
-				OPC->vector[1] = (ptr->vector[1] += OPA->vector[1]);
-				OPC->vector[2] = (ptr->vector[2] += OPA->vector[2]);
-				break;
-			case OP_SUBSTORE_F:
-				OPB->_float -= OPA->_float;
-				break;
-			case OP_SUBSTORE_V:
-				OPB->vector[0] -= OPA->vector[0];
-				OPB->vector[1] -= OPA->vector[1];
-				OPB->vector[2] -= OPA->vector[2];
-				break;
-			case OP_SUBSTOREP_F:
-				PTR_ptr(OPB->_int);
-				OPC->_float = (ptr->_float -= OPA->_float);
-				break;
-			case OP_SUBSTOREP_V:
-				PTR_ptr3(OPB->_int, 0, 3);
-				OPC->vector[0] = (ptr->vector[0] -= OPA->vector[0]);
-				OPC->vector[1] = (ptr->vector[1] -= OPA->vector[1]);
-				OPC->vector[2] = (ptr->vector[2] -= OPA->vector[2]);
-				break;
-
 			case OP_CONV_ITOF:
 				OPC->_float = (float)OPA->_int;
 				break;
@@ -931,14 +891,28 @@ ptrvalC = 0;
 				OPC->_int = (int)(ptr->_float);
 				break;
 
-			case OP_MULSTORE_F:
-				OPB->_float *= OPA->_float;
+			case OP_ADDSTOREP_F:
+				PTR_ptr(OPB->_int);
+				OPC->_float = (ptr->_float += OPA->_float);
 				break;
-			case OP_MULSTORE_V:
-				OPB->vector[0] *= OPA->vector[0];
-				OPB->vector[1] *= OPA->vector[1];
-				OPB->vector[2] *= OPA->vector[2];
+			case OP_ADDSTOREP_V:
+				PTR_ptr3(OPB->_int, 0, 3);
+				OPC->vector[0] = (ptr->vector[0] += OPA->vector[0]);
+				OPC->vector[1] = (ptr->vector[1] += OPA->vector[1]);
+				OPC->vector[2] = (ptr->vector[2] += OPA->vector[2]);
 				break;
+
+			case OP_SUBSTOREP_F:
+				PTR_ptr(OPB->_int);
+				OPC->_float = (ptr->_float -= OPA->_float);
+				break;
+			case OP_SUBSTOREP_V:
+				PTR_ptr3(OPB->_int, 0, 3);
+				OPC->vector[0] = (ptr->vector[0] -= OPA->vector[0]);
+				OPC->vector[1] = (ptr->vector[1] -= OPA->vector[1]);
+				OPC->vector[2] = (ptr->vector[2] -= OPA->vector[2]);
+				break;
+
 			case OP_MULSTOREP_F:
 				PTR_ptr(OPB->_int);
 				OPC->_float = (ptr->_float *= OPA->_float);
@@ -950,13 +924,12 @@ ptrvalC = 0;
 				OPC->vector[1] = (ptr->vector[1] -= OPA->_float);
 				OPC->vector[2] = (ptr->vector[2] -= OPA->_float);
 				break;
-			case OP_DIVSTORE_F:
-				OPB->_float /= OPA->_float;
-				break;
+
 			case OP_DIVSTOREP_F:
 				PTR_ptr(OPB->_int);
 				OPC->_float = (ptr->_float /= OPA->_float);
 				break;
+
 			case OP_IFNOTS:
 				if(!OPA->string || !PRVM_GetString(OPA->string))
 					st += st->b-1;
