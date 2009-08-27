@@ -296,12 +296,6 @@ ptrvalC = 0;
 				ptr->ivector[2] = OPA->ivector[2];
 				break;
 
-				/*
-			case OP_STOREP_C:
-				PTR_ptr(OPB->_int);
-				break;
-				*/
-
 			case OP_ADDRESS:
 #if PRVMBOUNDSCHECK
 				if (OPA->edict < 0 || OPA->edict >= prog->max_edicts)
@@ -1014,6 +1008,12 @@ ptrvalC = 0;
 				OPC->vector[2] = ptr->vector[2];
 				break;
 			/*
+			// not wanted, keeping it in this comment for now though, because...
+			case OP_STOREP_C:
+				PTR_ptr(OPB->_int);
+				break;
+
+			// ... because this could still be reconsidered, after all it only loads
 			case OP_LOADP_C:
 				PTR_ptr2(OPA->_int, (int)OPB->_float);
 				OPC->_int = ptr->_int;
@@ -1030,66 +1030,6 @@ ptrvalC = 0;
 				OPC->_int = OPA->_int << OPB->_int;
 				break;
 
-/* fteqcc doesn't really generate them, and they're disabled in -TDP and -TDP1
-   still, they should work now, but they're of no use
-			case OP_FETCH_GBL_F:
-			case OP_FETCH_GBL_S:
-			case OP_FETCH_GBL_E:
-			case OP_FETCH_GBL_FNC:
-			{
-				int i;
-				i = (int)OPB->_float;
-#if PRVMBOUNDSCHECK
-				if (i < 0 || i > ((prvm_eval_t*)(&prog->globals.generic[st->a-1]))->_int)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to write to an invalid indexed global", PRVM_NAME);
-					goto cleanup;
-				}
-				// the boundscheck above is actually a check if the index
-				// matches the range allowed by QC code, here's the engineside check:
-				if ( (st->a + i) >= prog->progs->numglobals )
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to write to an out-of-bounds indexed global", PRVM_NAME);
-					goto cleanup;
-				}
-#endif
-				ptr = (prvm_eval_t*)(&prog->globals.generic[st->a + i]);
-				OPC->_int = ptr->_int;
-				break;
-			}
-			case OP_FETCH_GBL_V:
-			{
-				int i;
-				i = (int)OPB->_float;
-#if PRVMBOUNDSCHECK
-				if (i < 0 || i > ((prvm_eval_t*)(&prog->globals.generic[st->a-1]))->_int)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to write to an invalid indexed global", PRVM_NAME);
-					goto cleanup;
-				}
-				// the boundscheck above is actually a check if the index
-				// matches the range allowed by QC code, here's the engineside check:
-				if ( (st->a + i) >= prog->progs->numglobals )
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to write to an out-of-bounds indexed global", PRVM_NAME);
-					goto cleanup;
-				}
-#endif
-				ptr = (prvm_eval_t*)(&prog->globals.generic[st->a + i]);
-				OPC->vector[0] = ptr->vector[0];
-				OPC->vector[1] = ptr->vector[1];
-				OPC->vector[2] = ptr->vector[2];
-				break;
-			}
-*/
 			// hexen2 opcodes.. afaik fteqcc shouldn't use those
 /*
 			case OP_CSTATE:
