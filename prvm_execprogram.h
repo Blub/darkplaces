@@ -52,23 +52,24 @@
 #define PTR_MEM(x)   (PTR_VALUE(x) | (2<<30))
 #define PTR_ISMEM(x) ( ((x)>>30) == 2 )
 
+#define PTR_size (signed)sizeof(int)
+
 #define PTR_ISVALID(x)							\
 	(								\
 	ptrvalA = ((int *)(x) - (int *)prog->edictsfields),		\
 	ptrvalB = ((int *)(x) - (int *)prog->globals.generic),		\
 	ptrvalC = ((int *)(x) - (int *)/* TODO: fill in memory area*/ 0), \
-	(ptrvalA >= 0 && ptrvalA + 4 <= prog->edictareasize) ? 1 :	\
-	(ptrvalB >= 0 && ptrvalB + 4 <= GLOBALSIZE) ? 1 :		\
-	(ptrvalC >= 0 && ptrvalC + 4 <= /* TODO: fill in memory area size */0) ? 1 : \
+	(ptrvalA >= 0 && ptrvalA + PTR_size <= prog->edictareasize) ? 1 : \
+	(ptrvalB >= 0 && ptrvalB + PTR_size <= GLOBALSIZE) ? 1 :	\
+	(ptrvalC >= 0 && ptrvalC + PTR_size <= /* TODO: fill in memory area size */0) ? 1 : \
 	0 )
 
 #if PRVMBOUNDSCHECK
-
-#define PTR_ptr3(from, off, access)						\
+#define PTR_ptr3(from, off, access)					\
 	if (PTR_ISGBL(from))						\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		if (p < 0 || p + (access) > GLOBALSIZE)			\
+		if (p < 0 || p + (access)*PTR_size > GLOBALSIZE) \
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
@@ -80,7 +81,7 @@
 	else if (PTR_ISMEM(from))					\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		if (p < 0 || p + (access) > 0 /* TODO: FILL IN */)	\
+		if (p < 0 || p + (access)*PTR_size > 0 /* TODO: FILL IN */) \
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
@@ -92,7 +93,7 @@
 	else								\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		if (p < 0 || p + (access) > prog->edictareasize)	\
+		if (p < 0 || p + (access)*PTR_size > prog->edictareasize) \
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
@@ -120,8 +121,8 @@
 		ptr = (prvm_eval_t *)((int*)prog->edictsfields + p);	\
 	}
 #endif
-#define PTR_ptr2(from, off) PTR_ptr3(from, off, 4)
-#define PTR_ptr(from) PTR_ptr3(from, 0, 4)
+#define PTR_ptr2(from, off) PTR_ptr3(from, off, 1)
+#define PTR_ptr(from) PTR_ptr3(from, 0, 1)
 
 typedef long ptrval_t;
 
@@ -289,7 +290,7 @@ ptrvalC = 0;
 				ptr->_int = OPA->_int;
 				break;
 			case OP_STOREP_V:
-				PTR_ptr3(OPB->_int, 0, 12);
+				PTR_ptr3(OPB->_int, 0, 3);
 				ptr->ivector[0] = OPA->ivector[0];
 				ptr->ivector[1] = OPA->ivector[1];
 				ptr->ivector[2] = OPA->ivector[2];
@@ -894,7 +895,7 @@ ptrvalC = 0;
 				OPC->_float = (ptr->_float += OPA->_float);
 				break;
 			case OP_ADDSTOREP_V:
-				PTR_ptr(OPB->_int);
+				PTR_ptr3(OPB->_int, 0, 3);
 				OPC->vector[0] = (ptr->vector[0] += OPA->vector[0]);
 				OPC->vector[1] = (ptr->vector[1] += OPA->vector[1]);
 				OPC->vector[2] = (ptr->vector[2] += OPA->vector[2]);
@@ -912,7 +913,7 @@ ptrvalC = 0;
 				OPC->_float = (ptr->_float -= OPA->_float);
 				break;
 			case OP_SUBSTOREP_V:
-				PTR_ptr(OPB->_int);
+				PTR_ptr3(OPB->_int, 0, 3);
 				OPC->vector[0] = (ptr->vector[0] -= OPA->vector[0]);
 				OPC->vector[1] = (ptr->vector[1] -= OPA->vector[1]);
 				OPC->vector[2] = (ptr->vector[2] -= OPA->vector[2]);
@@ -939,7 +940,7 @@ ptrvalC = 0;
 				break;
 			case OP_MULSTOREP_V:
 				// e.v *= a_float!
-				PTR_ptr(OPB->_int);
+				PTR_ptr3(OPB->_int, 0, 3);
 				OPC->vector[0] = (ptr->vector[0] -= OPA->_float);
 				OPC->vector[1] = (ptr->vector[1] -= OPA->_float);
 				OPC->vector[2] = (ptr->vector[2] -= OPA->_float);
@@ -997,7 +998,7 @@ ptrvalC = 0;
 				OPC->_int = ptr->_int;
 				break;
 			case OP_LOADP_V:
-				PTR_ptr2(OPA->_int, OPB->_int);
+				PTR_ptr3(OPA->_int, OPB->_int, 3);
 				OPC->vector[0] = ptr->vector[0];
 				OPC->vector[1] = ptr->vector[1];
 				OPC->vector[2] = ptr->vector[2];
