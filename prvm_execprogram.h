@@ -922,6 +922,14 @@ ptrvalC = 0;
 			case OP_CONV_FTOI:
 				OPC->_int = (int)(OPA->_float);
 				break;
+			case OP_CP_ITOF:
+				PTR_ptr(OPA->_int);
+				OPC->_float = (float)(ptr->_int);
+				break;
+			case OP_CP_FTOI:
+				PTR_ptr(OPA->_int);
+				OPC->_int = (int)(ptr->_float);
+				break;
 
 			case OP_MULSTORE_F:
 				OPB->_float *= OPA->_float;
