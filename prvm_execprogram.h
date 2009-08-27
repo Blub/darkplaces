@@ -786,13 +786,6 @@ ptrvalC = 0;
 				break;
 			}
 
-			case OP_BITSET: // b |= a
-				OPB->_float = (float)((int)OPB->_float | (int)OPA->_float);
-				break;
-			case OP_BITCLR: // b &= ~a
-				OPB->_float = (float)((int)OPB->_float & ~((int)OPA->_float));
-				break;
-
 			case OP_SWITCH_F:
 			case OP_SWITCH_V:
 			case OP_SWITCH_S:
