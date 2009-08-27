@@ -11,6 +11,8 @@
 #undef PTR_VALUE
 #undef PTR_ISVALID
 #undef PTR_ptr
+#undef PTR_ptr2
+#undef PTR_ptr3
 
 #if PRVMRUNAWAYCHECK
 #  define RUNAWAYCHECK()						\
@@ -62,11 +64,11 @@
 
 #if PRVMBOUNDSCHECK
 
-#define PTR_ptr(from, off)						\
+#define PTR_ptr3(from, off, access)						\
 	if (PTR_ISGBL(from))						\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		if (p < 0 || p + 4 > GLOBALSIZE)			\
+		if (p < 0 || p + (access) > GLOBALSIZE)			\
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
@@ -78,7 +80,7 @@
 	else if (PTR_ISMEM(from))					\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		if (p < 0 || p + 4 > 0 /* TODO: FILL IN */)		\
+		if (p < 0 || p + (access) > 0 /* TODO: FILL IN */)	\
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
@@ -90,7 +92,7 @@
 	else								\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		if (p < 0 || p + 4 > prog->edictareasize)		\
+		if (p < 0 || p + (access) > prog->edictareasize)	\
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
@@ -101,7 +103,7 @@
 	}
 #else
 
-#define PTR_ptr(from, off)						\
+#define PTR_ptr3(from, off, access)						\
 	if (PTR_ISGBL(from))						\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
@@ -118,6 +120,8 @@
 		ptr = (prvm_eval_t *)((int*)prog->edictsfields + p);	\
 	}
 #endif
+#define PTR_ptr2(from, off) PTR_ptr3(from, off, 4)
+#define PTR_ptr(from) PTR_ptr3(from, 0, 4)
 
 typedef long ptrval_t;
 
@@ -281,11 +285,11 @@ ptrvalC = 0;
 			case OP_STOREP_S:
 			case OP_STOREP_FNC:		// pointers
 			case OP_STOREP_P:
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr(OPB->_int);
 				ptr->_int = OPA->_int;
 				break;
 			case OP_STOREP_V:
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr3(OPB->_int, 0, 12);
 				ptr->ivector[0] = OPA->ivector[0];
 				ptr->ivector[1] = OPA->ivector[1];
 				ptr->ivector[2] = OPA->ivector[2];
@@ -293,7 +297,7 @@ ptrvalC = 0;
 
 				/*
 			case OP_STOREP_C:
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr(OPB->_int);
 				break;
 				*/
 
@@ -685,7 +689,7 @@ ptrvalC = 0;
 				OPB->_int = OPA->_int;
 				break;
 			case OP_STOREP_I:
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr(OPB->_int);
 				ptr->_int = OPA->_int;
 				break;
 			case OP_LOAD_I:
@@ -886,11 +890,11 @@ ptrvalC = 0;
 				OPB->vector[2] += OPA->vector[2];
 				break;
 			case OP_ADDSTOREP_F:
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr(OPB->_int);
 				OPC->_float = (ptr->_float += OPA->_float);
 				break;
 			case OP_ADDSTOREP_V:
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr(OPB->_int);
 				OPC->vector[0] = (ptr->vector[0] += OPA->vector[0]);
 				OPC->vector[1] = (ptr->vector[1] += OPA->vector[1]);
 				OPC->vector[2] = (ptr->vector[2] += OPA->vector[2]);
@@ -904,11 +908,11 @@ ptrvalC = 0;
 				OPB->vector[2] -= OPA->vector[2];
 				break;
 			case OP_SUBSTOREP_F:
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr(OPB->_int);
 				OPC->_float = (ptr->_float -= OPA->_float);
 				break;
 			case OP_SUBSTOREP_V:
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr(OPB->_int);
 				OPC->vector[0] = (ptr->vector[0] -= OPA->vector[0]);
 				OPC->vector[1] = (ptr->vector[1] -= OPA->vector[1]);
 				OPC->vector[2] = (ptr->vector[2] -= OPA->vector[2]);
@@ -930,12 +934,12 @@ ptrvalC = 0;
 				OPB->vector[2] *= OPA->vector[2];
 				break;
 			case OP_MULSTOREP_F:
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr(OPB->_int);
 				OPC->_float = (ptr->_float *= OPA->_float);
 				break;
 			case OP_MULSTOREP_V:
 				// e.v *= a_float!
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr(OPB->_int);
 				OPC->vector[0] = (ptr->vector[0] -= OPA->_float);
 				OPC->vector[1] = (ptr->vector[1] -= OPA->_float);
 				OPC->vector[2] = (ptr->vector[2] -= OPA->_float);
@@ -944,7 +948,7 @@ ptrvalC = 0;
 				OPB->_float /= OPA->_float;
 				break;
 			case OP_DIVSTOREP_F:
-				PTR_ptr(OPB->_int, 0);
+				PTR_ptr(OPB->_int);
 				OPC->_float = (ptr->_float /= OPA->_float);
 				break;
 			case OP_IFNOTS:
@@ -989,18 +993,18 @@ ptrvalC = 0;
 			case OP_LOADP_ENT:
 			case OP_LOADP_S:
 			case OP_LOADP_FNC:
-				PTR_ptr(OPA->_int, OPB->_int);
+				PTR_ptr2(OPA->_int, OPB->_int);
 				OPC->_int = ptr->_int;
 				break;
 			case OP_LOADP_V:
-				PTR_ptr(OPA->_int, OPB->_int);
+				PTR_ptr2(OPA->_int, OPB->_int);
 				OPC->vector[0] = ptr->vector[0];
 				OPC->vector[1] = ptr->vector[1];
 				OPC->vector[2] = ptr->vector[2];
 				break;
 			/*
 			case OP_LOADP_C:
-				PTR_ptr(OPA->_int, (int)OPB->_float);
+				PTR_ptr2(OPA->_int, (int)OPB->_float);
 				OPC->_int = ptr->_int;
 				break;
 			*/
