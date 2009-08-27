@@ -980,9 +980,10 @@ ptrvalC = 0;
 				break;
 
 			case OP_POINTER_ADD:
-				// Should probably be *1, but I don't see where this is generated in fteqcc
+				// NOTE: dp pointers are no pointers as in byte-offsets, but item-offsets
+				// so we use *1
 				// I hope this is never used as an optimization for "A = B + C * 4" :P
-				OPC->_int = OPA->_int + OPB->_int*4;
+				OPC->_int = OPA->_int + OPB->_int*1;
 				break;
 
 			case OP_ADD_SF: //(char*)c = (char*)a + (float)b
