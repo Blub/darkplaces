@@ -326,8 +326,8 @@ enum opcode_e
 	OP_GLOAD_V,
 
 //extensions for fixing stuff
-	OP_IF_I,
-	OP_IFNOT_I,
+	OP_IF_F,
+	OP_IFNOT_F,
 	
 	OP_NUMOPS
 };

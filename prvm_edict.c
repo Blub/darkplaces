@@ -1837,12 +1837,12 @@ void PRVM_LoadProgs (const char * filename, int numrequiredfunc, char **required
 		case OP_IF:
 		case OP_IFNOT:
 			if ((unsigned short) st->a >= prog->progs->numglobals || st->b + i < 0 || st->b + i >= prog->progs->numstatements)
-				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (float) (statement %d) in %s", i, PRVM_NAME);
+				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (int/general) (statement %d) in %s", i, PRVM_NAME);
 			break;
-		case OP_IF_I:
-		case OP_IFNOT_I:
+		case OP_IF_F:
+		case OP_IFNOT_F:
 			if ((unsigned short) st->a >= prog->progs->numglobals || st->b + i < 0 || st->b + i >= prog->progs->numstatements)
-				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (int) (statement %d) in %s", i, PRVM_NAME);
+				PRVM_ERROR("PRVM_LoadProgs: out of bounds IF/IFNOT (float) (statement %d) in %s", i, PRVM_NAME);
 			break;
 		case OP_IFS:
 		case OP_IFNOTS:

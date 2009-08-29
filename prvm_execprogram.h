@@ -404,8 +404,8 @@ ptrvalC = 0;
 				}
 				break;
 
-			case OP_IFNOT_I:
-				if (!OPA->_int)
+			case OP_IFNOT_F:
+				if (!OPA->_float)
 				{
 					prog->xfunction->profile += (st - startst);
 					st += st->b - 1;	// offset the s++
@@ -414,8 +414,8 @@ ptrvalC = 0;
 				}
 				break;
 
-			case OP_IF_I:
-				if (OPA->_int)
+			case OP_IF_F:
+				if (OPA->_float)
 				{
 					prog->xfunction->profile += (st - startst);
 					st += st->b - 1;	// offset the s++
