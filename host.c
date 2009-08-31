@@ -1050,6 +1050,7 @@ static void Host_Init (void)
 
 	NetConn_Init();
 	Curl_Init();
+	Font_Init();
 	//PR_Init();
 	//PR_Cmd_Init();
 	PRVM_Init();

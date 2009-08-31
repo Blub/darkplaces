@@ -44,6 +44,7 @@ typedef struct
 } font_t;
 
 void Font_CloseLibrary(void);
+void Font_Init(void);
 qboolean Font_OpenLibrary(void);
 qboolean Font_LoadFont(const char *name, int size, font_t *font);
 

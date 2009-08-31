@@ -125,7 +125,6 @@ void Font_CloseLibrary (void)
 
 }
 
-
 /*
 ====================
 Font_OpenLibrary
@@ -157,28 +156,41 @@ qboolean Font_OpenLibrary (void)
 	// Load the DLL
 	if (!Sys_LoadLibrary (dllnames, &ft2_dll, ft2funcs))
 		return false;
+	return true;
+}
+
+/*
+====================
+Font_Init
+
+Initialize the freetype2 font subsystem
+====================
+*/
+void Font_Init(void)
+{
+	if (!Font_OpenLibrary())
+		return;
 
 	if (qFT_Init_FreeType(&font_ft2lib))
 	{
 		Con_Print("Failed to initialize the FreeType2 library!\n");
 		Font_CloseLibrary();
-		return false;
+		return;
 	}
 
 	font_mempool = Mem_AllocPool("FONT", 0, NULL);
 	if (!font_mempool)
 	{
 		Font_CloseLibrary();
-		return false;
+		return;
 	}
 
 	font_texturepool = R_AllocTexturePool();
 	if (!font_texturepool)
 	{
 		Font_CloseLibrary();
-		return false;
+		return;
 	}
-	return true;
 }
 
 /*
