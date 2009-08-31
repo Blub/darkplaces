@@ -422,7 +422,7 @@ struct font_map_s
 	glyph_slot_t glyphs[FONT_CHARS_PER_MAP];
 };
 
-static qboolean Font_LoadMapForIndex(font_t *font, Uchar index);
+static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outmap);
 qboolean Font_LoadFont(const char *name, int size, font_t *font)
 {
 	size_t namelen;
@@ -477,7 +477,7 @@ qboolean Font_LoadFont(const char *name, int size, font_t *font)
 		return false;
 	}
 
-	if (!Font_LoadMapForIndex(font, 0))
+	if (!Font_LoadMapForIndex(font, 0, NULL))
 	{
 		Con_Printf("ERROR: can't load the first character map for %s\n"
 			   "This is fatal\n",
@@ -503,7 +503,7 @@ void Font_UnloadFont(font_t *font)
 	}
 }
 
-static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
+static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outmap)
 {
 	char map_identifier[PATH_MAX];
 	unsigned long mapidx = _ch / FONT_CHARS_PER_MAP;
@@ -517,6 +517,9 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 	int gR, gC; // glyph position: row and column
 
 	font_map_t *map;
+
+	if (outmap)
+		*outmap = NULL;
 
 	map = Mem_Alloc(font_mempool, sizeof(font_map_t));
 	if (!map)
@@ -667,5 +670,243 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 		// only `data' must be freed
 		return false;
 	}
+	if (outmap)
+		*outmap = map;
 	return true;
+}
+
+extern void _DrawQ_Setup(void);
+
+// TODO: If no additional stuff ends up in the following static functions
+// use the DrawQ ones!
+static void _Font_ProcessDrawFlag(int flags)
+{
+	_DrawQ_Setup();
+	CHECKGLERROR
+	if(flags == DRAWFLAG_ADDITIVE)
+		GL_BlendFunc(GL_SRC_ALPHA, GL_ONE);
+	else if(flags == DRAWFLAG_MODULATE)
+		GL_BlendFunc(GL_DST_COLOR, GL_ZERO);
+	else if(flags == DRAWFLAG_2XMODULATE)
+		GL_BlendFunc(GL_DST_COLOR,GL_SRC_COLOR);
+	else if(flags == DRAWFLAG_SCREEN)
+		GL_BlendFunc(GL_ONE_MINUS_DST_COLOR,GL_ONE);
+	else
+		GL_BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+static void Font_GetTextColor(float color[4], int colorindex, float r, float g, float b, float a, qboolean shadow)
+{
+	float C = r_textcontrast.value;
+	float B = r_textbrightness.value;
+	if (colorindex & 0x10000) // that bit means RGB color
+	{
+		color[0] = ((colorindex >> 12) & 0xf) / 15.0;
+		color[1] = ((colorindex >> 8) & 0xf) / 15.0;
+		color[2] = ((colorindex >> 4) & 0xf) / 15.0;
+		color[3] = (colorindex & 0xf) / 15.0;
+	}
+	else
+		Vector4Copy(string_colors[colorindex], color);
+	Vector4Set(color, color[0] * r * C + B, color[1] * g * C + B, color[2] * b * C + B, color[3] * a);
+	if (shadow)
+	{
+		float shadowalpha = (color[0]+color[1]+color[2]) * 0.8;
+		Vector4Set(color, 0, 0, 0, color[3] * bound(0, shadowalpha, 1));
+	}
+}
+
+float Font_DrawString(float startx, float starty,
+		      const char *mbs, size_t maxlen,
+		      float basered, float basegreen, float baseblue, float basealpha,
+		      int flags, int *outcolor, qboolean ignorecolorcodes,
+		      const font_t *fnt)
+{
+	int num, shadow, colorindex = STRING_COLOR_DEFAULT;
+	float x = startx, y, s, t, u, v, thisw;
+	float *av, *at, *ac;
+	float color[4];
+	int batchcount;
+	float vertex3f[QUADELEMENTS_MAXQUADS*4*3];
+	float texcoord2f[QUADELEMENTS_MAXQUADS*4*2];
+	float color4f[QUADELEMENTS_MAXQUADS*4*4];
+	Uchar ch;
+	size_t i;
+	const char *text_start;
+	int tempcolorindex;
+
+	int tw, th;
+	/*
+	tw = R_TextureWidth(fnt->tex);
+	th = R_TextureHeight(fnt->tex);
+	*/
+
+	if (maxlen < 1)
+		maxlen = 1<<30;
+
+	_DrawQ_ProcessDrawFlag(flags);
+
+	R_Mesh_ColorPointer(color4f, 0, 0);
+	R_Mesh_ResetTextureState();
+	R_Mesh_TexBind(0, R_GetTexture(fnt->tex));
+	R_Mesh_TexCoordPointer(0, 2, texcoord2f, 0, 0);
+	R_Mesh_VertexPointer(vertex3f, 0, 0);
+	R_SetupGenericShader(true);
+
+	ac = color4f;
+	at = texcoord2f;
+	av = vertex3f;
+	batchcount = 0;
+
+	for (shadow = r_textshadow.value != 0 && basealpha > 0;shadow >= 0;shadow--)
+	{
+		text = text_start;
+		if (!outcolor || *outcolor == -1)
+			colorindex = STRING_COLOR_DEFAULT;
+		else
+			colorindex = *outcolor;
+
+		Font_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
+
+		x = startx;
+		y = starty;
+		if (shadow)
+		{
+			x += r_textshadow.value;
+			y += r_textshadow.value;
+		}
+		for (i = 0;i < maxlen && *text;i++)
+		{
+			if (*text == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < maxlen)
+			{
+				const char *before;
+				Uchar chx[3];
+				++text;
+				ch = *text; // the color tag is an ASCII character!
+				if (ch == STRING_COLOR_RGB_TAG_CHAR)
+				{
+					// we need some preparation here
+					before = text;
+					chx[2] = 0;
+					if (*text) chx[0] = u8_getchar(text, &text);
+					if (*text) chx[1] = u8_getchar(text, &text);
+					if (*text) chx[2] = u8_getchar(text, &text);
+					if ( ( (chx[0] >= 'A' && chx[0] <= 'F') && (chx[0] >= 'a' && chx[0] <= 'f') || (chx[0] >= '0' && chx[0] <= '9') ) &&
+					     ( (chx[1] >= 'A' && chx[1] <= 'F') && (chx[1] >= 'a' && chx[1] <= 'f') || (chx[1] >= '0' && chx[1] <= '9') ) &&
+					     ( (chx[2] >= 'A' && chx[2] <= 'F') && (chx[2] >= 'a' && chx[2] <= 'f') || (chx[2] >= '0' && chx[2] <= '9') ) )
+					{
+					}
+					else
+						chx[2] = 0;
+					text = before; // start from the first hex character
+				}
+				if (ch <= '9' && ch >= '0') // ^[0-9] found
+				{
+					colorindex = ch - '0';
+					DrawQ_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
+					continue;
+				}
+				else if (ch == STRING_COLOR_RGB_TAG_CHAR && i + 3 < maxlen && chx[2]) // ^x found
+				{
+					// building colorindex...
+					ch = tolower(text[i+1]);
+					tempcolorindex = 0x10000; // binary: 1,0000,0000,0000,0000
+					if (ch <= '9' && ch >= '0') tempcolorindex |= (ch - '0') << 12;
+					else if (ch >= 'a' && ch <= 'f') tempcolorindex |= (ch - 87) << 12;
+					else tempcolorindex = 0;
+					if (tempcolorindex)
+					{
+						ch = tolower(text[i+2]);
+						if (ch <= '9' && ch >= '0') tempcolorindex |= (ch - '0') << 8;
+						else if (ch >= 'a' && ch <= 'f') tempcolorindex |= (ch - 87) << 8;
+						else tempcolorindex = 0;
+						if (tempcolorindex)
+						{
+							ch = tolower(text[i+3]);
+							if (ch <= '9' && ch >= '0') tempcolorindex |= (ch - '0') << 4;
+							else if (ch >= 'a' && ch <= 'f') tempcolorindex |= (ch - 87) << 4;
+							else tempcolorindex = 0;
+							if (tempcolorindex)
+							{
+								colorindex = tempcolorindex | 0xf;
+								// ...done! now colorindex has rgba codes (1,rrrr,gggg,bbbb,aaaa)
+								//Con_Printf("^1colorindex:^7 %x\n", colorindex);
+								DrawQ_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
+								i+=3;
+								continue;
+							}
+						}
+					}
+				}
+				else if (ch == STRING_COLOR_TAG)
+					i++;
+				i--;
+			}
+			ch = u8_getchar(text, &text);
+			
+			font_map_t *map = fnt->font_map;
+			while(map && map->start + FONT_CHARS_PER_MAP < ch)
+				map = map->next;
+			if (!map)
+			{
+				if (!Font_LoadMapForIndex(fnt, ch, &map))
+				{
+					shadow = -1;
+					break;
+				}
+				if (!map)
+				{
+					// this shouldn't happen
+					shadow = -1;
+					break;
+				}
+			}
+			
+			thisw = fnt->width_of[num];
+			// FIXME make these smaller to just include the occupied part of the character for slightly faster rendering
+			s = (num & 15)*0.0625f + (0.5f / tw);
+			t = (num >> 4)*0.0625f + (0.5f / th);
+			u = 0.0625f * thisw - (1.0f / tw);
+			v = 0.0625f - (1.0f / th);
+			ac[ 0] = color[0];ac[ 1] = color[1];ac[ 2] = color[2];ac[ 3] = color[3];
+			ac[ 4] = color[0];ac[ 5] = color[1];ac[ 6] = color[2];ac[ 7] = color[3];
+			ac[ 8] = color[0];ac[ 9] = color[1];ac[10] = color[2];ac[11] = color[3];
+			ac[12] = color[0];ac[13] = color[1];ac[14] = color[2];ac[15] = color[3];
+			at[ 0] = s		; at[ 1] = t	;
+			at[ 2] = s+u	; at[ 3] = t	;
+			at[ 4] = s+u	; at[ 5] = t+v	;
+			at[ 6] = s		; at[ 7] = t+v	;
+			av[ 0] = x			; av[ 1] = y	; av[ 2] = 10;
+			av[ 3] = x+w*thisw	; av[ 4] = y	; av[ 5] = 10;
+			av[ 6] = x+w*thisw	; av[ 7] = y+h	; av[ 8] = 10;
+			av[ 9] = x			; av[10] = y+h	; av[11] = 10;
+			ac += 16;
+			at += 8;
+			av += 12;
+			batchcount++;
+			if (batchcount >= QUADELEMENTS_MAXQUADS)
+			{
+				GL_LockArrays(0, batchcount * 4);
+				R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+				GL_LockArrays(0, 0);
+				batchcount = 0;
+				ac = color4f;
+				at = texcoord2f;
+				av = vertex3f;
+			}
+			x += thisw * w;
+		}
+	}
+	if (batchcount > 0)
+	{
+		GL_LockArrays(0, batchcount * 4);
+		R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+		GL_LockArrays(0, 0);
+	}
+
+	if (outcolor)
+		*outcolor = colorindex;
+
+	// note: this relies on the proper text (not shadow) being drawn last
+	return x;
 }
