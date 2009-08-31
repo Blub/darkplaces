@@ -28,14 +28,14 @@ FT_EXPORT( FT_Error )
 (*qFT_Select_Size)( FT_Face  face,
 		    FT_Int   strike_index );
 FT_EXPORT( FT_Error )
-(*FT_Request_Size)( FT_Face          face,
-		    FT_Size_Request  req );
+(*qFT_Request_Size)( FT_Face          face,
+		     FT_Size_Request  req );
 FT_EXPORT( FT_Error )
-(*FT_Set_Char_Size)( FT_Face     face,
-		     FT_F26Dot6  char_width,
-		     FT_F26Dot6  char_height,
-		     FT_UInt     horz_resolution,
-		     FT_UInt     vert_resolution );
+(*qFT_Set_Char_Size)( FT_Face     face,
+		      FT_F26Dot6  char_width,
+		      FT_F26Dot6  char_height,
+		      FT_UInt     horz_resolution,
+		      FT_UInt     vert_resolution );
 FT_EXPORT( FT_Error )
 (*qFT_Set_Pixel_Sizes)( FT_Face  face,
 			FT_UInt  pixel_width,
@@ -55,6 +55,71 @@ FT_EXPORT( FT_Error )
 (*qFT_Render_Glyph)( FT_GlyphSlot    slot,
 		     FT_Render_Mode  render_mode );
 
+static dllfunction_t ft2funcs[] =
+{
+	{"FT_Init_FreeType",		(void **) &qFT_Init_FreeType},
+	{"FT_Done_FreeType",		(void **) &qFT_Done_FreeType},
+	{"FT_New_Face",			(void **) &qFT_New_Face},
+	{"FT_New_Memory_Face",		(void **) &qFT_New_Memory_Face},
+	{"FT_Done_Face",		(void **) &qFT_Done_Face},
+	{"FT_Select_Size",		(void **) &qFT_Select_Size},
+	{"FT_Request_Size",		(void **) &qFT_Request_Size},
+	{"FT_Set_Char_Size",		(void **) &qFT_Set_Char_Size},
+	{"FT_Set_Pixel_Sizes",		(void **) &qFT_Set_Pixel_Sizes},
+	{"FT_Load_Glyph",		(void **) &qFT_Load_Glyph},
+	{"FT_Load_Char",		(void **) &qFT_Load_Char},
+	{"FT_Get_Char_Index",		(void **) &qFT_Get_Char_Index},
+	{"FT_Render_Glyph",		(void **) &qFT_Render_Glyph},
+	{NULL, NULL}
+};
+
+/// Handle for FreeType2 DLL
+static dllhandle_t ft2_dll = NULL;
+
+/*
+====================
+FT2_CloseLibrary
+
+Unload the FreeType2 DLL
+====================
+*/
+void FT2_CloseLibrary (void)
+{
+	Sys_UnloadLibrary (&ft2_dll);
+}
+
+
+/*
+====================
+FT2_OpenLibrary
+
+Try to load the FreeType2 DLL
+====================
+*/
+qboolean FT2_OpenLibrary (void)
+{
+	const char* dllnames [] =
+	{
+#if defined(WIN64)
+		#error path for freetype 2 dll
+#elif defined(WIN32)
+		#error path for freetype 2 dll
+#elif defined(MACOSX)
+		"libfreetype.dylib",
+#else
+		"libfreetype.so.6",
+		"libfreetype.so",
+#endif
+		NULL
+	};
+
+	// Already loaded?
+	if (ft2_dll)
+		return true;
+
+	// Load the DLL
+	return Sys_LoadLibrary (dllnames, &ft2_dll, ft2funcs);
+}
 
 /** Get the number of characters in in an UTF-8 string.
  * @param _s    An utf-8 encoded null-terminated string.
