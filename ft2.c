@@ -695,7 +695,34 @@ static void _Font_ProcessDrawFlag(int flags)
 		GL_BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
-extern cvar_t r_textcontrast, r_textbrightness;
+extern cvar_t r_textcontrast, r_textbrightness, r_textshadow;
+static const vec4_t string_colors[] =
+{
+	// Quake3 colors
+	// LordHavoc: why on earth is cyan before magenta in Quake3?
+	// LordHavoc: note: Doom3 uses white for [0] and [7]
+	{0.0, 0.0, 0.0, 1.0}, // black
+	{1.0, 0.0, 0.0, 1.0}, // red
+	{0.0, 1.0, 0.0, 1.0}, // green
+	{1.0, 1.0, 0.0, 1.0}, // yellow
+	{0.0, 0.0, 1.0, 1.0}, // blue
+	{0.0, 1.0, 1.0, 1.0}, // cyan
+	{1.0, 0.0, 1.0, 1.0}, // magenta
+	{1.0, 1.0, 1.0, 1.0}, // white
+	// [515]'s BX_COLOREDTEXT extension
+	{1.0, 1.0, 1.0, 0.5}, // half transparent
+	{0.5, 0.5, 0.5, 1.0}  // half brightness
+	// Black's color table
+	//{1.0, 1.0, 1.0, 1.0},
+	//{1.0, 0.0, 0.0, 1.0},
+	//{0.0, 1.0, 0.0, 1.0},
+	//{0.0, 0.0, 1.0, 1.0},
+	//{1.0, 1.0, 0.0, 1.0},
+	//{0.0, 1.0, 1.0, 1.0},
+	//{1.0, 0.0, 1.0, 1.0},
+	//{0.1, 0.1, 0.1, 1.0}
+};
+
 static void Font_GetTextColor(float color[4], int colorindex, float r, float g, float b, float a, qboolean shadow)
 {
 	float C = r_textcontrast.value;
@@ -718,13 +745,13 @@ static void Font_GetTextColor(float color[4], int colorindex, float r, float g, 
 }
 
 float Font_DrawString(float startx, float starty,
-		      const char *mbs, size_t maxlen,
+		      const char *text, size_t maxlen,
 		      float basered, float basegreen, float baseblue, float basealpha,
 		      int flags, int *outcolor, qboolean ignorecolorcodes,
-		      const font_t *fnt)
+		      font_t *fnt)
 {
-	int num, shadow, colorindex = STRING_COLOR_DEFAULT;
-	float x = startx, y, s, t, u, v, thisw;
+	int shadow, colorindex = STRING_COLOR_DEFAULT;
+	float x = startx, y, thisw;
 	float *av, *at, *ac;
 	float color[4];
 	int batchcount;
@@ -733,8 +760,10 @@ float Font_DrawString(float startx, float starty,
 	float color4f[QUADELEMENTS_MAXQUADS*4*4];
 	Uchar ch;
 	size_t i;
-	const char *text_start;
+	const char *text_start = text;
 	int tempcolorindex;
+
+	int w, h;
 
 	int tw, th;
 	/*
@@ -742,14 +771,16 @@ float Font_DrawString(float startx, float starty,
 	th = R_TextureHeight(fnt->tex);
 	*/
 
+	w = fnt->size;
+	h = fnt->size;
+
 	if (maxlen < 1)
 		maxlen = 1<<30;
 
-	_DrawQ_ProcessDrawFlag(flags);
+	_Font_ProcessDrawFlag(flags);
 
 	R_Mesh_ColorPointer(color4f, 0, 0);
 	R_Mesh_ResetTextureState();
-	R_Mesh_TexBind(0, R_GetTexture(fnt->tex));
 	R_Mesh_TexCoordPointer(0, 2, texcoord2f, 0, 0);
 	R_Mesh_VertexPointer(vertex3f, 0, 0);
 	R_SetupGenericShader(true);
@@ -778,6 +809,7 @@ float Font_DrawString(float startx, float starty,
 		}
 		for (i = 0;i < maxlen && *text;i++)
 		{
+			font_map_t *map;
 			if (*text == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < maxlen)
 			{
 				const char *before;
@@ -792,9 +824,9 @@ float Font_DrawString(float startx, float starty,
 					if (*text) chx[0] = u8_getchar(text, &text);
 					if (*text) chx[1] = u8_getchar(text, &text);
 					if (*text) chx[2] = u8_getchar(text, &text);
-					if ( ( (chx[0] >= 'A' && chx[0] <= 'F') && (chx[0] >= 'a' && chx[0] <= 'f') || (chx[0] >= '0' && chx[0] <= '9') ) &&
-					     ( (chx[1] >= 'A' && chx[1] <= 'F') && (chx[1] >= 'a' && chx[1] <= 'f') || (chx[1] >= '0' && chx[1] <= '9') ) &&
-					     ( (chx[2] >= 'A' && chx[2] <= 'F') && (chx[2] >= 'a' && chx[2] <= 'f') || (chx[2] >= '0' && chx[2] <= '9') ) )
+					if ( ( (chx[0] >= 'A' && chx[0] <= 'F') || (chx[0] >= 'a' && chx[0] <= 'f') || (chx[0] >= '0' && chx[0] <= '9') ) &&
+					     ( (chx[1] >= 'A' && chx[1] <= 'F') || (chx[1] >= 'a' && chx[1] <= 'f') || (chx[1] >= '0' && chx[1] <= '9') ) &&
+					     ( (chx[2] >= 'A' && chx[2] <= 'F') || (chx[2] >= 'a' && chx[2] <= 'f') || (chx[2] >= '0' && chx[2] <= '9') ) )
 					{
 					}
 					else
@@ -804,7 +836,7 @@ float Font_DrawString(float startx, float starty,
 				if (ch <= '9' && ch >= '0') // ^[0-9] found
 				{
 					colorindex = ch - '0';
-					DrawQ_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
+					Font_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
 					continue;
 				}
 				else if (ch == STRING_COLOR_RGB_TAG_CHAR && i + 3 < maxlen && chx[2]) // ^x found
@@ -832,7 +864,7 @@ float Font_DrawString(float startx, float starty,
 								colorindex = tempcolorindex | 0xf;
 								// ...done! now colorindex has rgba codes (1,rrrr,gggg,bbbb,aaaa)
 								//Con_Printf("^1colorindex:^7 %x\n", colorindex);
-								DrawQ_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
+								Font_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
 								i+=3;
 								continue;
 							}
@@ -845,7 +877,7 @@ float Font_DrawString(float startx, float starty,
 			}
 			ch = u8_getchar(text, &text);
 			
-			font_map_t *map = fnt->font_map;
+			map = fnt->font_map;
 			while(map && map->start + FONT_CHARS_PER_MAP < ch)
 				map = map->next;
 			if (!map)
@@ -865,17 +897,18 @@ float Font_DrawString(float startx, float starty,
 			
 			tw = R_TextureWidth(map->texture);
 			th = R_TextureHeight(map->texture);
+			R_Mesh_TexBind(0, R_GetTexture(map->texture));
 			
-			thisw = map->glyphslot[ch].advance_x;
+			thisw = map->glyphs[ch].advance_x;
 
 			ac[ 0] = color[0];ac[ 1] = color[1];ac[ 2] = color[2];ac[ 3] = color[3];
 			ac[ 4] = color[0];ac[ 5] = color[1];ac[ 6] = color[2];ac[ 7] = color[3];
 			ac[ 8] = color[0];ac[ 9] = color[1];ac[10] = color[2];ac[11] = color[3];
 			ac[12] = color[0];ac[13] = color[1];ac[14] = color[2];ac[15] = color[3];
-			at[0] = map->glyphslot[ch].xmin; at[1] = map->glyphslot[ch].ymin;
-			at[2] = map->glyphslot[ch].xmax; at[3] = map->glyphslot[ch].ymin;
-			at[4] = map->glyphslot[ch].xmax; at[5] = map->glyphslot[ch].ymax;
-			at[7] = map->glyphslot[ch].xmin; at[7] = map->glyphslot[ch].ymax;
+			at[0] = map->glyphs[ch].xmin; at[1] = map->glyphs[ch].ymin;
+			at[2] = map->glyphs[ch].xmax; at[3] = map->glyphs[ch].ymin;
+			at[4] = map->glyphs[ch].xmax; at[5] = map->glyphs[ch].ymax;
+			at[7] = map->glyphs[ch].xmin; at[7] = map->glyphs[ch].ymax;
 			av[ 0] = x;           av[ 1] = y;     av[ 2] = 10;
 			av[ 3] = x + w*thisw; av[ 4] = y;     av[ 5] = 10;
 			av[ 6] = x + w*thisw; av[ 7] = y + h; av[ 8] = 10;
