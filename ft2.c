@@ -381,6 +381,16 @@ qboolean Font_LoadFont(const char *name, int size, font_t *font)
 		return false;
 	}
 
+	status = qFT_Set_Pixel_Sizes((FT_Face)font->face, size, size);
+	if (status)
+	{
+		Con_Printf("ERROR: can't size pixel sizes for face of font %s\n"
+			   "Error %i\n", // TODO: error strings
+			   name, status);
+		Mem_Free(font->data);
+		return false;
+	}
+
 	if (!Font_LoadMapForIndex(font, 0))
 	{
 		Con_Printf("ERROR: can't load the first character map for %s\n"
