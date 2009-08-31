@@ -166,6 +166,8 @@ Initialize the freetype2 font subsystem
 ====================
 */
 
+static font_t test_font;
+
 static void font_start(void)
 {
 	if (!Font_OpenLibrary())
@@ -190,6 +192,13 @@ static void font_start(void)
 	if (!font_texturepool)
 	{
 		Con_Print("ERROR: Failed to allocate FONT texture pool!\n");
+		Font_CloseLibrary();
+		return;
+	}
+
+	if (!Font_LoadFont("gfx/test", 16, &test_font))
+	{
+		Con_Print("ERROR: Failed to load test font!\n");
 		Font_CloseLibrary();
 		return;
 	}
@@ -505,7 +514,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 	FT_Face face = font->face;
 
 	int pitch = font->glyphSize * FONT_CHARS_PER_LINE;
-	int gl, gr; // glyph position: line and row
+	int gR, gC; // glyph position: row and column
 
 	font_map_t *map;
 
@@ -539,7 +548,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 		next->next = map;
 	}
 
-	gl = gr = 0;
+	gR = gC = 0;
 	for (ch = map->start;
 	     ch < (FT_ULong)map->start + FONT_CHARS_PER_MAP;
 	     ++ch)
@@ -548,18 +557,17 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 		int w, h, x, y;
 		FT_GlyphSlot glyph;
 		FT_Bitmap *bmp;
-		int gl, gr; // glyph line and row, the spot in the texture
 		unsigned char *imagedata, *dst, *src;
 		glyph_slot_t *mapglyph;
 
-		++gl;
-		if (gl >= FONT_CHARS_PER_LINE)
+		++gC;
+		if (gC >= FONT_CHARS_PER_LINE)
 		{
-			gl -= FONT_CHARS_PER_LINE;
-			++gr;
+			gC -= FONT_CHARS_PER_LINE;
+			++gR;
 		}
 
-		imagedata = data + gr * pitch + gl * font->glyphSize;
+		imagedata = data + gR * pitch + gC * font->glyphSize;
 		glyphIndex = qFT_Get_Char_Index(face, ch);
 
 		status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_DEFAULT);
@@ -635,9 +643,9 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 		mapch = ch - map->start;
 		mapglyph = &map->glyphs[mapch];
 		// xmin is the left start of the character within the texture
-		mapglyph->xmin = ( (double)(gr * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHARS_PER_LINE) );
+		mapglyph->xmin = ( (double)(gC * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHARS_PER_LINE) );
 		mapglyph->xmax = mapglyph->xmin + glyph->metrics.width * (1.0/64.0) / (double)font->size;
-		mapglyph->ymin = ( (double)(gl * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHAR_LINES) );
+		mapglyph->ymin = ( (double)(gR * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHAR_LINES) );
 		mapglyph->ymax = mapglyph->ymin + glyph->metrics.height * (1.0/64.0) / (double)font->size;
 		// TODO: support vertical fonts maybe?
 		mapglyph->advance_x = glyph->metrics.horiAdvance * (1.0/64.0) / (double)font->size;
