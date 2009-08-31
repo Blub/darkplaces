@@ -89,27 +89,41 @@ static dllfunction_t ft2funcs[] =
 /// Handle for FreeType2 DLL
 static dllhandle_t ft2_dll = NULL;
 
+/// Memory pool for fonts
+static mempool_t *font_mempool;
+
+/// FreeType library handle
+static FT_Library font_ft2lib;
+
 /*
 ====================
-FT2_CloseLibrary
+Font_CloseLibrary
 
 Unload the FreeType2 DLL
 ====================
 */
-void FT2_CloseLibrary (void)
+void Font_CloseLibrary (void)
 {
 	Sys_UnloadLibrary (&ft2_dll);
+	if (font_mempool)
+		Mem_FreePool(&font_mempool);
+	if (font_ft2lib && qFT_Done_FreeType)
+	{
+		qFT_Done_FreeType(font_ft2lib);
+		font_ft2lib = NULL;
+	}
+		
 }
 
 
 /*
 ====================
-FT2_OpenLibrary
+Font_OpenLibrary
 
 Try to load the FreeType2 DLL
 ====================
 */
-qboolean FT2_OpenLibrary (void)
+qboolean Font_OpenLibrary (void)
 {
 	const char* dllnames [] =
 	{
@@ -131,7 +145,23 @@ qboolean FT2_OpenLibrary (void)
 		return true;
 
 	// Load the DLL
-	return Sys_LoadLibrary (dllnames, &ft2_dll, ft2funcs);
+	if (!Sys_LoadLibrary (dllnames, &ft2_dll, ft2funcs))
+		return false;
+
+	if (qFT_Init_FreeType(&font_ft2lib))
+	{
+		Con_Print("Failed to initialize the FreeType2 library!\n");
+		Font_CloseLibrary();
+		return false;
+	}
+	
+	font_mempool = Mem_AllocPool("FONT", 0, NULL);
+	if (!font_mempool)
+	{
+		Font_CloseLibrary();
+		return false;
+	}
+	return true;
 }
 
 /*
@@ -305,4 +335,37 @@ size_t u8_wcstombs(char *mb, const Uchar *wcs, size_t maxlen)
 	if (i < maxlen)
 		*mb = 0;
 	return (mb - start);
+}
+
+/*
+================================================================================
+Implementation of a more or less lazy font loading and rendering code.
+================================================================================
+*/
+
+qboolean Font_LoadFont(const char *name, font_t *font)
+{
+	size_t namelen;
+	char filename[PATH_MAX];
+
+	if (!Font_OpenLibrary())
+	{
+		Con_Printf("WARNING: can't open load font %s\n"
+			   "You need the FreeType2 DLL to load font files\n",
+			   name);
+		return false;
+	}
+
+	namelen = strlen(name);
+	memcpy(filename, name, namelen);
+	memcpy(filename + namelen, ".ttf", 5);
+	
+	font->data = FS_LoadFile(filename, font_mempool, false, &font->datasize);
+	if (!font->data)
+	{
+		// FS_LoadFile being not-quiet should print an error :)
+		return false;
+	}
+
+	
 }

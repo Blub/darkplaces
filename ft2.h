@@ -25,6 +25,16 @@ Uchar  u8_getchar(const char*, const char**);
 int    u8_fromchar(Uchar, char*, size_t);
 size_t u8_wcstombs(char*, const Uchar*, size_t);
 
+typedef struct
+{
+	const char name[64];
 
+	unsigned char *data;
+	fs_offset_t datasize;
+} font_t;
+
+void Font_CloseLibrary(void);
+qboolean Font_OpenLibrary(void);
+qboolean Font_LoadFont(const char *name, font_t *font);
 
 #endif // DP_FREETYPE2_H__
