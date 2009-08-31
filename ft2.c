@@ -359,6 +359,7 @@ qboolean Font_LoadFont(const char *name, int size, font_t *font)
 	}
 
 	namelen = strlen(name);
+
 	memcpy(filename, name, namelen);
 	memcpy(filename + namelen, ".ttf", 5);
 
@@ -369,7 +370,6 @@ qboolean Font_LoadFont(const char *name, int size, font_t *font)
 		return false;
 	}
 
-	font->size = size;
 
 	status = qFT_New_Face(font_ft2lib, filename, 0, (FT_Face*)&font->face);
 	if (status)
@@ -380,6 +380,9 @@ qboolean Font_LoadFont(const char *name, int size, font_t *font)
 		Mem_Free(font->data);
 		return false;
 	}
+
+	memcpy(font->name, name, namelen+1);
+	font->size = size;
 
 	status = qFT_Set_Pixel_Sizes((FT_Face)font->face, size, size);
 	if (status)
@@ -403,7 +406,35 @@ qboolean Font_LoadFont(const char *name, int size, font_t *font)
 	return true;
 }
 
-static qboolean Font_LoadMapForIndex(font_t *font, Uchar index)
+void Font_UnloadFont(font_t *font)
 {
+	if (font->data)
+		Mem_Free(font->data);
+	if (ft2_dll)
+	{
+		if (font->face)
+		{
+			qFT_Done_Face((FT_Face)font->face);
+			font->face = NULL;
+		}
+	}
+}
+
+#define FONT_CHARS_PER_LINE 16
+#define FONT_CHAR_LINES 16
+#define FONT_CHARS_PER_MAP (FONT_CHARS_PER_LINE * FONT_CHAR_LINES)
+
+static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
+{
+	unsigned long mapidx = _ch / FONT_CHARS_PER_MAP;
+	unsigned char *data;
+
+	data = Mem_Alloc(font_mempool, FONT_CHARS_PER_MAP * (font->size * font->size));
+	if (!data)
+	{
+		Con_Printf("ERROR: Failed to allocate memory for glyph data for font %s\n", font->name);
+		return false;
+	}
+
 	return true;
 }

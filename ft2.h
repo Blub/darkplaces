@@ -38,6 +38,6 @@ typedef struct
 
 void Font_CloseLibrary(void);
 qboolean Font_OpenLibrary(void);
-qboolean Font_LoadFont(const char *name, int size, font_t *font)
+qboolean Font_LoadFont(const char *name, int size, font_t *font);
 
 #endif // DP_FREETYPE2_H__
