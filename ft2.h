@@ -28,6 +28,7 @@ size_t u8_wcstombs(char*, const Uchar*, size_t);
 typedef struct
 {
 	const char     name[64];
+	int            size;
 
 	// internal stuff
 	unsigned char *data;
@@ -37,6 +38,6 @@ typedef struct
 
 void Font_CloseLibrary(void);
 qboolean Font_OpenLibrary(void);
-qboolean Font_LoadFont(const char *name, font_t *font);
+qboolean Font_LoadFont(const char *name, int size, font_t *font)
 
 #endif // DP_FREETYPE2_H__

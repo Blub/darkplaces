@@ -344,7 +344,7 @@ Implementation of a more or less lazy font loading and rendering code.
 */
 
 static qboolean Font_LoadMapForIndex(font_t *font, Uchar index);
-qboolean Font_LoadFont(const char *name, font_t *font)
+qboolean Font_LoadFont(const char *name, int size, font_t *font)
 {
 	size_t namelen;
 	char filename[PATH_MAX];
@@ -368,6 +368,8 @@ qboolean Font_LoadFont(const char *name, font_t *font)
 		// FS_LoadFile being not-quiet should print an error :)
 		return false;
 	}
+
+	font->size = size;
 
 	status = qFT_New_Face(font_ft2lib, filename, 0, (FT_Face*)&font->face);
 	if (status)
