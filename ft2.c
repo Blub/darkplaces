@@ -112,7 +112,6 @@ Unload the FreeType2 DLL
 */
 void Font_CloseLibrary (void)
 {
-	Sys_UnloadLibrary (&ft2_dll);
 	if (font_mempool)
 		Mem_FreePool(&font_mempool);
 	if (font_texturepool)
@@ -122,7 +121,7 @@ void Font_CloseLibrary (void)
 		qFT_Done_FreeType(font_ft2lib);
 		font_ft2lib = NULL;
 	}
-
+	Sys_UnloadLibrary (&ft2_dll);
 }
 
 /*
