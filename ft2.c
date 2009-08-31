@@ -1,6 +1,7 @@
 /* FreeType 2 and UTF-8 encoding support for
  * DarkPlaces
  */
+#include "quakedef.h"
 
 #include "ft2.h"
 
@@ -89,7 +90,7 @@ Uchar u8_getchar(const char *_s, const char **_end)
  */
 int u8_fromchar(Uchar w, char *to, size_t maxlen)
 {
-	int i, j;
+	size_t i, j;
 	char bt;
 	char tmp[16];
 
