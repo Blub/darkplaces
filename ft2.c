@@ -166,7 +166,8 @@ Font_Init
 Initialize the freetype2 font subsystem
 ====================
 */
-void Font_Init(void)
+
+static void font_start(void)
 {
 	if (!Font_OpenLibrary())
 		return;
@@ -193,6 +194,20 @@ void Font_Init(void)
 		Font_CloseLibrary();
 		return;
 	}
+}
+
+static void font_shutdown(void)
+{
+	Font_CloseLibrary();
+}
+
+static void font_newmap(void)
+{
+}
+
+void Font_Init(void)
+{
+	R_RegisterModule("Font_FreeType2", font_start, font_shutdown, font_newmap);
 }
 
 /*
@@ -631,7 +646,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 	}
 
 	// create a texture from the data now
-	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%lu", font->name, map->start);
+	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u", font->name, (unsigned)map->start);
 	map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
 				       font->glyphSize * FONT_CHARS_PER_LINE,
 				       font->glyphSize * FONT_CHAR_LINES,

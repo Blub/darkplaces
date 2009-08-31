@@ -29,7 +29,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "progsvm.h"
 #include "csprogs.h"
 #include "sv_demo.h"
-#include "ft2.h"
 
 /*
 
@@ -1051,7 +1050,6 @@ static void Host_Init (void)
 
 	NetConn_Init();
 	Curl_Init();
-	Font_Init();
 	//PR_Init();
 	//PR_Cmd_Init();
 	PRVM_Init();
