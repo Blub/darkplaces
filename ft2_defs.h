@@ -36,8 +36,9 @@ typedef struct FT_FaceRec_ *FT_Face;
 typedef struct FT_CharMapRec_*  FT_CharMap;
 typedef struct FT_SizeRec_*  FT_Size;
 typedef struct FT_Size_InternalRec_*  FT_Size_Internal;
-
-typedef void *FT_GlyphSlot;
+typedef struct FT_GlyphSlotRec_*  FT_GlyphSlot;
+typedef struct FT_SubGlyphRec_*  FT_SubGlyph;
+typedef struct FT_Slot_InternalRec_* FT_Slot_Internal;
 
 // Taken from the freetype headers:
 typedef signed long FT_Pos;
@@ -443,5 +444,55 @@ typedef struct  FT_FaceRec_
 	FT_Face_Internal  internal;
 	*/
 } FT_FaceRec;
+
+typedef struct  FT_GlyphSlotRec_
+{
+	FT_Library        library;
+	FT_Face           face;
+	FT_GlyphSlot      next;
+	FT_UInt           reserved;       /* retained for binary compatibility */
+	FT_Generic        generic;
+
+	FT_Glyph_Metrics  metrics;
+	FT_Fixed          linearHoriAdvance;
+	FT_Fixed          linearVertAdvance;
+	FT_Vector         advance;
+
+	FT_Glyph_Format   format;
+
+	FT_Bitmap         bitmap;
+	FT_Int            bitmap_left;
+	FT_Int            bitmap_top;
+
+	FT_Outline        outline;
+
+	FT_UInt           num_subglyphs;
+	FT_SubGlyph       subglyphs;
+
+	void*             control_data;
+	long              control_len;
+
+	FT_Pos            lsb_delta;
+	FT_Pos            rsb_delta;
+
+	void*             other;
+
+	FT_Slot_Internal  internal;
+} FT_GlyphSlotRec;
+
+#define FT_FACE_FLAG_SCALABLE          ( 1L <<  0 )
+#define FT_FACE_FLAG_FIXED_SIZES       ( 1L <<  1 )
+#define FT_FACE_FLAG_FIXED_WIDTH       ( 1L <<  2 )
+#define FT_FACE_FLAG_SFNT              ( 1L <<  3 )
+#define FT_FACE_FLAG_HORIZONTAL        ( 1L <<  4 )
+#define FT_FACE_FLAG_VERTICAL          ( 1L <<  5 )
+#define FT_FACE_FLAG_KERNING           ( 1L <<  6 )
+#define FT_FACE_FLAG_FAST_GLYPHS       ( 1L <<  7 )
+#define FT_FACE_FLAG_MULTIPLE_MASTERS  ( 1L <<  8 )
+#define FT_FACE_FLAG_GLYPH_NAMES       ( 1L <<  9 )
+#define FT_FACE_FLAG_EXTERNAL_STREAM   ( 1L << 10 )
+#define FT_FACE_FLAG_HINTER            ( 1L << 11 )
+#define FT_FACE_FLAG_CID_KEYED         ( 1L << 12 )
+#define FT_FACE_FLAG_TRICKY            ( 1L << 13 )
 
 #endif // FT2_DEFS_H_H__

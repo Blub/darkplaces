@@ -25,15 +25,22 @@ Uchar  u8_getchar(const char*, const char**);
 int    u8_fromchar(Uchar, char*, size_t);
 size_t u8_wcstombs(char*, const Uchar*, size_t);
 
+typedef struct font_map_s font_map_t;
+
 typedef struct
 {
 	char           name[64];
 	int            size;
+	int            glyphSize;
 
-	// internal stuff
+	qboolean       has_kerning;
+
 	unsigned char *data;
 	fs_offset_t    datasize;
 	void          *face;
+
+	// an ordered linked list of glyph maps
+	font_map_t    *font_map;
 } font_t;
 
 void Font_CloseLibrary(void);

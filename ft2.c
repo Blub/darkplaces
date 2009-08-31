@@ -61,6 +61,12 @@ FT_EXPORT( FT_UInt )
 FT_EXPORT( FT_Error )
 (*qFT_Render_Glyph)( FT_GlyphSlot    slot,
 		     FT_Render_Mode  render_mode );
+FT_EXPORT( FT_Error )
+(*qFT_Get_Kerning)( FT_Face     face,
+		    FT_UInt     left_glyph,
+		    FT_UInt     right_glyph,
+		    FT_UInt     kern_mode,
+		    FT_Vector  *akerning );
 
 /*
 ================================================================================
@@ -83,6 +89,7 @@ static dllfunction_t ft2funcs[] =
 	{"FT_Load_Char",		(void **) &qFT_Load_Char},
 	{"FT_Get_Char_Index",		(void **) &qFT_Get_Char_Index},
 	{"FT_Render_Glyph",		(void **) &qFT_Render_Glyph},
+	{"FT_Get_Kerning",		(void **) &qFT_Get_Kerning},
 	{NULL, NULL}
 };
 
@@ -343,6 +350,31 @@ Implementation of a more or less lazy font loading and rendering code.
 ================================================================================
 */
 
+#define FONT_CHARS_PER_LINE 16
+#define FONT_CHAR_LINES 16
+#define FONT_CHARS_PER_MAP (FONT_CHARS_PER_LINE * FONT_CHAR_LINES)
+
+typedef struct glyph_slot_s
+{
+	// we keep the quad coords here only currently
+	// if you need other info, make Font_LoadMapForIndex fill it into this slot
+	float xmin; // texture coordinate in [0,1]
+	float xmax;
+	float ymin;
+	float ymax;
+	float advance_x;
+	float advance_y;
+} glyph_slot_t;
+
+struct font_map_s
+{
+	Uchar start;
+	struct font_map_s *next;
+	
+	rtexture_t *texture;
+	glyph_slot_t glyphs[FONT_CHARS_PER_MAP];
+};
+
 static qboolean Font_LoadMapForIndex(font_t *font, Uchar index);
 qboolean Font_LoadFont(const char *name, int size, font_t *font)
 {
@@ -371,7 +403,7 @@ qboolean Font_LoadFont(const char *name, int size, font_t *font)
 	}
 
 
-	status = qFT_New_Face(font_ft2lib, filename, 0, (FT_Face*)&font->face);
+	status = qFT_New_Memory_Face(font_ft2lib, (FT_Bytes)font->data, font->datasize, 0, (FT_Face*)&font->face);
 	if (status)
 	{
 		Con_Printf("ERROR: can't create face for %s\n"
@@ -383,6 +415,8 @@ qboolean Font_LoadFont(const char *name, int size, font_t *font)
 
 	memcpy(font->name, name, namelen+1);
 	font->size = size;
+	font->glyphSize = font->size * 2;
+	font->has_kerning = !!(((FT_Face)(font->face))->face_flags & FT_FACE_FLAG_KERNING);
 
 	status = qFT_Set_Pixel_Sizes((FT_Face)font->face, size, size);
 	if (status)
@@ -420,10 +454,6 @@ void Font_UnloadFont(font_t *font)
 	}
 }
 
-#define FONT_CHARS_PER_LINE 16
-#define FONT_CHAR_LINES 16
-#define FONT_CHARS_PER_MAP (FONT_CHARS_PER_LINE * FONT_CHAR_LINES)
-
 static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 {
 	unsigned long mapidx = _ch / FONT_CHARS_PER_MAP;
@@ -433,19 +463,38 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 
 	FT_Face face = font->face;
 
-	data = Mem_Alloc(font_mempool, FONT_CHARS_PER_MAP * (font->size * font->size));
+	int pitch = font->glyphSize * FONT_CHARS_PER_LINE;
+	int gl, gr; // glyph position: line and row
+
+	data = Mem_Alloc(font_mempool, FONT_CHARS_PER_MAP * (font->glyphSize * font->glyphSize));
 	if (!data)
 	{
 		Con_Printf("ERROR: Failed to allocate memory for glyph data for font %s\n", font->name);
 		return false;
 	}
 
+	memset(data, 0, sizeof(data));
+
+	gl = gr = 0;
 	for (ch = mapidx * FONT_CHARS_PER_MAP;
 	     ch < (mapidx + 1) * FONT_CHARS_PER_MAP;
 	     ++ch)
 	{
 		FT_ULong glyphIndex;
+		int w, h, x, y;
+		FT_GlyphSlot glyph;
+		FT_Bitmap *bmp;
+		int gl, gr; // glyph line and row, the spot in the texture
+		unsigned char *imagedata, *dst, *src;
 
+		++gl;
+		if (gl >= FONT_CHARS_PER_LINE)
+		{
+			gl -= FONT_CHARS_PER_LINE;
+			++gr;
+		}
+
+		imagedata = data + gr * pitch + gl * font->glyphSize;
 		glyphIndex = qFT_Get_Char_Index(face, ch);
 
 		status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_DEFAULT);
@@ -460,6 +509,61 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 		{
 			Con_Printf("failed to render glyph %lu for %s\n", glyphIndex, font->name);
 			continue;
+		}
+
+		glyph = face->glyph;
+		bmp = &glyph->bitmap;
+
+		w = bmp->width;
+		h = bmp->rows;
+
+		if (w > font->glyphSize || h > font->glyphSize)
+			Con_Printf("WARNING: Glyph %lu is too big in font %s\n", ch, font->name);
+
+		for (y = 0; y < h; ++y)
+		{
+			dst = imagedata + y * pitch;
+			src = bmp->buffer + y * bmp->pitch;
+
+			switch (bmp->pixel_mode)
+			{
+			case FT_PIXEL_MODE_MONO:
+				for (x = 0; x < bmp->width; x += 8)
+				{
+					unsigned char ch = *src++;
+					*dst++ = 255 * ((ch & 0x80) >> 7);
+					*dst++ = 255 * ((ch & 0x40) >> 6);
+					*dst++ = 255 * ((ch & 0x20) >> 5);
+					*dst++ = 255 * ((ch & 0x10) >> 4);
+					*dst++ = 255 * ((ch & 0x08) >> 3);
+					*dst++ = 255 * ((ch & 0x04) >> 2);
+					*dst++ = 255 * ((ch & 0x02) >> 1);
+					*dst++ = 255 * ((ch & 0x01) >> 0);
+				}
+				break;
+			case FT_PIXEL_MODE_GRAY2:
+				for (x = 0; x < bmp->width; x += 4)
+				{
+					unsigned char ch = *src++;
+					*dst++ = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2;
+					*dst++ = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2;
+					*dst++ = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2;
+					*dst++ = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2;
+				}
+				break;
+			case FT_PIXEL_MODE_GRAY4:
+				for (x = 0; x < bmp->width; x += 2)
+				{
+					unsigned char ch = *src++;
+					*dst++ = ( ((ch & 0xF0) >> 4) * 0x24);
+					*dst++ = ( ((ch & 0x0F) ) * 0x24);
+				}
+				break;
+			default:
+				memcpy((void*)dst, (void*)src, bmp->pitch);
+				dst += bmp->pitch;
+				break;
+			}
 		}
 	}
 
