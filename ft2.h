@@ -27,10 +27,12 @@ size_t u8_wcstombs(char*, const Uchar*, size_t);
 
 typedef struct
 {
-	const char name[64];
+	const char     name[64];
 
+	// internal stuff
 	unsigned char *data;
-	fs_offset_t datasize;
+	fs_offset_t    datasize;
+	void          *face;
 } font_t;
 
 void Font_CloseLibrary(void);

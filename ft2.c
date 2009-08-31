@@ -112,7 +112,7 @@ void Font_CloseLibrary (void)
 		qFT_Done_FreeType(font_ft2lib);
 		font_ft2lib = NULL;
 	}
-		
+
 }
 
 
@@ -154,7 +154,7 @@ qboolean Font_OpenLibrary (void)
 		Font_CloseLibrary();
 		return false;
 	}
-	
+
 	font_mempool = Mem_AllocPool("FONT", 0, NULL);
 	if (!font_mempool)
 	{
@@ -343,10 +343,12 @@ Implementation of a more or less lazy font loading and rendering code.
 ================================================================================
 */
 
+static qboolean Font_LoadMapForIndex(font_t *font, Uchar index);
 qboolean Font_LoadFont(const char *name, font_t *font)
 {
 	size_t namelen;
 	char filename[PATH_MAX];
+	int status;
 
 	if (!Font_OpenLibrary())
 	{
@@ -359,7 +361,7 @@ qboolean Font_LoadFont(const char *name, font_t *font)
 	namelen = strlen(name);
 	memcpy(filename, name, namelen);
 	memcpy(filename + namelen, ".ttf", 5);
-	
+
 	font->data = FS_LoadFile(filename, font_mempool, false, &font->datasize);
 	if (!font->data)
 	{
@@ -367,5 +369,29 @@ qboolean Font_LoadFont(const char *name, font_t *font)
 		return false;
 	}
 
-	
+	status = qFT_New_Face(font_ft2lib, filename, 0, (FT_Face*)&font->face);
+	if (status)
+	{
+		Con_Printf("ERROR: can't create face for %s\n"
+			   "Error %i\n", // TODO: error strings
+			   name, status);
+		Mem_Free(font->data);
+		return false;
+	}
+
+	if (!Font_LoadMapForIndex(font, 0))
+	{
+		Con_Printf("ERROR: can't load the first character map for %s\n"
+			   "This is fatal\n",
+			   name);
+		Mem_Free(font->data);
+		return false;
+	}
+
+	return true;
+}
+
+static qboolean Font_LoadMapForIndex(font_t *font, Uchar index)
+{
+	return true;
 }
