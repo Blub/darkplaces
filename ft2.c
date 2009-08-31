@@ -862,46 +862,31 @@ float Font_DrawString(float startx, float starty,
 				}
 			}
 			
-			thisw = fnt->width_of[num];
-			// FIXME make these smaller to just include the occupied part of the character for slightly faster rendering
-			s = (num & 15)*0.0625f + (0.5f / tw);
-			t = (num >> 4)*0.0625f + (0.5f / th);
-			u = 0.0625f * thisw - (1.0f / tw);
-			v = 0.0625f - (1.0f / th);
+			tw = R_TextureWidth(map->texture);
+			th = R_TextureHeight(map->texture);
+			
+			thisw = map->glyphslot[ch].advance_x;
+
 			ac[ 0] = color[0];ac[ 1] = color[1];ac[ 2] = color[2];ac[ 3] = color[3];
 			ac[ 4] = color[0];ac[ 5] = color[1];ac[ 6] = color[2];ac[ 7] = color[3];
 			ac[ 8] = color[0];ac[ 9] = color[1];ac[10] = color[2];ac[11] = color[3];
 			ac[12] = color[0];ac[13] = color[1];ac[14] = color[2];ac[15] = color[3];
-			at[ 0] = s		; at[ 1] = t	;
-			at[ 2] = s+u	; at[ 3] = t	;
-			at[ 4] = s+u	; at[ 5] = t+v	;
-			at[ 6] = s		; at[ 7] = t+v	;
-			av[ 0] = x			; av[ 1] = y	; av[ 2] = 10;
-			av[ 3] = x+w*thisw	; av[ 4] = y	; av[ 5] = 10;
-			av[ 6] = x+w*thisw	; av[ 7] = y+h	; av[ 8] = 10;
-			av[ 9] = x			; av[10] = y+h	; av[11] = 10;
+			at[0] = map->glyphslot[ch].xmin; at[1] = map->glyphslot[ch].ymin;
+			at[2] = map->glyphslot[ch].xmax; at[3] = map->glyphslot[ch].ymin;
+			at[4] = map->glyphslot[ch].xmax; at[5] = map->glyphslot[ch].ymax;
+			at[7] = map->glyphslot[ch].xmin; at[7] = map->glyphslot[ch].ymax;
+			av[ 0] = x;           av[ 1] = y;     av[ 2] = 10;
+			av[ 3] = x + w*thisw; av[ 4] = y;     av[ 5] = 10;
+			av[ 6] = x + w*thisw; av[ 7] = y + h; av[ 8] = 10;
+			av[ 9] = x;           av[10] = y + h; av[11] = 10;
 			ac += 16;
 			at += 8;
 			av += 12;
-			batchcount++;
-			if (batchcount >= QUADELEMENTS_MAXQUADS)
-			{
-				GL_LockArrays(0, batchcount * 4);
-				R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
-				GL_LockArrays(0, 0);
-				batchcount = 0;
-				ac = color4f;
-				at = texcoord2f;
-				av = vertex3f;
-			}
+			GL_LockArrays(0, 4);
+			R_Mesh_Draw(0, 4, 0, 2, NULL, quadelements, 0, 0);
+			GL_LockArrays(0, 0);
 			x += thisw * w;
 		}
-	}
-	if (batchcount > 0)
-	{
-		GL_LockArrays(0, batchcount * 4);
-		R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
-		GL_LockArrays(0, 0);
 	}
 
 	if (outcolor)
