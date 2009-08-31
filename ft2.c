@@ -695,6 +695,7 @@ static void _Font_ProcessDrawFlag(int flags)
 		GL_BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
+extern cvar_t r_textcontrast, r_textbrightness;
 static void Font_GetTextColor(float color[4], int colorindex, float r, float g, float b, float a, qboolean shadow)
 {
 	float C = r_textcontrast.value;
