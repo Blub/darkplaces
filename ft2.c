@@ -7,6 +7,13 @@
 
 #include "ft2_defs.h"
 
+/*
+================================================================================
+Function definitions. Taken from the freetype2 headers.
+================================================================================
+*/
+
+
 FT_EXPORT( FT_Error )
 (*qFT_Init_FreeType)( FT_Library  *alibrary );
 FT_EXPORT( FT_Error )
@@ -54,6 +61,12 @@ FT_EXPORT( FT_UInt )
 FT_EXPORT( FT_Error )
 (*qFT_Render_Glyph)( FT_GlyphSlot    slot,
 		     FT_Render_Mode  render_mode );
+
+/*
+================================================================================
+Support for dynamically loading the FreeType2 library
+================================================================================
+*/
 
 static dllfunction_t ft2funcs[] =
 {
@@ -120,6 +133,12 @@ qboolean FT2_OpenLibrary (void)
 	// Load the DLL
 	return Sys_LoadLibrary (dllnames, &ft2_dll, ft2funcs);
 }
+
+/*
+================================================================================
+UTF-8 encoding and decoding functions follow.
+================================================================================
+*/
 
 /** Get the number of characters in in an UTF-8 string.
  * @param _s    An utf-8 encoded null-terminated string.
