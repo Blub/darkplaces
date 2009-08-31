@@ -97,11 +97,11 @@ static dllfunction_t ft2funcs[] =
 static dllhandle_t ft2_dll = NULL;
 
 /// Memory pool for fonts
-static mempool_t *font_mempool;
-static rtexturepool_t *font_texturepool;
+static mempool_t *font_mempool= NULL;
+static rtexturepool_t *font_texturepool = NULL;
 
 /// FreeType library handle
-static FT_Library font_ft2lib;
+static FT_Library font_ft2lib = NULL;
 
 /*
 ====================
@@ -173,7 +173,7 @@ void Font_Init(void)
 
 	if (qFT_Init_FreeType(&font_ft2lib))
 	{
-		Con_Print("Failed to initialize the FreeType2 library!\n");
+		Con_Print("ERROR: Failed to initialize the FreeType2 library!\n");
 		Font_CloseLibrary();
 		return;
 	}
@@ -181,6 +181,7 @@ void Font_Init(void)
 	font_mempool = Mem_AllocPool("FONT", 0, NULL);
 	if (!font_mempool)
 	{
+		Con_Print("ERROR: Failed to allocate FONT memory pool!\n");
 		Font_CloseLibrary();
 		return;
 	}
@@ -188,6 +189,7 @@ void Font_Init(void)
 	font_texturepool = R_AllocTexturePool();
 	if (!font_texturepool)
 	{
+		Con_Print("ERROR: Failed to allocate FONT texture pool!\n");
 		Font_CloseLibrary();
 		return;
 	}
