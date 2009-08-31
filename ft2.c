@@ -98,6 +98,7 @@ static dllhandle_t ft2_dll = NULL;
 
 /// Memory pool for fonts
 static mempool_t *font_mempool;
+static rtexturepool_t *font_texturepool;
 
 /// FreeType library handle
 static FT_Library font_ft2lib;
@@ -114,6 +115,8 @@ void Font_CloseLibrary (void)
 	Sys_UnloadLibrary (&ft2_dll);
 	if (font_mempool)
 		Mem_FreePool(&font_mempool);
+	if (font_texturepool)
+		R_FreeTexturePool(&font_texturepool);
 	if (font_ft2lib && qFT_Done_FreeType)
 	{
 		qFT_Done_FreeType(font_ft2lib);
@@ -164,6 +167,13 @@ qboolean Font_OpenLibrary (void)
 
 	font_mempool = Mem_AllocPool("FONT", 0, NULL);
 	if (!font_mempool)
+	{
+		Font_CloseLibrary();
+		return false;
+	}
+
+	font_texturepool = R_AllocTexturePool();
+	if (!font_texturepool)
 	{
 		Font_CloseLibrary();
 		return false;
@@ -370,7 +380,7 @@ struct font_map_s
 {
 	Uchar start;
 	struct font_map_s *next;
-	
+
 	rtexture_t *texture;
 	glyph_slot_t glyphs[FONT_CHARS_PER_MAP];
 };
@@ -458,9 +468,10 @@ void Font_UnloadFont(font_t *font)
 
 static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 {
+	char map_identifier[PATH_MAX];
 	unsigned long mapidx = _ch / FONT_CHARS_PER_MAP;
 	unsigned char *data;
-	FT_ULong ch;
+	FT_ULong ch, mapch;
 	int status;
 
 	FT_Face face = font->face;
@@ -468,18 +479,41 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 	int pitch = font->glyphSize * FONT_CHARS_PER_LINE;
 	int gl, gr; // glyph position: line and row
 
+	font_map_t *map;
+
+	map = Mem_Alloc(font_mempool, sizeof(font_map_t));
+	if (!map)
+	{
+		Con_Printf("ERROR: Out of memory when loading fontmap for %s\n", font->name);
+		return false;
+	}
+
 	data = Mem_Alloc(font_mempool, FONT_CHARS_PER_MAP * (font->glyphSize * font->glyphSize));
 	if (!data)
 	{
+		Mem_Free(map);
 		Con_Printf("ERROR: Failed to allocate memory for glyph data for font %s\n", font->name);
 		return false;
 	}
 
 	memset(data, 0, sizeof(data));
 
+	map->start = mapidx * FONT_CHARS_PER_MAP;
+	if (!font->font_map)
+		font->font_map = map;
+	else
+	{
+		// insert the map at the right place
+		font_map_t *next = font->font_map;
+		while(next->next && next->next->start < map->start)
+			next = next->next;
+		map->next = next->next;
+		next->next = map;
+	}
+
 	gl = gr = 0;
-	for (ch = mapidx * FONT_CHARS_PER_MAP;
-	     ch < (mapidx + 1) * FONT_CHARS_PER_MAP;
+	for (ch = map->start;
+	     ch < (FT_ULong)map->start + FONT_CHARS_PER_MAP;
 	     ++ch)
 	{
 		FT_ULong glyphIndex;
@@ -488,6 +522,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 		FT_Bitmap *bmp;
 		int gl, gr; // glyph line and row, the spot in the texture
 		unsigned char *imagedata, *dst, *src;
+		glyph_slot_t *mapglyph;
 
 		++gl;
 		if (gl >= FONT_CHARS_PER_LINE)
@@ -567,7 +602,34 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 				break;
 			}
 		}
+
+		// now fill map->glyphs[ch - map->start]
+		mapch = ch - map->start;
+		mapglyph = &map->glyphs[mapch];
+		// xmin is the left start of the character within the texture
+		mapglyph->xmin = ( (double)(gr * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHARS_PER_LINE) );
+		mapglyph->xmax = mapglyph->xmin + glyph->metrics.width * (1.0/64.0) / (double)font->size;
+		mapglyph->ymin = ( (double)(gl * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHAR_LINES) );
+		mapglyph->ymax = mapglyph->ymin + glyph->metrics.height * (1.0/64.0) / (double)font->size;
+		// TODO: support vertical fonts maybe?
+		mapglyph->advance_x = glyph->metrics.horiAdvance * (1.0/64.0) / (double)font->size;
+		mapglyph->advance_y = 0;
 	}
 
+	// create a texture from the data now
+	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%lu", font->name, map->start);
+	map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
+				       font->glyphSize * FONT_CHARS_PER_LINE,
+				       font->glyphSize * FONT_CHAR_LINES,
+				       data, TEXTYPE_RGBA, TEXF_ALPHA | TEXF_PRECACHE, NULL);
+	Mem_Free(data);
+	if (!map->texture)
+	{
+		// if the first try isn't successful, keep it with a broken texture
+		// otherwise we retry to load it every single frame where ft2 rendering is used
+		// this would be bad...
+		// only `data' must be freed
+		return false;
+	}
 	return true;
 }
