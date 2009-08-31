@@ -27,7 +27,7 @@ size_t u8_wcstombs(char*, const Uchar*, size_t);
 
 typedef struct
 {
-	const char     name[64];
+	char           name[64];
 	int            size;
 
 	// internal stuff

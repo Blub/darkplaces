@@ -6,8 +6,10 @@
 
 #ifdef _MSC_VER
 typedef __int32 FT_Int32;
+typedef __uint32 FT_UInt32;
 #else
 typedef int32_t FT_Int32;
+typedef u_int32_t FT_UInt32;
 #endif
 
 typedef int FT_Error;
@@ -16,9 +18,12 @@ typedef signed char FT_Char;
 typedef unsigned char FT_Byte;
 typedef const FT_Byte *FT_Bytes;
 typedef char FT_String;
+typedef signed short FT_Short;
+typedef unsigned short FT_UShort;
 typedef signed int FT_Int;
 typedef unsigned int FT_UInt;
 typedef signed long FT_Long;
+typedef signed long FT_Fixed;
 typedef unsigned long FT_ULong;
 typedef void *FT_Pointer;
 typedef size_t FT_Offset;
@@ -27,7 +32,10 @@ typedef signed long FT_F26Dot6;
 typedef void *FT_Stream;
 typedef void *FT_Module;
 typedef void *FT_Library;
-typedef void *FT_Face;
+typedef struct FT_FaceRec_ *FT_Face;
+typedef struct FT_CharMapRec_*  FT_CharMap;
+typedef struct FT_SizeRec_*  FT_Size;
+typedef struct FT_Size_InternalRec_*  FT_Size_Internal;
 
 typedef void *FT_GlyphSlot;
 
@@ -280,5 +288,160 @@ typedef struct FT_Size_RequestRec_  *FT_Size_Request;
 #define FT_LOAD_TARGET_MONO    FT_LOAD_TARGET_( FT_RENDER_MODE_MONO   )
 #define FT_LOAD_TARGET_LCD     FT_LOAD_TARGET_( FT_RENDER_MODE_LCD    )
 #define FT_LOAD_TARGET_LCD_V   FT_LOAD_TARGET_( FT_RENDER_MODE_LCD_V  )
+
+#define FT_ENC_TAG( value, a, b, c, d )	      \
+	value = ( ( (FT_UInt32)(a) << 24 ) |			  \
+		  ( (FT_UInt32)(b) << 16 ) |				\
+		  ( (FT_UInt32)(c) <<  8 ) |				\
+		  (FT_UInt32)(d)         )
+
+typedef enum  FT_Encoding_
+{
+	FT_ENC_TAG( FT_ENCODING_NONE, 0, 0, 0, 0 ),
+
+	FT_ENC_TAG( FT_ENCODING_MS_SYMBOL, 's', 'y', 'm', 'b' ),
+	FT_ENC_TAG( FT_ENCODING_UNICODE,   'u', 'n', 'i', 'c' ),
+
+	FT_ENC_TAG( FT_ENCODING_SJIS,    's', 'j', 'i', 's' ),
+	FT_ENC_TAG( FT_ENCODING_GB2312,  'g', 'b', ' ', ' ' ),
+	FT_ENC_TAG( FT_ENCODING_BIG5,    'b', 'i', 'g', '5' ),
+	FT_ENC_TAG( FT_ENCODING_WANSUNG, 'w', 'a', 'n', 's' ),
+	FT_ENC_TAG( FT_ENCODING_JOHAB,   'j', 'o', 'h', 'a' ),
+
+	/* for backwards compatibility */
+	FT_ENCODING_MS_SJIS    = FT_ENCODING_SJIS,
+	FT_ENCODING_MS_GB2312  = FT_ENCODING_GB2312,
+	FT_ENCODING_MS_BIG5    = FT_ENCODING_BIG5,
+	FT_ENCODING_MS_WANSUNG = FT_ENCODING_WANSUNG,
+	FT_ENCODING_MS_JOHAB   = FT_ENCODING_JOHAB,
+
+	FT_ENC_TAG( FT_ENCODING_ADOBE_STANDARD, 'A', 'D', 'O', 'B' ),
+	FT_ENC_TAG( FT_ENCODING_ADOBE_EXPERT,   'A', 'D', 'B', 'E' ),
+	FT_ENC_TAG( FT_ENCODING_ADOBE_CUSTOM,   'A', 'D', 'B', 'C' ),
+	FT_ENC_TAG( FT_ENCODING_ADOBE_LATIN_1,  'l', 'a', 't', '1' ),
+
+	FT_ENC_TAG( FT_ENCODING_OLD_LATIN_2, 'l', 'a', 't', '2' ),
+
+	FT_ENC_TAG( FT_ENCODING_APPLE_ROMAN, 'a', 'r', 'm', 'n' )
+} FT_Encoding;
+
+#define ft_encoding_none            FT_ENCODING_NONE
+#define ft_encoding_unicode         FT_ENCODING_UNICODE
+#define ft_encoding_symbol          FT_ENCODING_MS_SYMBOL
+#define ft_encoding_latin_1         FT_ENCODING_ADOBE_LATIN_1
+#define ft_encoding_latin_2         FT_ENCODING_OLD_LATIN_2
+#define ft_encoding_sjis            FT_ENCODING_SJIS
+#define ft_encoding_gb2312          FT_ENCODING_GB2312
+#define ft_encoding_big5            FT_ENCODING_BIG5
+#define ft_encoding_wansung         FT_ENCODING_WANSUNG
+#define ft_encoding_johab           FT_ENCODING_JOHAB
+
+#define ft_encoding_adobe_standard  FT_ENCODING_ADOBE_STANDARD
+#define ft_encoding_adobe_expert    FT_ENCODING_ADOBE_EXPERT
+#define ft_encoding_adobe_custom    FT_ENCODING_ADOBE_CUSTOM
+#define ft_encoding_apple_roman     FT_ENCODING_APPLE_ROMAN
+
+typedef struct  FT_Bitmap_Size_
+{
+	FT_Short  height;
+	FT_Short  width;
+
+	FT_Pos    size;
+
+	FT_Pos    x_ppem;
+	FT_Pos    y_ppem;
+} FT_Bitmap_Size;
+
+typedef struct  FT_CharMapRec_
+{
+	FT_Face      face;
+	FT_Encoding  encoding;
+	FT_UShort    platform_id;
+	FT_UShort    encoding_id;
+} FT_CharMapRec;
+
+typedef void  (*FT_Generic_Finalizer)(void*  object);
+typedef struct  FT_Generic_
+{
+	void*                 data;
+	FT_Generic_Finalizer  finalizer;
+} FT_Generic;
+
+typedef struct  FT_Size_Metrics_
+{
+	FT_UShort  x_ppem;      /* horizontal pixels per EM               */
+	FT_UShort  y_ppem;      /* vertical pixels per EM                 */
+
+	FT_Fixed   x_scale;     /* scaling values used to convert font    */
+	FT_Fixed   y_scale;     /* units to 26.6 fractional pixels        */
+
+	FT_Pos     ascender;    /* ascender in 26.6 frac. pixels          */
+	FT_Pos     descender;   /* descender in 26.6 frac. pixels         */
+	FT_Pos     height;      /* text height in 26.6 frac. pixels       */
+	FT_Pos     max_advance; /* max horizontal advance, in 26.6 pixels */
+} FT_Size_Metrics;
+
+typedef struct  FT_SizeRec_
+{
+	FT_Face           face;      /* parent face object              */
+	FT_Generic        generic;   /* generic pointer for client uses */
+	FT_Size_Metrics   metrics;   /* size metrics                    */
+	FT_Size_Internal  internal;
+} FT_SizeRec;
+
+typedef struct  FT_FaceRec_
+{
+	FT_Long           num_faces;
+	FT_Long           face_index;
+
+	FT_Long           face_flags;
+	FT_Long           style_flags;
+
+	FT_Long           num_glyphs;
+
+	FT_String*        family_name;
+	FT_String*        style_name;
+
+	FT_Int            num_fixed_sizes;
+	FT_Bitmap_Size*   available_sizes;
+
+	FT_Int            num_charmaps;
+	FT_CharMap*       charmaps;
+
+	FT_Generic        generic;
+
+	/*# The following member variables (down to `underline_thickness') */
+	/*# are only relevant to scalable outlines; cf. @FT_Bitmap_Size    */
+	/*# for bitmap fonts.                                              */
+	FT_BBox           bbox;
+
+	FT_UShort         units_per_EM;
+	FT_Short          ascender;
+	FT_Short          descender;
+	FT_Short          height;
+
+	FT_Short          max_advance_width;
+	FT_Short          max_advance_height;
+
+	FT_Short          underline_position;
+	FT_Short          underline_thickness;
+
+	FT_GlyphSlot      glyph;
+	FT_Size           size;
+	FT_CharMap        charmap;
+
+	/* ft2 private
+	FT_Driver         driver;
+	FT_Memory         memory;
+	FT_Stream         stream;
+
+	FT_ListRec        sizes_list;
+
+	FT_Generic        autohint;
+	void*             extensions;
+
+	FT_Face_Internal  internal;
+	*/
+} FT_FaceRec;
 
 #endif // FT2_DEFS_H_H__

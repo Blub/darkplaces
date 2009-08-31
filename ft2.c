@@ -428,12 +428,39 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch)
 {
 	unsigned long mapidx = _ch / FONT_CHARS_PER_MAP;
 	unsigned char *data;
+	FT_ULong ch;
+	int status;
+
+	FT_Face face = font->face;
 
 	data = Mem_Alloc(font_mempool, FONT_CHARS_PER_MAP * (font->size * font->size));
 	if (!data)
 	{
 		Con_Printf("ERROR: Failed to allocate memory for glyph data for font %s\n", font->name);
 		return false;
+	}
+
+	for (ch = mapidx * FONT_CHARS_PER_MAP;
+	     ch < (mapidx + 1) * FONT_CHARS_PER_MAP;
+	     ++ch)
+	{
+		FT_ULong glyphIndex;
+
+		glyphIndex = qFT_Get_Char_Index(face, ch);
+
+		status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_DEFAULT);
+		if (status)
+		{
+			Con_Printf("failed to load glyph %lu for %s\n", glyphIndex, font->name);
+			continue;
+		}
+
+		status = qFT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
+		if (status)
+		{
+			Con_Printf("failed to render glyph %lu for %s\n", glyphIndex, font->name);
+			continue;
+		}
 	}
 
 	return true;
