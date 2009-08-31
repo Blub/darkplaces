@@ -382,6 +382,8 @@ qboolean Font_LoadFont(const char *name, int size, font_t *font)
 	char filename[PATH_MAX];
 	int status;
 
+	memset(font, 0, sizeof(*font));
+
 	if (!Font_OpenLibrary())
 	{
 		Con_Printf("WARNING: can't open load font %s\n"
