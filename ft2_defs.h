@@ -495,4 +495,11 @@ typedef struct  FT_GlyphSlotRec_
 #define FT_FACE_FLAG_CID_KEYED         ( 1L << 12 )
 #define FT_FACE_FLAG_TRICKY            ( 1L << 13 )
 
+typedef enum  FT_Kerning_Mode_
+{
+	FT_KERNING_DEFAULT  = 0,
+	FT_KERNING_UNFITTED,
+	FT_KERNING_UNSCALED
+} FT_Kerning_Mode;
+
 #endif // FT2_DEFS_H_H__

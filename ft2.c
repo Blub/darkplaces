@@ -4,8 +4,8 @@
 #include "quakedef.h"
 
 #include "ft2.h"
-
 #include "ft2_defs.h"
+#include "ft2_fontdefs.h"
 
 /*
 ================================================================================
@@ -494,6 +494,8 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 	font->size = size;
 	font->glyphSize = font->size * 2;
 	font->has_kerning = !!(((FT_Face)(font->face))->face_flags & FT_FACE_FLAG_KERNING);
+	font->sfx = (1.0/64.0) / (double)font->size;
+	font->sfy = (1.0/64.0) / (double)font->size;
 
 	status = qFT_Set_Pixel_Sizes((FT_Face)font->face, size, size);
 	if (status)
@@ -512,6 +514,29 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 			   name);
 		Mem_Free(font->data);
 		return false;
+	}
+
+	// load the default kerning vector:
+	if (font->has_kerning)
+	{
+		Uchar l, r;
+		FT_Vector kernvec;
+		for (l = 0; l < 256; ++l)
+		{
+			for (r = 0; r < 256; ++r)
+			{
+				if (qFT_Get_Kerning(font->face, l, r, FT_KERNING_DEFAULT, &kernvec))
+				{
+					font->kerning.kerning[l][r][0] = 0;
+					font->kerning.kerning[l][r][1] = 0;
+				}
+				else
+				{
+					font->kerning.kerning[l][r][0] = kernvec.x * font->sfx;
+					font->kerning.kerning[l][r][1] = kernvec.y * font->sfy;
+				}
+			}
+		}
 	}
 
 	return true;
@@ -724,13 +749,11 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 		mapglyph = &map->glyphs[mapch];
 
 		{
-			double sfx = (1.0/64.0) / (double)font->size;
-			double sfy = (1.0/64.0) / (double)font->size;
-			double bearingX = (double)glyph->metrics.horiBearingX * sfx;
-			double bearingY = (double)glyph->metrics.horiBearingY * sfy;
-			double advance = (double)glyph->metrics.horiAdvance * sfx;
-			double mWidth = (double)glyph->metrics.width * sfx;
-			double mHeight = (double)glyph->metrics.height * sfy;
+			double bearingX = (double)glyph->metrics.horiBearingX * font->sfx;
+			double bearingY = (double)glyph->metrics.horiBearingY * font->sfy;
+			double advance = (double)glyph->metrics.horiAdvance * font->sfx;
+			double mWidth = (double)glyph->metrics.width * font->sfx;
+			double mHeight = (double)glyph->metrics.height * font->sfy;
 			//double tWidth = bmp->width / (double)font->size;
 			//double tHeight = bmp->rows / (double)font->size;
 

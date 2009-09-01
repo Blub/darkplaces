@@ -38,20 +38,31 @@ size_t u8_wcstombs(char*, const Uchar*, size_t);
 
 typedef struct ft2_font_map_s ft2_font_map_t;
 
+typedef float ft2_kernvec[2];
+typedef struct ft2_kerning_s
+{
+	ft2_kernvec kerning[256][256]; /* kerning[left char][right char] */
+} ft2_kerning_t;
+
 typedef struct ft2_font_s
 {
-	char           name[64];
-	int            size;
-	int            glyphSize;
+	char            name[64];
+	int             size;
+	int             glyphSize;
 
-	qboolean       has_kerning;
+	qboolean        has_kerning;
 
-	unsigned char *data;
-	fs_offset_t    datasize;
-	void          *face;
+	unsigned char  *data;
+	fs_offset_t     datasize;
+	void           *face;
 
 	// an ordered linked list of glyph maps
-	ft2_font_map_t    *font_map;
+	ft2_font_map_t *font_map;
+	// contains the kerning information for the first 256 characters
+	// for the other characters, we will lookup the kerning information
+	ft2_kerning_t   kerning;
+	// size factor to convert from freetype units
+	double          sfx, sfy;
 } ft2_font_t;
 
 void Font_CloseLibrary(void);
