@@ -37,6 +37,7 @@ size_t u8_wcstombs(char*, const Uchar*, size_t);
  */
 
 typedef struct ft2_font_map_s ft2_font_map_t;
+typedef struct ft2_attachment_s ft2_attachment_t;
 
 typedef float ft2_kernvec[2];
 typedef struct ft2_kerning_s
@@ -52,6 +53,8 @@ typedef struct ft2_font_s
 
 	qboolean        has_kerning;
 
+	// TODO: clean this up and do not expose everything.
+	
 	unsigned char  *data;
 	fs_offset_t     datasize;
 	void           *face;
@@ -63,6 +66,10 @@ typedef struct ft2_font_s
 	ft2_kerning_t   kerning;
 	// size factor to convert from freetype units
 	double          sfx, sfy;
+
+	// attachments
+	size_t            attachmentcount;
+	ft2_attachment_t *attachments;
 } ft2_font_t;
 
 void        Font_CloseLibrary(void);

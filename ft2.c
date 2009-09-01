@@ -69,7 +69,9 @@ FT_EXPORT( FT_Error )
 		    FT_UInt     right_glyph,
 		    FT_UInt     kern_mode,
 		    FT_Vector  *akerning );
-
+FT_EXPORT( FT_Error )
+(*qFT_Attach_Stream)( FT_Face        face,
+		      FT_Open_Args*  parameters );
 /*
 ================================================================================
 Support for dynamically loading the FreeType2 library
@@ -92,6 +94,7 @@ static dllfunction_t ft2funcs[] =
 	{"FT_Get_Char_Index",		(void **) &qFT_Get_Char_Index},
 	{"FT_Render_Glyph",		(void **) &qFT_Render_Glyph},
 	{"FT_Get_Kerning",		(void **) &qFT_Get_Kerning},
+	{"FT_Attach_Stream",		(void **) &qFT_Attach_Stream},
 	{NULL, NULL}
 };
 
@@ -452,11 +455,30 @@ ft2_font_t *Font_Alloc(void)
 	return Mem_Alloc(font_mempool, sizeof(ft2_font_t));
 }
 
+qboolean Font_Attach(ft2_font_t *font, ft2_attachment_t *attachment)
+{
+	ft2_attachment_t *na;
+
+	font->attachmentcount++;
+	na = (ft2_attachment_t*)Mem_Alloc(font_mempool, sizeof(font->attachments[0]) * font->attachmentcount);
+	if (na == NULL)
+		return false;
+	if (font->attachments && font->attachmentcount > 1)
+	{
+		memcpy(na, font->attachments, sizeof(font->attachments[0]) * (font->attachmentcount - 1));
+		Mem_Free(font->attachments);
+	}
+	memcpy(na + sizeof(font->attachments[0]) * (font->attachmentcount - 1), attachment, sizeof(*attachment));
+	font->attachments = na;
+	return true;
+}
+
 qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 {
 	size_t namelen;
 	char filename[PATH_MAX];
 	int status;
+	size_t i;
 
 	memset(font, 0, sizeof(*font));
 
@@ -472,12 +494,28 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 
 	memcpy(filename, name, namelen);
 	memcpy(filename + namelen, ".ttf", 5);
-
 	font->data = FS_LoadFile(filename, font_mempool, false, &font->datasize);
 	if (!font->data)
 	{
+		ft2_attachment_t afm;
+
+		memcpy(filename + namelen, ".pfb", 5);
+		font->data = FS_LoadFile(filename, font_mempool, false, &font->datasize);
+
+		if (font->data)
+		{
+			memcpy(filename + namelen, ".afm", 5);
+			afm.data = FS_LoadFile(filename, font_mempool, false, &afm.size);
+
+			if (afm.data)
+				Font_Attach(font, &afm);
+		}
+	}
+
+	if (!font->data)
+	{
 		// FS_LoadFile being not-quiet should print an error :)
-		Con_Printf("Failed to load TTF version of font %s\n", name);
+		Con_Printf("Failed to load font-file for '%s', it will not support as many characters.\n", name);
 		return false;
 	}
 	Con_Printf("Loading font %s face 0 size %i...\n", filename, size);
@@ -488,8 +526,21 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 		Con_Printf("ERROR: can't create face for %s\n"
 			   "Error %i\n", // TODO: error strings
 			   name, status);
-		Mem_Free(font->data);
+		// Mem_Free(font->data);
+		Font_UnloadFont(font);
 		return false;
+	}
+
+	// add the attachments
+	for (i = 0; i < font->attachmentcount; ++i)
+	{
+		FT_Open_Args args;
+		memset(&args, 0, sizeof(args));
+		args.flags = FT_OPEN_MEMORY;
+		args.memory_base = (const FT_Byte*)font->attachments[i].data;
+		args.memory_size = font->attachments[i].size;
+		if (qFT_Attach_Stream(font->face, &args))
+			Con_Printf("Failed to add attachment %u to %s\n", (unsigned)i, font->name);
 	}
 
 	memcpy(font->name, name, namelen+1);
@@ -505,7 +556,8 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 		Con_Printf("ERROR: can't size pixel sizes for face of font %s\n"
 			   "Error %i\n", // TODO: error strings
 			   name, status);
-		Mem_Free(font->data);
+		//Mem_Free(font->data);
+		Font_UnloadFont(font);
 		return false;
 	}
 
@@ -514,7 +566,8 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 		Con_Printf("ERROR: can't load the first character map for %s\n"
 			   "This is fatal\n",
 			   name);
-		Mem_Free(font->data);
+		//Mem_Free(font->data);
+		Font_UnloadFont(font);
 		return false;
 	}
 
@@ -539,11 +592,6 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 				{
 					font->kerning.kerning[l][r][0] = kernvec.x * font->sfx;
 					font->kerning.kerning[l][r][1] = kernvec.y * font->sfy;
-					/*
-					fprintf(stderr, "Kerning from %x to %x is %g,%g\n", l, r,
-						font->kerning.kerning[l][r][0],
-						font->kerning.kerning[l][r][1]);
-					*/
 				}
 			}
 		}
@@ -583,6 +631,12 @@ void Font_UnloadFont(ft2_font_t *font)
 {
 	if (font->data)
 		Mem_Free(font->data);
+	if (font->attachments && font->attachmentcount)
+	{
+		Mem_Free(font->attachments);
+		font->attachmentcount = 0;
+		font->attachments = NULL;
+	}
 	if (ft2_dll)
 	{
 		if (font->face)

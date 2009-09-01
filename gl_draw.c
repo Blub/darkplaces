@@ -1398,8 +1398,6 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			}
 		}
 	}
-#undef PIXEL_X
-#undef PIXEL_Y
 #undef oldstyle_map
 	if (batchcount > 0)
 	{

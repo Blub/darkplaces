@@ -15,12 +15,12 @@ typedef struct glyph_slot_s
 	double txmax;
 	double tymin;
 	double tymax;
-	float vxmin;
-	float vxmax;
-	float vymin;
-	float vymax;
-	float advance_x;
-	float advance_y;
+	float  vxmin;
+	float  vxmax;
+	float  vymin;
+	float  vymax;
+	float  advance_x;
+	float  advance_y;
 } glyph_slot_t;
 
 struct ft2_font_map_s
@@ -30,6 +30,12 @@ struct ft2_font_map_s
 
 	rtexture_t *texture;
 	glyph_slot_t glyphs[FONT_CHARS_PER_MAP];
+};
+
+struct ft2_attachment_s
+{
+	unsigned char *data;
+	fs_offset_t    size;
 };
 
 qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap);
