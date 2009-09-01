@@ -405,10 +405,14 @@ typedef struct glyph_slot_s
 {
 	// we keep the quad coords here only currently
 	// if you need other info, make Font_LoadMapForIndex fill it into this slot
-	float xmin; // texture coordinate in [0,1]
-	float xmax;
-	float ymin;
-	float ymax;
+	float txmin; // texture coordinate in [0,1]
+	float txmax;
+	float tymin;
+	float tymax;
+	float vxmin;
+	float vxmax;
+	float vymin;
+	float vymax;
 	float advance_x;
 	float advance_y;
 } glyph_slot_t;
@@ -551,7 +555,8 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		next->next = map;
 	}
 
-	gR = gC = 0;
+	gR = 0;
+	gC = -1;
 	for (ch = map->start;
 	     ch < (FT_ULong)map->start + FONT_CHARS_PER_MAP;
 	     ++ch)
@@ -645,14 +650,66 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		// now fill map->glyphs[ch - map->start]
 		mapch = ch - map->start;
 		mapglyph = &map->glyphs[mapch];
+
+		{
+			double bearingX = glyph->metrics.horiBearingX * (1.0/64.0) / (double)font->size;
+			double bearingY = glyph->metrics.horiBearingY * (1.0/64.0) / (double)font->size;
+			double advance = glyph->metrics.horiAdvance * (1.0/64.0) / (double)font->size;
+			double mWidth = glyph->metrics.width * (1.0/64.0) / (double)font->size;
+			double mHeight = glyph->metrics.height * (1.0/64.0) / (double)font->size;
+			//double tWidth = bmp->width / (double)font->size;
+			//double tHeight = bmp->rows / (double)font->size;
+
+			mapglyph->vxmin = bearingX;
+			mapglyph->vxmax = bearingX + mWidth;
+			mapglyph->vymin = -bearingY;
+			mapglyph->vymax = mHeight - bearingY;
+			mapglyph->txmin = ( (double)(gC * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHARS_PER_LINE) );
+			mapglyph->txmax = mapglyph->txmin + (double)bmp->width / ( (double)(font->glyphSize * FONT_CHARS_PER_LINE) );
+			mapglyph->tymin = ( (double)(gR * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHAR_LINES) );
+			mapglyph->tymax = mapglyph->tymin + (double)bmp->rows / ( (double)(font->glyphSize * FONT_CHAR_LINES) );
+			mapglyph->advance_x = advance * font->size;
+			mapglyph->advance_y = 0;
+
+			fprintf(stderr, "------------- GLYPH INFO -----------------\n");
+			fprintf(stderr, "  Glyph: %lu   at (%i, %i)\n", (unsigned long)ch, gC, gR);
+			if (ch >= 32 && ch <= 128)
+				fprintf(stderr, "  Character: %c\n", (int)ch);
+			fprintf(stderr, "  Vertex info:\n");
+			fprintf(stderr, "    X: ( %f  --  %f )\n", mapglyph->vxmin, mapglyph->vxmax);
+			fprintf(stderr, "    Y: ( %f  --  %f )\n", mapglyph->vymin, mapglyph->vymax);
+			fprintf(stderr, "  Texture info:\n");
+			fprintf(stderr, "    S: ( %f  --  %f )\n", mapglyph->txmin, mapglyph->txmax);
+			fprintf(stderr, "    T: ( %f  --  %f )\n", mapglyph->tymin, mapglyph->tymax);
+			fprintf(stderr, "  Advance: %f, %f\n", mapglyph->advance_x, mapglyph->advance_y);
+		}
+
+		/*
+		g->verts[0].set(bearingX, -bearingY, 0);
+		g->verts[1].set(bearingX + mWidth, -bearingY, 0);
+		g->verts[2].set(bearingX + mWidth, mHeight - bearingY, 0);
+		g->verts[3].set(bearingX, mHeight - bearingY, 0);
+		g->texCoords[0].set(0, 0);
+		g->texCoords[1].set(tWidth, 0);
+		g->texCoords[2].set(tWidth, tHeight);
+		g->texCoords[3].set(0, tHeight);
+		g->advance = advance;
+
+		g->verts[0].x *= sizeX;
+		g->verts[1].x *= sizeX;
+		g->verts[2].x *= sizeX;
+		g->verts[3].x *= sizeX;
+		g->verts[0].y *= sizeY;
+		g->verts[1].y *= sizeY;
+		g->verts[2].y *= sizeY;
+		g->verts[3].y *= sizeY;
+		g->advance *= sizeX;
+		
 		// xmin is the left start of the character within the texture
-		mapglyph->xmin = ( (double)(gC * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHARS_PER_LINE) );
-		mapglyph->xmax = mapglyph->xmin + glyph->metrics.width * (1.0/64.0) / (double)font->size;
-		mapglyph->ymin = ( (double)(gR * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHAR_LINES) );
-		mapglyph->ymax = mapglyph->ymin + glyph->metrics.height * (1.0/64.0) / (double)font->size;
 		// TODO: support vertical fonts maybe?
-		mapglyph->advance_x = glyph->metrics.horiAdvance * (1.0/64.0) / (double)font->size;
+		mapglyph->advance_x = (double)glyph->metrics.horiAdvance * (1.0/64.0) / (double)font->size;
 		mapglyph->advance_y = 0;
+		*/
 	}
 
 	// create a texture from the data now
@@ -744,7 +801,7 @@ static void Font_GetTextColor(float color[4], int colorindex, float r, float g, 
 	}
 }
 
-float Font_DrawString(float startx, float starty,
+float Font_DrawString_Font(float startx, float starty,
 		      const char *text, size_t maxlen,
 		      float basered, float basegreen, float baseblue, float basealpha,
 		      int flags, int *outcolor, qboolean ignorecolorcodes,
@@ -764,12 +821,6 @@ float Font_DrawString(float startx, float starty,
 	int tempcolorindex;
 
 	int w, h;
-
-	int tw, th;
-	/*
-	tw = R_TextureWidth(fnt->tex);
-	th = R_TextureHeight(fnt->tex);
-	*/
 
 	w = fnt->size;
 	h = fnt->size;
@@ -876,7 +927,7 @@ float Font_DrawString(float startx, float starty,
 				i--;
 			}
 			ch = u8_getchar(text, &text);
-			
+
 			map = fnt->font_map;
 			while(map && map->start + FONT_CHARS_PER_MAP < ch)
 				map = map->next;
@@ -894,28 +945,36 @@ float Font_DrawString(float startx, float starty,
 					break;
 				}
 			}
-			
-			tw = R_TextureWidth(map->texture);
-			th = R_TextureHeight(map->texture);
+
 			R_Mesh_TexBind(0, R_GetTexture(map->texture));
-			
+
 			thisw = map->glyphs[ch].advance_x;
 
-			ac[ 0] = color[0];ac[ 1] = color[1];ac[ 2] = color[2];ac[ 3] = color[3];
-			ac[ 4] = color[0];ac[ 5] = color[1];ac[ 6] = color[2];ac[ 7] = color[3];
-			ac[ 8] = color[0];ac[ 9] = color[1];ac[10] = color[2];ac[11] = color[3];
-			ac[12] = color[0];ac[13] = color[1];ac[14] = color[2];ac[15] = color[3];
-			at[0] = map->glyphs[ch].xmin; at[1] = map->glyphs[ch].ymin;
-			at[2] = map->glyphs[ch].xmax; at[3] = map->glyphs[ch].ymin;
-			at[4] = map->glyphs[ch].xmax; at[5] = map->glyphs[ch].ymax;
-			at[7] = map->glyphs[ch].xmin; at[7] = map->glyphs[ch].ymax;
+			ac[ 0] = color[0]; ac[ 1] = color[1]; ac[ 2] = color[2]; ac[ 3] = color[3];
+			ac[ 4] = color[0]; ac[ 5] = color[1]; ac[ 6] = color[2]; ac[ 7] = color[3];
+			ac[ 8] = color[0]; ac[ 9] = color[1]; ac[10] = color[2]; ac[11] = color[3];
+			ac[12] = color[0]; ac[13] = color[1]; ac[14] = color[2]; ac[15] = color[3];
+			at[0] = map->glyphs[ch].txmin; at[1] = map->glyphs[ch].tymin;
+			at[2] = map->glyphs[ch].txmax; at[3] = map->glyphs[ch].tymin;
+			at[4] = map->glyphs[ch].txmax; at[5] = map->glyphs[ch].tymax;
+			at[7] = map->glyphs[ch].txmin; at[7] = map->glyphs[ch].tymax;
+
+			av[ 0] = x + w*map->glyphs[ch].vxmin; av[ 1] = y + h*map->glyphs[ch].vymin; av[ 2] = 10;
+			av[ 3] = x + w*map->glyphs[ch].vxmax; av[ 4] = y + h*map->glyphs[ch].vymin; av[ 5] = 10;
+			av[ 6] = x + w*map->glyphs[ch].vxmax; av[ 7] = y + h*map->glyphs[ch].vymax; av[ 8] = 10;
+			av[ 9] = x + w*map->glyphs[ch].vxmin; av[10] = y + h*map->glyphs[ch].vymax; av[11] = 10;
+
+			/*
 			av[ 0] = x;           av[ 1] = y;     av[ 2] = 10;
 			av[ 3] = x + w*thisw; av[ 4] = y;     av[ 5] = 10;
 			av[ 6] = x + w*thisw; av[ 7] = y + h; av[ 8] = 10;
 			av[ 9] = x;           av[10] = y + h; av[11] = 10;
+			*/
+			/*
 			ac += 16;
 			at += 8;
 			av += 12;
+			*/
 			GL_LockArrays(0, 4);
 			R_Mesh_Draw(0, 4, 0, 2, NULL, quadelements, 0, 0);
 			GL_LockArrays(0, 0);
@@ -929,3 +988,15 @@ float Font_DrawString(float startx, float starty,
 	// note: this relies on the proper text (not shadow) being drawn last
 	return x;
 }
+
+float Font_DrawString(float startx, float starty,
+		      const char *text, size_t maxlen,
+		      float basered, float basegreen, float baseblue, float basealpha,
+		      int flags, int *outcolor, qboolean ignorecolorcodes)
+{
+	return Font_DrawString_Font(startx, starty, text, maxlen,
+				    basered, basegreen, baseblue, basealpha,
+				    flags, outcolor, ignorecolorcodes,
+				    &test_font);
+}
+
