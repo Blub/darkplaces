@@ -768,7 +768,7 @@ static qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t
 	map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
 				       font->glyphSize * FONT_CHARS_PER_LINE,
 				       font->glyphSize * FONT_CHAR_LINES,
-				       data, TEXTYPE_RGBA, TEXF_ALPHA | TEXF_ALWAYSPRECACHE | TEXF_MIPMAP, NULL);
+				       data, TEXTYPE_RGBA, TEXF_ALPHA | TEXF_ALWAYSPRECACHE/* | TEXF_MIPMAP*/, NULL);
 	Mem_Free(data);
 	if (!map->texture)
 	{
