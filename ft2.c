@@ -196,7 +196,7 @@ static void font_start(void)
 		return;
 	}
 
-	if (!Font_LoadFont("gfx/test", 16, &test_font))
+	if (!Font_LoadFont("gfx/test", 8, &test_font))
 	{
 		Con_Print("ERROR: Failed to load test font!\n");
 		Font_CloseLibrary();
@@ -567,6 +567,8 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		FT_Bitmap *bmp;
 		unsigned char *imagedata, *dst, *src;
 		glyph_slot_t *mapglyph;
+		
+		fprintf(stderr, "------------- GLYPH INFO -----------------\n");
 
 		++gC;
 		if (gC >= FONT_CHARS_PER_LINE)
@@ -601,6 +603,24 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		if (w > font->glyphSize || h > font->glyphSize)
 			Con_Printf("WARNING: Glyph %lu is too big in font %s\n", ch, font->name);
 
+		switch (bmp->pixel_mode)
+		{
+		case FT_PIXEL_MODE_MONO:
+			fprintf(stderr, "  Pixel Mode: MONO\n");
+			break;
+		case FT_PIXEL_MODE_GRAY2:
+			fprintf(stderr, "  Pixel Mode: GRAY2\n");
+			break;
+		case FT_PIXEL_MODE_GRAY4:
+			fprintf(stderr, "  Pixel Mode: GRAY4\n");
+			break;
+		case FT_PIXEL_MODE_GRAY:
+			fprintf(stderr, "  Pixel Mode: GRAY\n");
+			break;
+		default:
+			fprintf(stderr, "  Pixel Mode: Unknown: %i\n", bmp->pixel_mode);
+			break;
+		}
 		for (y = 0; y < h; ++y)
 		{
 			dst = imagedata + y * pitch;
@@ -640,9 +660,12 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 					*dst++ = ( ((ch & 0x0F) ) * 0x24);
 				}
 				break;
-			default:
+			case FT_PIXEL_MODE_GRAY:
+				// in this case pitch should equal width
 				memcpy((void*)dst, (void*)src, bmp->pitch);
-				dst += bmp->pitch;
+				//dst += bmp->pitch;
+				break;
+			default:
 				break;
 			}
 		}
@@ -668,10 +691,10 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 			mapglyph->txmax = mapglyph->txmin + (double)bmp->width / ( (double)(font->glyphSize * FONT_CHARS_PER_LINE) );
 			mapglyph->tymin = ( (double)(gR * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHAR_LINES) );
 			mapglyph->tymax = mapglyph->tymin + (double)bmp->rows / ( (double)(font->glyphSize * FONT_CHAR_LINES) );
-			mapglyph->advance_x = advance * font->size;
+			//mapglyph->advance_x = advance * font->size;
+			mapglyph->advance_x = advance;
 			mapglyph->advance_y = 0;
 
-			fprintf(stderr, "------------- GLYPH INFO -----------------\n");
 			fprintf(stderr, "  Glyph: %lu   at (%i, %i)\n", (unsigned long)ch, gC, gR);
 			if (ch >= 32 && ch <= 128)
 				fprintf(stderr, "  Character: %c\n", (int)ch);
@@ -717,7 +740,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 	map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
 				       font->glyphSize * FONT_CHARS_PER_LINE,
 				       font->glyphSize * FONT_CHAR_LINES,
-				       data, TEXTYPE_RGBA, TEXF_ALPHA | TEXF_PRECACHE, NULL);
+				       data, TEXTYPE_ALPHA, TEXF_ALPHA | TEXF_PRECACHE, NULL);
 	Mem_Free(data);
 	if (!map->texture)
 	{
@@ -803,6 +826,7 @@ static void Font_GetTextColor(float color[4], int colorindex, float r, float g, 
 
 float Font_DrawString_Font(float startx, float starty,
 		      const char *text, size_t maxlen,
+		      float w, float h,
 		      float basered, float basegreen, float baseblue, float basealpha,
 		      int flags, int *outcolor, qboolean ignorecolorcodes,
 		      font_t *fnt)
@@ -819,11 +843,6 @@ float Font_DrawString_Font(float startx, float starty,
 	size_t i;
 	const char *text_start = text;
 	int tempcolorindex;
-
-	int w, h;
-
-	w = fnt->size;
-	h = fnt->size;
 
 	if (maxlen < 1)
 		maxlen = 1<<30;
@@ -947,6 +966,7 @@ float Font_DrawString_Font(float startx, float starty,
 			}
 
 			R_Mesh_TexBind(0, R_GetTexture(map->texture));
+			R_SetupGenericShader(true);
 
 			thisw = map->glyphs[ch].advance_x;
 
@@ -991,10 +1011,12 @@ float Font_DrawString_Font(float startx, float starty,
 
 float Font_DrawString(float startx, float starty,
 		      const char *text, size_t maxlen,
+		      float width, float height,
 		      float basered, float basegreen, float baseblue, float basealpha,
 		      int flags, int *outcolor, qboolean ignorecolorcodes)
 {
 	return Font_DrawString_Font(startx, starty, text, maxlen,
+				    width, height,
 				    basered, basegreen, baseblue, basealpha,
 				    flags, outcolor, ignorecolorcodes,
 				    &test_font);
