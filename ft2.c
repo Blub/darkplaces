@@ -196,7 +196,7 @@ static void font_start(void)
 		return;
 	}
 
-	if (!Font_LoadFont("gfx/test", 8, &test_font))
+	if (!Font_LoadFont("gfx/test", 16, &test_font))
 	{
 		Con_Print("ERROR: Failed to load test font!\n");
 		Font_CloseLibrary();
@@ -514,13 +514,16 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 	unsigned char *data;
 	FT_ULong ch, mapch;
 	int status;
+	int tp;
 
 	FT_Face face = font->face;
 
-	int pitch = font->glyphSize * FONT_CHARS_PER_LINE;
+	int pitch;
 	int gR, gC; // glyph position: row and column
 
 	font_map_t *map;
+
+	int bytesPerPixel = 4; // change the conversion loop too if you change this!
 
 	if (outmap)
 		*outmap = NULL;
@@ -532,7 +535,8 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		return false;
 	}
 
-	data = Mem_Alloc(font_mempool, FONT_CHARS_PER_MAP * (font->glyphSize * font->glyphSize));
+	pitch = font->glyphSize * FONT_CHARS_PER_LINE * bytesPerPixel;
+	data = Mem_Alloc(font_mempool, (FONT_CHAR_LINES * font->glyphSize) * pitch);
 	if (!data)
 	{
 		Mem_Free(map);
@@ -540,7 +544,15 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		return false;
 	}
 
-	memset(data, 0, sizeof(data));
+	// initialize as white texture with zero alpha
+	tp = 0;
+	while (tp < (FONT_CHAR_LINES * font->glyphSize) * pitch)
+	{
+		data[tp++] = 0xFF;
+		data[tp++] = 0xFF;
+		data[tp++] = 0xFF;
+		data[tp++] = 0x00;
+	}
 
 	map->start = mapidx * FONT_CHARS_PER_MAP;
 	if (!font->font_map)
@@ -567,7 +579,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		FT_Bitmap *bmp;
 		unsigned char *imagedata, *dst, *src;
 		glyph_slot_t *mapglyph;
-		
+
 		fprintf(stderr, "------------- GLYPH INFO -----------------\n");
 
 		++gC;
@@ -577,7 +589,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 			++gR;
 		}
 
-		imagedata = data + gR * pitch + gC * font->glyphSize;
+		imagedata = data + gR * pitch * font->glyphSize + gC * font->glyphSize * bytesPerPixel;
 		glyphIndex = qFT_Get_Char_Index(face, ch);
 
 		status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_DEFAULT);
@@ -632,37 +644,43 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 				for (x = 0; x < bmp->width; x += 8)
 				{
 					unsigned char ch = *src++;
-					*dst++ = 255 * ((ch & 0x80) >> 7);
-					*dst++ = 255 * ((ch & 0x40) >> 6);
-					*dst++ = 255 * ((ch & 0x20) >> 5);
-					*dst++ = 255 * ((ch & 0x10) >> 4);
-					*dst++ = 255 * ((ch & 0x08) >> 3);
-					*dst++ = 255 * ((ch & 0x04) >> 2);
-					*dst++ = 255 * ((ch & 0x02) >> 1);
-					*dst++ = 255 * ((ch & 0x01) >> 0);
+					dst += 3; // shift to alpha byte
+					*dst = 255 * ((ch & 0x80) >> 7); dst += 4;
+					*dst = 255 * ((ch & 0x40) >> 6); dst += 4;
+					*dst = 255 * ((ch & 0x20) >> 5); dst += 4;
+					*dst = 255 * ((ch & 0x10) >> 4); dst += 4;
+					*dst = 255 * ((ch & 0x08) >> 3); dst += 4;
+					*dst = 255 * ((ch & 0x04) >> 2); dst += 4;
+					*dst = 255 * ((ch & 0x02) >> 1); dst += 4;
+					*dst = 255 * ((ch & 0x01) >> 0); dst++; // compensate the first += 3
 				}
 				break;
 			case FT_PIXEL_MODE_GRAY2:
 				for (x = 0; x < bmp->width; x += 4)
 				{
 					unsigned char ch = *src++;
-					*dst++ = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2;
-					*dst++ = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2;
-					*dst++ = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2;
-					*dst++ = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2;
+					dst += 3; // shift to alpha byte
+					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst += 4;
+					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst += 4;
+					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst += 4;
+					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst++; // compensate the +=3
 				}
 				break;
 			case FT_PIXEL_MODE_GRAY4:
 				for (x = 0; x < bmp->width; x += 2)
 				{
 					unsigned char ch = *src++;
-					*dst++ = ( ((ch & 0xF0) >> 4) * 0x24);
-					*dst++ = ( ((ch & 0x0F) ) * 0x24);
+					dst += 3; // shift to alpha byte
+					*dst = ( ((ch & 0xF0) >> 4) * 0x24); dst += 4;
+					*dst = ( ((ch & 0x0F) ) * 0x24); dst++; // compensate the += 3
 				}
 				break;
 			case FT_PIXEL_MODE_GRAY:
 				// in this case pitch should equal width
-				memcpy((void*)dst, (void*)src, bmp->pitch);
+				for (tp = 0; tp < bmp->pitch; ++tp)
+					dst[3 + tp*4] = src[tp]; // copy the grey value into the alpha bytes
+
+				//memcpy((void*)dst, (void*)src, bmp->pitch);
 				//dst += bmp->pitch;
 				break;
 			default:
@@ -727,7 +745,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		g->verts[2].y *= sizeY;
 		g->verts[3].y *= sizeY;
 		g->advance *= sizeX;
-		
+
 		// xmin is the left start of the character within the texture
 		// TODO: support vertical fonts maybe?
 		mapglyph->advance_x = (double)glyph->metrics.horiAdvance * (1.0/64.0) / (double)font->size;
@@ -736,11 +754,16 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 	}
 
 	// create a texture from the data now
-	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u", font->name, (unsigned)map->start);
+	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u.rgba", font->name, (unsigned)map->start);
+	{
+		FILE *f = fopen(map_identifier, "wb");
+		fwrite(data, pitch * FONT_CHAR_LINES * font->glyphSize, 1, f);
+		fclose(f);
+	}
 	map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
 				       font->glyphSize * FONT_CHARS_PER_LINE,
 				       font->glyphSize * FONT_CHAR_LINES,
-				       data, TEXTYPE_ALPHA, TEXF_ALPHA | TEXF_PRECACHE, NULL);
+				       data, TEXTYPE_RGBA, TEXF_ALPHA | TEXF_PRECACHE, NULL);
 	Mem_Free(data);
 	if (!map->texture)
 	{
@@ -859,6 +882,12 @@ float Font_DrawString_Font(float startx, float starty,
 	at = texcoord2f;
 	av = vertex3f;
 	batchcount = 0;
+
+	// We render onto the baseline, so move down by the intended height.
+	// Otherwise the text appears too high since the top edge would be the base line.
+	starty += (double)h * (5.0/6.0); // don't use the complete height
+	// with sane fonts it should be possible to use the font's `ascent` value
+	// but then again, is it safe?
 
 	for (shadow = r_textshadow.value != 0 && basealpha > 0;shadow >= 0;shadow--)
 	{

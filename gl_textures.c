@@ -59,8 +59,8 @@ static textypeinfo_t textype_bgra                   = {TEXTYPE_BGRA   , 4, 4, 4.
 static textypeinfo_t textype_bgra_alpha             = {TEXTYPE_BGRA   , 4, 4, 4.0f, GL_BGRA   , 4};
 static textypeinfo_t textype_bgra_compress          = {TEXTYPE_BGRA   , 4, 4, 0.5f, GL_BGRA   , GL_COMPRESSED_RGB_ARB};
 static textypeinfo_t textype_bgra_alpha_compress    = {TEXTYPE_BGRA   , 4, 4, 1.0f, GL_BGRA   , GL_COMPRESSED_RGBA_ARB};
-static textypeinfo_t textype_alpha                  = {TEXTYPE_RGBA   , 1, 4, 4.0f, GL_ALPHA  , 4};
-static textypeinfo_t textype_alpha_compress         = {TEXTYPE_RGBA   , 1, 4, 1.0f, GL_ALPHA  , GL_COMPRESSED_RGBA_ARB};
+static textypeinfo_t textype_alpha                  = {TEXTYPE_ALPHA  , 1, 4, 4.0f, GL_ALPHA  , 4};
+static textypeinfo_t textype_alpha_compress         = {TEXTYPE_ALPHA  , 1, 4, 1.0f, GL_ALPHA  , GL_COMPRESSED_RGBA_ARB};
 
 #define GLTEXTURETYPE_1D 0
 #define GLTEXTURETYPE_2D 1
@@ -1036,6 +1036,7 @@ static rtexture_t *R_SetupTexture(rtexturepool_t *rtexturepool, const char *iden
 		}
 		break;
 	case TEXTYPE_ALPHA:
+		flags |= TEXF_ALPHA;
 		break;
 	default:
 		Host_Error("R_LoadTexture: unknown texture type");
