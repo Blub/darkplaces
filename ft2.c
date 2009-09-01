@@ -445,6 +445,12 @@ Implementation of a more or less lazy font loading and rendering code.
 #include "ft2_fontdefs.h"
 
 static qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap);
+
+ft2_font_t *Font_Alloc(void)
+{
+	return Mem_Alloc(font_mempool, sizeof(ft2_font_t));
+}
+
 qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 {
 	size_t namelen;

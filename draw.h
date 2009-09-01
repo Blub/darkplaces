@@ -90,6 +90,8 @@ typedef struct dp_font_s
 	float scale; // scales the font (without changing line height!)
 	char texpath[MAX_QPATH];
 	char title[MAX_QPATH];
+
+	struct ft2_font_s *ft2;
 }
 dp_font_t;
 

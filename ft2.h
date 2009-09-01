@@ -38,7 +38,7 @@ size_t u8_wcstombs(char*, const Uchar*, size_t);
 
 typedef struct ft2_font_map_s ft2_font_map_t;
 
-typedef struct
+typedef struct ft2_font_s
 {
 	char           name[64];
 	int            size;
@@ -57,6 +57,7 @@ typedef struct
 void Font_CloseLibrary(void);
 void Font_Init(void);
 qboolean Font_OpenLibrary(void);
+ft2_font_t* Font_Alloc(void);
 qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font);
 float Font_DrawString_Font(
 	float startx, float starty,
