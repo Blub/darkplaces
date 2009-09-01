@@ -916,6 +916,8 @@ float Font_DrawString_Font(float startx, float starty,
 	size_t i;
 	const char *text_start = text;
 	int tempcolorindex;
+	font_map_t *prevmap = NULL;
+	font_map_t *map;
 
 	if (maxlen < 1)
 		maxlen = 1<<30;
@@ -958,7 +960,6 @@ float Font_DrawString_Font(float startx, float starty,
 		}
 		for (i = 0;i < maxlen && *text;i++)
 		{
-			font_map_t *map;
 			if (*text == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < maxlen)
 			{
 				const char *before;
@@ -1044,6 +1045,18 @@ float Font_DrawString_Font(float startx, float starty,
 				}
 			}
 
+			if (map != prevmap && batchcount)
+			{
+				// we need a different character map, render what we currently have:
+				GL_LockArrays(0, batchcount * 4);
+				R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+				GL_LockArrays(0, 0);
+				batchcount = 0;
+				ac = color4f;
+				at = texcoord2f;
+				av = vertex3f;
+			}
+
 			// TODO: don't call Mesh_Draw all the time
 			// call it when the texture changes or the batchcount hits the limit
 
@@ -1067,12 +1080,36 @@ float Font_DrawString_Font(float startx, float starty,
 			av[ 3] = x + w * PIXEL_X(map->glyphs[mapch].vxmax); av[ 4] = y + h * PIXEL_Y(map->glyphs[mapch].vymin); av[ 5] = 10;
 			av[ 6] = x + w * PIXEL_X(map->glyphs[mapch].vxmax); av[ 7] = y + h * PIXEL_Y(map->glyphs[mapch].vymax); av[ 8] = 10;
 			av[ 9] = x + w * PIXEL_X(map->glyphs[mapch].vxmin); av[10] = y + h * PIXEL_Y(map->glyphs[mapch].vymax); av[11] = 10;
-			
+
+			x += PIXEL_X(thisw * w);
+			ac += 16;
+			at += 8;
+			av += 12;
+			batchcount++;
+			if (batchcount >= QUADELEMENTS_MAXQUADS)
+			{
+				GL_LockArrays(0, batchcount * 4);
+				R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+				GL_LockArrays(0, 0);
+				batchcount = 0;
+				ac = color4f;
+				at = texcoord2f;
+				av = vertex3f;
+			}
+			/*
 			GL_LockArrays(0, 4);
 			R_Mesh_Draw(0, 4, 0, 2, NULL, quadelements, 0, 0);
 			GL_LockArrays(0, 0);
-			x += PIXEL_X(thisw * w);
+			*/
+
+			prevmap = map;
 		}
+	}
+	if (batchcount > 0)
+	{
+		GL_LockArrays(0, batchcount * 4);
+		R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+		GL_LockArrays(0, 0);
 	}
 
 	if (outcolor)
