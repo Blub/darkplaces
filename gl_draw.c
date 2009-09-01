@@ -1334,9 +1334,22 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 					R_SetupGenericShader(true);
 				}
 
+				/*
+				if (developer.integer && ch > 255)
+				{
+					char buf[16];
+					if (u8_fromchar(ch, buf, sizeof(buf)) > 0)
+					{
+						fprintf(stderr, "char %x: %s\n", (int)ch, buf);
+					}
+				}
+				*/
+
 				mapch = ch - map->start;
 				thisw = map->glyphs[mapch].advance_x;
 
+				x += ftbase_x;
+				y += ftbase_y;
 				ac[ 0] = color[0]; ac[ 1] = color[1]; ac[ 2] = color[2]; ac[ 3] = color[3];
 				ac[ 4] = color[0]; ac[ 5] = color[1]; ac[ 6] = color[2]; ac[ 7] = color[3];
 				ac[ 8] = color[0]; ac[ 9] = color[1]; ac[10] = color[2]; ac[11] = color[3];
@@ -1351,6 +1364,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				av[ 3] = x + w * PIXEL_X(map->glyphs[mapch].vxmax); av[ 4] = y + h * PIXEL_Y(map->glyphs[mapch].vymin); av[ 5] = 10;
 				av[ 6] = x + w * PIXEL_X(map->glyphs[mapch].vxmax); av[ 7] = y + h * PIXEL_Y(map->glyphs[mapch].vymax); av[ 8] = 10;
 				av[ 9] = x + w * PIXEL_X(map->glyphs[mapch].vxmin); av[10] = y + h * PIXEL_Y(map->glyphs[mapch].vymax); av[11] = 10;
+				x -= ftbase_x;
+				y -= ftbase_y;
 
 				x += PIXEL_X(thisw * w);
 				ac += 16;
