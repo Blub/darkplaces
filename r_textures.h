@@ -33,6 +33,8 @@ typedef enum textype_e
 	TEXTYPE_RGBA,
 	// 32bit BGRA (preferred format due to faster uploads on most hardware)
 	TEXTYPE_BGRA,
+	// 8bit ALPHA (used for freetype fonts)
+	TEXTYPE_ALPHA,
 }
 textype_t;
 
