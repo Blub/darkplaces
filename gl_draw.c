@@ -625,7 +625,7 @@ static void LoadFont(qboolean override, const char *name, dp_font_t *fnt, int si
 	fnt->ft2 = Font_Alloc();
 	if(fnt->ft2)
 	{
-		if(!Font_LoadFont(name, size, fnt->ft2))
+		if(!Font_LoadFont(fnt->texpath, size, fnt->ft2))
 		{
 			Mem_Free(fnt->ft2);
 			fnt->ft2 = NULL;
@@ -772,7 +772,7 @@ static void gl_draw_start(void)
 static void gl_draw_shutdown(void)
 {
 	font_shutdown();
-	
+
 	R_FreeTexturePool(&drawtexturepool);
 
 	numcachepics = 0;
@@ -1334,7 +1334,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 						break;
 					}
 				}
-				
+
 				mapch = ch - map->start;
 				thisw = map->glyphs[mapch].advance_x;
 
