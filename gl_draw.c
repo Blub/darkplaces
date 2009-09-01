@@ -624,7 +624,13 @@ static void LoadFont(qboolean override, const char *name, dp_font_t *fnt, int si
 
 	fnt->ft2 = Font_Alloc();
 	if (fnt->ft2)
-		Font_LoadFont(name, size, fnt->ft2);
+	{
+		if (!Font_LoadFont(name, size, fnt->ft2))
+		{
+			Mem_Free(fnt->ft2);
+			fnt->ft2 = NULL;
+		}
+	}
 
 	fnt->tex = Draw_CachePic_Flags(fnt->texpath, CACHEPICFLAG_QUIET | CACHEPICFLAG_NOCOMPRESSION)->tex;
 	if(fnt->tex == r_texture_notexture)
