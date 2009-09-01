@@ -1104,8 +1104,13 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	float vertex3f[QUADELEMENTS_MAXQUADS*4*3];
 	float texcoord2f[QUADELEMENTS_MAXQUADS*4*2];
 	float color4f[QUADELEMENTS_MAXQUADS*4*4];
-	int ch;
+	//int ch;
+	Uchar ch, mapch;
 	int tempcolorindex;
+	ft2_font_map_t *prevmap = NULL;
+	ft2_font_map_t *map = NULL;
+	float ftbase_x, ftbase_y;
+	const char *text_start = text;
 
 	int tw, th;
 	tw = R_TextureWidth(fnt->tex);
@@ -1115,6 +1120,10 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	w *= fnt->scale;
 	h *= fnt->scale;
 
+	// draw the font at its baseline when using freetype
+	ftbase_x = 0;
+	ftbase_y = h * (5.0/6.0);
+
 	if (maxlen < 1)
 		maxlen = 1<<30;
 
@@ -1122,7 +1131,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	R_Mesh_ColorPointer(color4f, 0, 0);
 	R_Mesh_ResetTextureState();
-	R_Mesh_TexBind(0, R_GetTexture(fnt->tex));
+	if (!fnt->ft2)
+		R_Mesh_TexBind(0, R_GetTexture(fnt->tex));
 	R_Mesh_TexCoordPointer(0, 2, texcoord2f, 0, 0);
 	R_Mesh_VertexPointer(vertex3f, 0, 0);
 	R_SetupGenericShader(true);
@@ -1134,6 +1144,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	for (shadow = r_textshadow.value != 0 && basealpha > 0;shadow >= 0;shadow--)
 	{
+		text = text_start;
+
 		if (!outcolor || *outcolor == -1)
 			colorindex = STRING_COLOR_DEFAULT;
 		else
@@ -1148,16 +1160,20 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			x += r_textshadow.value;
 			y += r_textshadow.value;
 		}
-		for (i = 0;i < maxlen && text[i];i++)
+		for (i = 0;i < maxlen && *text;)
 		{
-			if (text[i] == ' ')
+			if (*text == ' ' && !fnt->ft2)
 			{
 				x += fnt->width_of[(int) ' '] * w;
+				++text;
+				++i;
 				continue;
 			}
-			if (text[i] == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < maxlen)
+			if (*text == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < maxlen)
 			{
-				ch = text[++i];
+				++text;
+				ch = *text;
+				++i;
 				if (ch <= '9' && ch >= '0') // ^[0-9] found
 				{
 					colorindex = ch - '0';
@@ -1167,20 +1183,20 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				else if (ch == STRING_COLOR_RGB_TAG_CHAR && i+3 < maxlen ) // ^x found
 				{
 					// building colorindex...
-					ch = tolower(text[i+1]);
+					ch = tolower(text[1]);
 					tempcolorindex = 0x10000; // binary: 1,0000,0000,0000,0000
 					if (ch <= '9' && ch >= '0') tempcolorindex |= (ch - '0') << 12;
 					else if (ch >= 'a' && ch <= 'f') tempcolorindex |= (ch - 87) << 12;
 					else tempcolorindex = 0;
 					if (tempcolorindex)
 					{
-						ch = tolower(text[i+2]);
+						ch = tolower(text[2]);
 						if (ch <= '9' && ch >= '0') tempcolorindex |= (ch - '0') << 8;
 						else if (ch >= 'a' && ch <= 'f') tempcolorindex |= (ch - 87) << 8;
 						else tempcolorindex = 0;
 						if (tempcolorindex)
 						{
-							ch = tolower(text[i+3]);
+							ch = tolower(text[3]);
 							if (ch <= '9' && ch >= '0') tempcolorindex |= (ch - '0') << 4;
 							else if (ch >= 'a' && ch <= 'f') tempcolorindex |= (ch - 87) << 4;
 							else tempcolorindex = 0;
@@ -1191,51 +1207,163 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 								//Con_Printf("^1colorindex:^7 %x\n", colorindex);
 								DrawQ_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
 								i+=3;
+								text+=3;
 								continue;
 							}
 						}
 					}
 				}
 				else if (ch == STRING_COLOR_TAG)
+				{
 					i++;
+					text++;
+				}
 				i--;
+				text--;
 			}
-			num = (unsigned char) text[i];
-			thisw = fnt->width_of[num];
-			// FIXME make these smaller to just include the occupied part of the character for slightly faster rendering
-			s = (num & 15)*0.0625f + (0.5f / tw);
-			t = (num >> 4)*0.0625f + (0.5f / th);
-			u = 0.0625f * thisw - (1.0f / tw);
-			v = 0.0625f - (1.0f / th);
-			ac[ 0] = color[0];ac[ 1] = color[1];ac[ 2] = color[2];ac[ 3] = color[3];
-			ac[ 4] = color[0];ac[ 5] = color[1];ac[ 6] = color[2];ac[ 7] = color[3];
-			ac[ 8] = color[0];ac[ 9] = color[1];ac[10] = color[2];ac[11] = color[3];
-			ac[12] = color[0];ac[13] = color[1];ac[14] = color[2];ac[15] = color[3];
-			at[ 0] = s		; at[ 1] = t	;
-			at[ 2] = s+u	; at[ 3] = t	;
-			at[ 4] = s+u	; at[ 5] = t+v	;
-			at[ 6] = s		; at[ 7] = t+v	;
-			av[ 0] = x			; av[ 1] = y	; av[ 2] = 10;
-			av[ 3] = x+w*thisw	; av[ 4] = y	; av[ 5] = 10;
-			av[ 6] = x+w*thisw	; av[ 7] = y+h	; av[ 8] = 10;
-			av[ 9] = x			; av[10] = y+h	; av[11] = 10;
-			ac += 16;
-			at += 8;
-			av += 12;
-			batchcount++;
-			if (batchcount >= QUADELEMENTS_MAXQUADS)
+			ch = u8_getchar(text, &text);
+			i = text - text_start;
+#define oldstyle_map ((ft2_font_map_t*)-1)
+			// E000..E0FF: emulate old-font characters (to still have smileys and such available)
+			if (!fnt->ft2 || (ch >= 0xE000 && ch <= 0xE0FF))
 			{
-				GL_LockArrays(0, batchcount * 4);
-				R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
-				GL_LockArrays(0, 0);
-				batchcount = 0;
-				ac = color4f;
-				at = texcoord2f;
-				av = vertex3f;
+				if (ch > 0xE000)
+					ch -= 0xE000;
+				if (ch > 0xFF)
+					continue;
+				if (fnt->ft2)
+				{
+					if (batchcount)
+					{
+						// switching from freetype to non-freetype rendering
+						GL_LockArrays(0, batchcount * 4);
+						R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+						GL_LockArrays(0, 0);
+						batchcount = 0;
+						ac = color4f;
+						at = texcoord2f;
+						av = vertex3f;
+					}
+					if (map != oldstyle_map)
+					{
+						R_Mesh_TexBind(0, R_GetTexture(fnt->tex));
+						R_SetupGenericShader(true);
+						map = oldstyle_map;
+					}
+				}
+				//num = (unsigned char) text[i];
+				//thisw = fnt->width_of[num];
+				thisw = fnt->width_of[ch];
+				// FIXME make these smaller to just include the occupied part of the character for slightly faster rendering
+				s = (num & 15)*0.0625f + (0.5f / tw);
+				t = (num >> 4)*0.0625f + (0.5f / th);
+				u = 0.0625f * thisw - (1.0f / tw);
+				v = 0.0625f - (1.0f / th);
+				ac[ 0] = color[0];ac[ 1] = color[1];ac[ 2] = color[2];ac[ 3] = color[3];
+				ac[ 4] = color[0];ac[ 5] = color[1];ac[ 6] = color[2];ac[ 7] = color[3];
+				ac[ 8] = color[0];ac[ 9] = color[1];ac[10] = color[2];ac[11] = color[3];
+				ac[12] = color[0];ac[13] = color[1];ac[14] = color[2];ac[15] = color[3];
+				at[ 0] = s		; at[ 1] = t	;
+				at[ 2] = s+u	; at[ 3] = t	;
+				at[ 4] = s+u	; at[ 5] = t+v	;
+				at[ 6] = s		; at[ 7] = t+v	;
+				av[ 0] = x			; av[ 1] = y	; av[ 2] = 10;
+				av[ 3] = x+w*thisw	; av[ 4] = y	; av[ 5] = 10;
+				av[ 6] = x+w*thisw	; av[ 7] = y+h	; av[ 8] = 10;
+				av[ 9] = x			; av[10] = y+h	; av[11] = 10;
+				ac += 16;
+				at += 8;
+				av += 12;
+				batchcount++;
+				if (batchcount >= QUADELEMENTS_MAXQUADS)
+				{
+					GL_LockArrays(0, batchcount * 4);
+					R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+					GL_LockArrays(0, 0);
+					batchcount = 0;
+					ac = color4f;
+					at = texcoord2f;
+					av = vertex3f;
+				}
+				x += thisw * w;
+			} else {
+				if (prevmap != map)
+				{
+					if (batchcount)
+					{
+						// we need a different character map, render what we currently have:
+						GL_LockArrays(0, batchcount * 4);
+						R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+						GL_LockArrays(0, 0);
+						batchcount = 0;
+						ac = color4f;
+						at = texcoord2f;
+						av = vertex3f;
+					}
+					R_Mesh_TexBind(0, R_GetTexture(map->texture));
+					R_SetupGenericShader(true);
+				}
+
+
+				map = fnt->ft2->font_map;
+				while(map && map->start + FONT_CHARS_PER_MAP < ch)
+					map = map->next;
+				if (!map)
+				{
+					if (!Font_LoadMapForIndex(fnt->ft2, ch, &map))
+					{
+						shadow = -1;
+						break;
+					}
+					if (!map)
+					{
+						// this shouldn't happen
+						shadow = -1;
+						break;
+					}
+				}
+				
+				mapch = ch - map->start;
+				thisw = map->glyphs[mapch].advance_x;
+
+				ac[ 0] = color[0]; ac[ 1] = color[1]; ac[ 2] = color[2]; ac[ 3] = color[3];
+				ac[ 4] = color[0]; ac[ 5] = color[1]; ac[ 6] = color[2]; ac[ 7] = color[3];
+				ac[ 8] = color[0]; ac[ 9] = color[1]; ac[10] = color[2]; ac[11] = color[3];
+				ac[12] = color[0]; ac[13] = color[1]; ac[14] = color[2]; ac[15] = color[3];
+				at[0] = map->glyphs[mapch].txmin; at[1] = map->glyphs[mapch].tymin;
+				at[2] = map->glyphs[mapch].txmax; at[3] = map->glyphs[mapch].tymin;
+				at[4] = map->glyphs[mapch].txmax; at[5] = map->glyphs[mapch].tymax;
+				at[6] = map->glyphs[mapch].txmin; at[7] = map->glyphs[mapch].tymax;
+#define PIXEL_X(x) ( (x)/vid_conwidth.value * vid.width )
+#define PIXEL_Y(x) ( (x)/vid_conheight.value * vid.height )
+				av[ 0] = x + w * PIXEL_X(map->glyphs[mapch].vxmin); av[ 1] = y + h * PIXEL_Y(map->glyphs[mapch].vymin); av[ 2] = 10;
+				av[ 3] = x + w * PIXEL_X(map->glyphs[mapch].vxmax); av[ 4] = y + h * PIXEL_Y(map->glyphs[mapch].vymin); av[ 5] = 10;
+				av[ 6] = x + w * PIXEL_X(map->glyphs[mapch].vxmax); av[ 7] = y + h * PIXEL_Y(map->glyphs[mapch].vymax); av[ 8] = 10;
+				av[ 9] = x + w * PIXEL_X(map->glyphs[mapch].vxmin); av[10] = y + h * PIXEL_Y(map->glyphs[mapch].vymax); av[11] = 10;
+
+				x += PIXEL_X(thisw * w);
+				ac += 16;
+				at += 8;
+				av += 12;
+				batchcount++;
+				if (batchcount >= QUADELEMENTS_MAXQUADS)
+				{
+					GL_LockArrays(0, batchcount * 4);
+					R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+					GL_LockArrays(0, 0);
+					batchcount = 0;
+					ac = color4f;
+					at = texcoord2f;
+					av = vertex3f;
+				}
+
+				prevmap = map;
 			}
-			x += thisw * w;
 		}
 	}
+#undef PIXEL_X
+#undef PIXEL_Y
+#undef oldstyle_map
 	if (batchcount > 0)
 	{
 		GL_LockArrays(0, batchcount * 4);

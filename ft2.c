@@ -444,8 +444,6 @@ Implementation of a more or less lazy font loading and rendering code.
 
 #include "ft2_fontdefs.h"
 
-static qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap);
-
 ft2_font_t *Font_Alloc(void)
 {
 	return Mem_Alloc(font_mempool, sizeof(ft2_font_t));
@@ -531,7 +529,7 @@ void Font_UnloadFont(ft2_font_t *font)
 	}
 }
 
-static qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap)
+qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap)
 {
 	char map_identifier[PATH_MAX];
 	unsigned long mapidx = _ch / FONT_CHARS_PER_MAP;
@@ -788,6 +786,8 @@ static qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t
 		*outmap = map;
 	return true;
 }
+
+#if 0
 
 extern void _DrawQ_Setup(void);
 
@@ -1092,4 +1092,4 @@ float Font_DrawString(float startx, float starty,
 				    flags, outcolor, ignorecolorcodes,
 				    &test_font);
 }
-
+#endif

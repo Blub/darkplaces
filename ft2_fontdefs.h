@@ -32,4 +32,6 @@ struct ft2_font_map_s
 	glyph_slot_t glyphs[FONT_CHARS_PER_MAP];
 };
 
+qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap);
+
 #endif // FT2_PRIVATE_H__

@@ -58,6 +58,7 @@ void Font_CloseLibrary(void);
 void Font_Init(void);
 qboolean Font_OpenLibrary(void);
 ft2_font_t* Font_Alloc(void);
+void Font_UnloadFont(ft2_font_t *font);
 qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font);
 float Font_DrawString_Font(
 	float startx, float starty,
