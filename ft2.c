@@ -1015,7 +1015,7 @@ float Font_DrawString_Font(float startx, float starty,
 			at[0] = map->glyphs[mapch].txmin; at[1] = map->glyphs[mapch].tymin;
 			at[2] = map->glyphs[mapch].txmax; at[3] = map->glyphs[mapch].tymin;
 			at[4] = map->glyphs[mapch].txmax; at[5] = map->glyphs[mapch].tymax;
-			at[7] = map->glyphs[mapch].txmin; at[7] = map->glyphs[mapch].tymax;
+			at[6] = map->glyphs[mapch].txmin; at[7] = map->glyphs[mapch].tymax;
 
 			av[ 0] = x + w*map->glyphs[mapch].vxmin; av[ 1] = y + h*map->glyphs[mapch].vymin; av[ 2] = 10;
 			av[ 3] = x + w*map->glyphs[mapch].vxmax; av[ 4] = y + h*map->glyphs[mapch].vymin; av[ 5] = 10;
