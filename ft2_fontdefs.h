@@ -34,4 +34,8 @@ struct ft2_font_map_s
 
 qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap);
 
+void font_start(void);
+void font_shutdown(void);
+void font_newmap(void);
+
 #endif // FT2_PRIVATE_H__

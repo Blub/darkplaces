@@ -754,6 +754,8 @@ static void gl_draw_start(void)
 	numcachepics = 0;
 	memset(cachepichash, 0, sizeof(cachepichash));
 
+	font_start();
+
 	for(i = 0; i < MAX_FONTS; ++i)
 		LoadFont(false, va("gfx/font_%s", dp_fonts[i].title), &dp_fonts[i], 16);
 
@@ -763,6 +765,8 @@ static void gl_draw_start(void)
 
 static void gl_draw_shutdown(void)
 {
+	font_shutdown();
+	
 	R_FreeTexturePool(&drawtexturepool);
 
 	numcachepics = 0;
@@ -771,6 +775,7 @@ static void gl_draw_shutdown(void)
 
 static void gl_draw_newmap(void)
 {
+	font_newmap();
 }
 
 void GL_Draw_Init (void)

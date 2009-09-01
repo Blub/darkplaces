@@ -168,7 +168,7 @@ Initialize the freetype2 font subsystem
 
 static ft2_font_t test_font;
 
-static void font_start(void)
+void font_start(void)
 {
 	if (!Font_OpenLibrary())
 		return;
@@ -204,18 +204,19 @@ static void font_start(void)
 	}
 }
 
-static void font_shutdown(void)
+void font_shutdown(void)
 {
 	Font_CloseLibrary();
 }
 
-static void font_newmap(void)
+void font_newmap(void)
 {
 }
 
 void Font_Init(void)
 {
-	R_RegisterModule("Font_FreeType2", font_start, font_shutdown, font_newmap);
+	// dummy this for now
+	// R_RegisterModule("Font_FreeType2", font_start, font_shutdown, font_newmap);
 }
 
 /*
