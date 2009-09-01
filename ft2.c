@@ -546,7 +546,7 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 
 qboolean Font_GetKerning(ft2_font_t *font, Uchar left, Uchar right, float *outx, float *outy)
 {
-	if (font->has_kerning)
+	if (!font->has_kerning)
 		return false;
 	if (left < 256 && right < 256)
 	{
