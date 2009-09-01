@@ -10,8 +10,6 @@
 #include "libcurl.h"
 #include <time.h>
 
-#include "ft2.h"
-
 extern cvar_t prvm_backtraceforwarnings;
 
 // LordHavoc: changed this to NOT use a return statement, so that it can be used in functions that must return a value
@@ -3074,8 +3072,8 @@ void VM_drawstring(void)
 	if(pos[2] || scale[2])
 		Con_Printf("VM_drawstring: z value%s from %s discarded\n",(pos[2] && scale[2]) ? "s" : " ",((pos[2] && scale[2]) ? "pos and scale" : (pos[2] ? "pos" : "scale")));
 
-	//DrawQ_String_Font(pos[0], pos[1], string, 0, scale[0], scale[1], rgb[0], rgb[1], rgb[2], PRVM_G_FLOAT(OFS_PARM4), flag, NULL, true, getdrawfont());
-	Font_DrawString(pos[0], pos[1], string, 0, scale[0], scale[1], rgb[0], rgb[1], rgb[2], PRVM_G_FLOAT(OFS_PARM4), flag, NULL, true);
+	DrawQ_String_Font(pos[0], pos[1], string, 0, scale[0], scale[1], rgb[0], rgb[1], rgb[2], PRVM_G_FLOAT(OFS_PARM4), flag, NULL, true, getdrawfont());
+	//Font_DrawString(pos[0], pos[1], string, 0, scale[0], scale[1], rgb[0], rgb[1], rgb[2], PRVM_G_FLOAT(OFS_PARM4), flag, NULL, true);
 	PRVM_G_FLOAT(OFS_RETURN) = 1;
 }
 
