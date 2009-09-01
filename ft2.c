@@ -196,7 +196,7 @@ static void font_start(void)
 		return;
 	}
 
-	if (!Font_LoadFont("gfx/test", 16, &test_font))
+	if (!Font_LoadFont("gfx/test", 32, &test_font))
 	{
 		Con_Print("ERROR: Failed to load test font!\n");
 		Font_CloseLibrary();
@@ -397,6 +397,8 @@ Implementation of a more or less lazy font loading and rendering code.
 ================================================================================
 */
 
+// anything should work, but I recommend multiples of 8
+// since the texture size should be a power of 2
 #define FONT_CHARS_PER_LINE 16
 #define FONT_CHAR_LINES 16
 #define FONT_CHARS_PER_MAP (FONT_CHARS_PER_LINE * FONT_CHAR_LINES)
@@ -405,10 +407,10 @@ typedef struct glyph_slot_s
 {
 	// we keep the quad coords here only currently
 	// if you need other info, make Font_LoadMapForIndex fill it into this slot
-	float txmin; // texture coordinate in [0,1]
-	float txmax;
-	float tymin;
-	float tymax;
+	double txmin; // texture coordinate in [0,1]
+	double txmax;
+	double tymin;
+	double tymax;
 	float vxmin;
 	float vxmax;
 	float vymin;
@@ -631,7 +633,8 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 			break;
 		default:
 			fprintf(stderr, "  Pixel Mode: Unknown: %i\n", bmp->pixel_mode);
-			break;
+			Mem_Free(data);
+			return false;
 		}
 		for (y = 0; y < h; ++y)
 		{
@@ -693,11 +696,13 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		mapglyph = &map->glyphs[mapch];
 
 		{
-			double bearingX = glyph->metrics.horiBearingX * (1.0/64.0) / (double)font->size;
-			double bearingY = glyph->metrics.horiBearingY * (1.0/64.0) / (double)font->size;
-			double advance = glyph->metrics.horiAdvance * (1.0/64.0) / (double)font->size;
-			double mWidth = glyph->metrics.width * (1.0/64.0) / (double)font->size;
-			double mHeight = glyph->metrics.height * (1.0/64.0) / (double)font->size;
+			double sfx = (1.0/64.0) / (double)font->size;
+			double sfy = (1.0/64.0) / (double)font->size;
+			double bearingX = (double)glyph->metrics.horiBearingX * sfx;
+			double bearingY = (double)glyph->metrics.horiBearingY * sfy;
+			double advance = (double)glyph->metrics.horiAdvance * sfx;
+			double mWidth = (double)glyph->metrics.width * sfx;
+			double mHeight = (double)glyph->metrics.height * sfy;
 			//double tWidth = bmp->width / (double)font->size;
 			//double tHeight = bmp->rows / (double)font->size;
 
@@ -763,7 +768,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 	map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
 				       font->glyphSize * FONT_CHARS_PER_LINE,
 				       font->glyphSize * FONT_CHAR_LINES,
-				       data, TEXTYPE_RGBA, TEXF_ALPHA | TEXF_PRECACHE, NULL);
+				       data, TEXTYPE_RGBA, TEXF_ALPHA | TEXF_ALWAYSPRECACHE | TEXF_MIPMAP, NULL);
 	Mem_Free(data);
 	if (!map->texture)
 	{
@@ -862,7 +867,7 @@ float Font_DrawString_Font(float startx, float starty,
 	float vertex3f[QUADELEMENTS_MAXQUADS*4*3];
 	float texcoord2f[QUADELEMENTS_MAXQUADS*4*2];
 	float color4f[QUADELEMENTS_MAXQUADS*4*4];
-	Uchar ch;
+	Uchar ch, mapch;
 	size_t i;
 	const char *text_start = text;
 	int tempcolorindex;
@@ -997,21 +1002,22 @@ float Font_DrawString_Font(float startx, float starty,
 			R_Mesh_TexBind(0, R_GetTexture(map->texture));
 			R_SetupGenericShader(true);
 
-			thisw = map->glyphs[ch].advance_x;
+			mapch = ch - map->start;
+			thisw = map->glyphs[mapch].advance_x;
 
 			ac[ 0] = color[0]; ac[ 1] = color[1]; ac[ 2] = color[2]; ac[ 3] = color[3];
 			ac[ 4] = color[0]; ac[ 5] = color[1]; ac[ 6] = color[2]; ac[ 7] = color[3];
 			ac[ 8] = color[0]; ac[ 9] = color[1]; ac[10] = color[2]; ac[11] = color[3];
 			ac[12] = color[0]; ac[13] = color[1]; ac[14] = color[2]; ac[15] = color[3];
-			at[0] = map->glyphs[ch].txmin; at[1] = map->glyphs[ch].tymin;
-			at[2] = map->glyphs[ch].txmax; at[3] = map->glyphs[ch].tymin;
-			at[4] = map->glyphs[ch].txmax; at[5] = map->glyphs[ch].tymax;
-			at[7] = map->glyphs[ch].txmin; at[7] = map->glyphs[ch].tymax;
+			at[0] = map->glyphs[mapch].txmin; at[1] = map->glyphs[mapch].tymin;
+			at[2] = map->glyphs[mapch].txmax; at[3] = map->glyphs[mapch].tymin;
+			at[4] = map->glyphs[mapch].txmax; at[5] = map->glyphs[mapch].tymax;
+			at[7] = map->glyphs[mapch].txmin; at[7] = map->glyphs[mapch].tymax;
 
-			av[ 0] = x + w*map->glyphs[ch].vxmin; av[ 1] = y + h*map->glyphs[ch].vymin; av[ 2] = 10;
-			av[ 3] = x + w*map->glyphs[ch].vxmax; av[ 4] = y + h*map->glyphs[ch].vymin; av[ 5] = 10;
-			av[ 6] = x + w*map->glyphs[ch].vxmax; av[ 7] = y + h*map->glyphs[ch].vymax; av[ 8] = 10;
-			av[ 9] = x + w*map->glyphs[ch].vxmin; av[10] = y + h*map->glyphs[ch].vymax; av[11] = 10;
+			av[ 0] = x + w*map->glyphs[mapch].vxmin; av[ 1] = y + h*map->glyphs[mapch].vymin; av[ 2] = 10;
+			av[ 3] = x + w*map->glyphs[mapch].vxmax; av[ 4] = y + h*map->glyphs[mapch].vymin; av[ 5] = 10;
+			av[ 6] = x + w*map->glyphs[mapch].vxmax; av[ 7] = y + h*map->glyphs[mapch].vymax; av[ 8] = 10;
+			av[ 9] = x + w*map->glyphs[mapch].vxmin; av[10] = y + h*map->glyphs[mapch].vymax; av[11] = 10;
 
 			GL_LockArrays(0, 4);
 			R_Mesh_Draw(0, 4, 0, 2, NULL, quadelements, 0, 0);
