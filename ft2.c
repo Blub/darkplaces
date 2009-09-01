@@ -763,16 +763,19 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 			mapglyph->advance_x = advance;
 			mapglyph->advance_y = 0;
 
-			fprintf(stderr, "  Glyph: %lu   at (%i, %i)\n", (unsigned long)ch, gC, gR);
-			if (ch >= 32 && ch <= 128)
-				fprintf(stderr, "  Character: %c\n", (int)ch);
-			fprintf(stderr, "  Vertex info:\n");
-			fprintf(stderr, "    X: ( %f  --  %f )\n", mapglyph->vxmin, mapglyph->vxmax);
-			fprintf(stderr, "    Y: ( %f  --  %f )\n", mapglyph->vymin, mapglyph->vymax);
-			fprintf(stderr, "  Texture info:\n");
-			fprintf(stderr, "    S: ( %f  --  %f )\n", mapglyph->txmin, mapglyph->txmax);
-			fprintf(stderr, "    T: ( %f  --  %f )\n", mapglyph->tymin, mapglyph->tymax);
-			fprintf(stderr, "  Advance: %f, %f\n", mapglyph->advance_x, mapglyph->advance_y);
+			if (developer)
+			{
+				fprintf(stderr, "  Glyph: %lu   at (%i, %i)\n", (unsigned long)ch, gC, gR);
+				if (ch >= 32 && ch <= 128)
+					fprintf(stderr, "  Character: %c\n", (int)ch);
+				fprintf(stderr, "  Vertex info:\n");
+				fprintf(stderr, "    X: ( %f  --  %f )\n", mapglyph->vxmin, mapglyph->vxmax);
+				fprintf(stderr, "    Y: ( %f  --  %f )\n", mapglyph->vymin, mapglyph->vymax);
+				fprintf(stderr, "  Texture info:\n");
+				fprintf(stderr, "    S: ( %f  --  %f )\n", mapglyph->txmin, mapglyph->txmax);
+				fprintf(stderr, "    T: ( %f  --  %f )\n", mapglyph->tymin, mapglyph->tymax);
+				fprintf(stderr, "  Advance: %f, %f\n", mapglyph->advance_x, mapglyph->advance_y);
+			}
 		}
 	}
 
