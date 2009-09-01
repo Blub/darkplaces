@@ -2507,6 +2507,7 @@ void Render_Init(void)
 	gl_backend_init();
 	R_Textures_Init();
 	GL_Main_Init();
+	Font_Init();
 	GL_Draw_Init();
 	R_Shadow_Init();
 	R_Sky_Init();
@@ -2516,7 +2517,6 @@ void Render_Init(void)
 	R_Explosion_Init();
 	R_LightningBeams_Init();
 	Mod_RenderInit();
-	Font_Init();
 }
 
 /*
