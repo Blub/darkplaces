@@ -1035,6 +1035,8 @@ static rtexture_t *R_SetupTexture(rtexturepool_t *rtexturepool, const char *iden
 			}
 		}
 		break;
+	case TEXTYPE_ALPHA:
+		break;
 	default:
 		Host_Error("R_LoadTexture: unknown texture type");
 	}
