@@ -285,6 +285,23 @@ Uchar u8_getchar(const char *_s, const char **_end)
 		for (++s; *s >= 0x80 && *s < 0xC0; ++s);
 		// or we could return '?' here?
 	}
+	// for a little speedup:
+	if ( (*s & 0xE0) == 0xC0 )
+	{
+		// 2-byte character
+		u = ( (s[0] & 0x1F) << 6 ) | (s[1] & 0x3F);
+		if (_end)
+			*_end = _s + 2;
+		return u;
+	}
+	if ( (*s & 0xF0) == 0xE0 )
+	{
+		// 3-byte character
+		u = ( (s[0] & 0x0F) << 12 ) | ( (s[1] & 0x3F) << 6 ) | (s[2] & 0x3F);
+		if (_end)
+			*_end = _s + 3;
+		return u;
+	}
 
 	u = 0;
 	mask = 0x7F;
@@ -324,6 +341,34 @@ int u8_fromchar(Uchar w, char *to, size_t maxlen)
 		to[1] = 0;
 		return 1;
 	}
+	// for a little speedup
+	if (w < 0x800)
+	{
+		if (maxlen < 3)
+		{
+			to[0] = 0;
+			return -1;
+		}
+		to[2] = 0;
+		to[1] = 0x80 | (w & 0x3F); w >>= 6;
+		to[0] = 0xC0 | w;
+		return 2;
+	}
+	if (w < 0x10000)
+	{
+		if (maxlen < 4)
+		{
+			to[0] = 0;
+			return -1;
+		}
+		to[3] = 0;
+		to[2] = 0x80 | (w & 0x3F); w >>= 6;
+		to[1] = 0x80 | (w & 0x3F); w >>= 6;
+		to[0] = 0xE0 | w;
+		return 3;
+	}
+
+	// "more general" version:
 
 	// check how much space we need and store data into a
 	// temp buffer - this is faster than recalculating again

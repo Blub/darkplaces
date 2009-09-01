@@ -25,6 +25,17 @@ Uchar  u8_getchar(const char*, const char**);
 int    u8_fromchar(Uchar, char*, size_t);
 size_t u8_wcstombs(char*, const Uchar*, size_t);
 
+/* 
+ * From http://www.unicode.org/Public/UNIDATA/Blocks.txt
+ *
+ *   E000..F8FF; Private Use Area
+ *   F0000..FFFFF; Supplementary Private Use Area-A
+ *
+ * TODO:
+ *   Range E000 - E0FF
+ *     Contains the non-FreeType2 version of characters.
+ */
+
 typedef struct font_map_s font_map_t;
 
 typedef struct
