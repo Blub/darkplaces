@@ -18,11 +18,13 @@ FT_EXPORT( FT_Error )
 (*qFT_Init_FreeType)( FT_Library  *alibrary );
 FT_EXPORT( FT_Error )
 (*qFT_Done_FreeType)( FT_Library  library );
+/*
 FT_EXPORT( FT_Error )
 (*qFT_New_Face)( FT_Library   library,
 		 const char*  filepathname,
 		 FT_Long      face_index,
 		 FT_Face     *aface );
+*/
 FT_EXPORT( FT_Error )
 (*qFT_New_Memory_Face)( FT_Library      library,
 			const FT_Byte*  file_base,
@@ -78,7 +80,7 @@ static dllfunction_t ft2funcs[] =
 {
 	{"FT_Init_FreeType",		(void **) &qFT_Init_FreeType},
 	{"FT_Done_FreeType",		(void **) &qFT_Done_FreeType},
-	{"FT_New_Face",			(void **) &qFT_New_Face},
+	//{"FT_New_Face",			(void **) &qFT_New_Face},
 	{"FT_New_Memory_Face",		(void **) &qFT_New_Memory_Face},
 	{"FT_Done_Face",		(void **) &qFT_Done_Face},
 	{"FT_Select_Size",		(void **) &qFT_Select_Size},
@@ -540,6 +542,30 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 	}
 
 	return true;
+}
+
+qboolean Font_GetKerning(ft2_font_t *font, Uchar left, Uchar right, float *outx, float *outy)
+{
+	if (font->has_kerning)
+		return false;
+	if (left < 256 && right < 256)
+	{
+		// quick-kerning
+		if (outx) *outx = font->kerning.kerning[left][right][0];
+		if (outy) *outy = font->kerning.kerning[left][right][1];
+		return true;
+	}
+	else
+	{
+		FT_Vector kernvec;
+		if (qFT_Get_Kerning(font->face, left, right, FT_KERNING_DEFAULT, &kernvec))
+		{
+			if (outx) *outx = kernvec.x;
+			if (outy) *outy = kernvec.y;
+			return true;
+		}
+		return false;
+	}
 }
 
 void Font_UnloadFont(ft2_font_t *font)
