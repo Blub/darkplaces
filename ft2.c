@@ -196,7 +196,7 @@ static void font_start(void)
 		return;
 	}
 
-	if (!Font_LoadFont("gfx/test", 32, &test_font))
+	if (!Font_LoadFont("gfx/test", 16, &test_font))
 	{
 		Con_Print("ERROR: Failed to load test font!\n");
 		Font_CloseLibrary();
@@ -1016,16 +1016,17 @@ float Font_DrawString_Font(float startx, float starty,
 			at[2] = map->glyphs[mapch].txmax; at[3] = map->glyphs[mapch].tymin;
 			at[4] = map->glyphs[mapch].txmax; at[5] = map->glyphs[mapch].tymax;
 			at[6] = map->glyphs[mapch].txmin; at[7] = map->glyphs[mapch].tymax;
-
-			av[ 0] = x + w*map->glyphs[mapch].vxmin; av[ 1] = y + h*map->glyphs[mapch].vymin; av[ 2] = 10;
-			av[ 3] = x + w*map->glyphs[mapch].vxmax; av[ 4] = y + h*map->glyphs[mapch].vymin; av[ 5] = 10;
-			av[ 6] = x + w*map->glyphs[mapch].vxmax; av[ 7] = y + h*map->glyphs[mapch].vymax; av[ 8] = 10;
-			av[ 9] = x + w*map->glyphs[mapch].vxmin; av[10] = y + h*map->glyphs[mapch].vymax; av[11] = 10;
-
+#define PIXEL_X(x) ( (x)/vid_conwidth.value * vid.width )
+#define PIXEL_Y(x) ( (x)/vid_conheight.value * vid.height )
+			av[ 0] = x + w * PIXEL_X(map->glyphs[mapch].vxmin); av[ 1] = y + h * PIXEL_Y(map->glyphs[mapch].vymin); av[ 2] = 10;
+			av[ 3] = x + w * PIXEL_X(map->glyphs[mapch].vxmax); av[ 4] = y + h * PIXEL_Y(map->glyphs[mapch].vymin); av[ 5] = 10;
+			av[ 6] = x + w * PIXEL_X(map->glyphs[mapch].vxmax); av[ 7] = y + h * PIXEL_Y(map->glyphs[mapch].vymax); av[ 8] = 10;
+			av[ 9] = x + w * PIXEL_X(map->glyphs[mapch].vxmin); av[10] = y + h * PIXEL_Y(map->glyphs[mapch].vymax); av[11] = 10;
+			
 			GL_LockArrays(0, 4);
 			R_Mesh_Draw(0, 4, 0, 2, NULL, quadelements, 0, 0);
 			GL_LockArrays(0, 0);
-			x += thisw * w;
+			x += PIXEL_X(thisw * w);
 		}
 	}
 
