@@ -759,7 +759,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 	}
 
 	// create a texture from the data now
-	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u.rgba", font->name, (unsigned)map->start);
+	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u_%x.rgba", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP, (unsigned)map->start);
 	{
 		FILE *f = fopen(map_identifier, "wb");
 		fwrite(data, pitch * FONT_CHAR_LINES * font->glyphSize, 1, f);
@@ -998,6 +998,9 @@ float Font_DrawString_Font(float startx, float starty,
 					break;
 				}
 			}
+
+			// TODO: don't call Mesh_Draw all the time
+			// call it when the texture changes or the batchcount hits the limit
 
 			R_Mesh_TexBind(0, R_GetTexture(map->texture));
 			R_SetupGenericShader(true);
