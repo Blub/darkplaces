@@ -36,7 +36,7 @@ size_t u8_wcstombs(char*, const Uchar*, size_t);
  *     Contains the non-FreeType2 version of characters.
  */
 
-typedef struct font_map_s font_map_t;
+typedef struct ft2_font_map_s ft2_font_map_t;
 
 typedef struct
 {
@@ -51,20 +51,20 @@ typedef struct
 	void          *face;
 
 	// an ordered linked list of glyph maps
-	font_map_t    *font_map;
-} font_t;
+	ft2_font_map_t    *font_map;
+} ft2_font_t;
 
 void Font_CloseLibrary(void);
 void Font_Init(void);
 qboolean Font_OpenLibrary(void);
-qboolean Font_LoadFont(const char *name, int size, font_t *font);
+qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font);
 float Font_DrawString_Font(
 	float startx, float starty,
 	const char *text, size_t maxlen,
 	float width, float height,
 	float basered, float basegreen, float baseblue, float basealpha,
 	int flags, int *outcolor, qboolean ignorecolorcodes,
-	font_t *font);
+	ft2_font_t *font);
 float Font_DrawString(
 	float startx, float starty,
 	const char *text, size_t maxlen,

@@ -166,7 +166,7 @@ Initialize the freetype2 font subsystem
 ====================
 */
 
-static font_t test_font;
+static ft2_font_t test_font;
 
 static void font_start(void)
 {
@@ -442,39 +442,10 @@ Implementation of a more or less lazy font loading and rendering code.
 ================================================================================
 */
 
-// anything should work, but I recommend multiples of 8
-// since the texture size should be a power of 2
-#define FONT_CHARS_PER_LINE 16
-#define FONT_CHAR_LINES 16
-#define FONT_CHARS_PER_MAP (FONT_CHARS_PER_LINE * FONT_CHAR_LINES)
+#include "ft2_fontdefs.h"
 
-typedef struct glyph_slot_s
-{
-	// we keep the quad coords here only currently
-	// if you need other info, make Font_LoadMapForIndex fill it into this slot
-	double txmin; // texture coordinate in [0,1]
-	double txmax;
-	double tymin;
-	double tymax;
-	float vxmin;
-	float vxmax;
-	float vymin;
-	float vymax;
-	float advance_x;
-	float advance_y;
-} glyph_slot_t;
-
-struct font_map_s
-{
-	Uchar start;
-	struct font_map_s *next;
-
-	rtexture_t *texture;
-	glyph_slot_t glyphs[FONT_CHARS_PER_MAP];
-};
-
-static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outmap);
-qboolean Font_LoadFont(const char *name, int size, font_t *font)
+static qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap);
+qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 {
 	size_t namelen;
 	char filename[PATH_MAX];
@@ -540,7 +511,7 @@ qboolean Font_LoadFont(const char *name, int size, font_t *font)
 	return true;
 }
 
-void Font_UnloadFont(font_t *font)
+void Font_UnloadFont(ft2_font_t *font)
 {
 	if (font->data)
 		Mem_Free(font->data);
@@ -554,7 +525,7 @@ void Font_UnloadFont(font_t *font)
 	}
 }
 
-static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outmap)
+static qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap)
 {
 	char map_identifier[PATH_MAX];
 	unsigned long mapidx = _ch / FONT_CHARS_PER_MAP;
@@ -568,14 +539,14 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 	int pitch;
 	int gR, gC; // glyph position: row and column
 
-	font_map_t *map;
+	ft2_font_map_t *map;
 
 	int bytesPerPixel = 4; // change the conversion loop too if you change this!
 
 	if (outmap)
 		*outmap = NULL;
 
-	map = Mem_Alloc(font_mempool, sizeof(font_map_t));
+	map = Mem_Alloc(font_mempool, sizeof(ft2_font_map_t));
 	if (!map)
 	{
 		Con_Printf("ERROR: Out of memory when loading fontmap for %s\n", font->name);
@@ -607,7 +578,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 	else
 	{
 		// insert the map at the right place
-		font_map_t *next = font->font_map;
+		ft2_font_map_t *next = font->font_map;
 		while(next->next && next->next->start < map->start)
 			next = next->next;
 		map->next = next->next;
@@ -667,7 +638,7 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		{
 		case FT_PIXEL_MODE_MONO:
 			if (developer.integer)
-				Con_Print(stderr, "  Pixel Mode: MONO\n");
+				Con_Print("  Pixel Mode: MONO\n");
 			break;
 		case FT_PIXEL_MODE_GRAY2:
 			if (developer.integer)
@@ -789,10 +760,11 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 
 	if (developer.integer)
 	{
-		dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u_%x.rgba", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP, (unsigned)map->start);
+		// view using `display -depth 8 -size 512x512 name_page.rgba` (be sure to use a correct -size parameter)
+		dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u.rgba", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP);
 		FS_WriteFile(map_identifier, data, pitch * FONT_CHAR_LINES * font->glyphSize);
 	}
-	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u_%x.rgba", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP, (unsigned)map->start);
+	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP);
 	map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
 				       font->glyphSize * FONT_CHARS_PER_LINE,
 				       font->glyphSize * FONT_CHAR_LINES,
@@ -885,7 +857,7 @@ float Font_DrawString_Font(float startx, float starty,
 		      float w, float h,
 		      float basered, float basegreen, float baseblue, float basealpha,
 		      int flags, int *outcolor, qboolean ignorecolorcodes,
-		      font_t *fnt)
+		      ft2_font_t *fnt)
 {
 	int shadow, colorindex = STRING_COLOR_DEFAULT;
 	float x = startx, y, thisw;
@@ -899,8 +871,8 @@ float Font_DrawString_Font(float startx, float starty,
 	size_t i;
 	const char *text_start = text;
 	int tempcolorindex;
-	font_map_t *prevmap = NULL;
-	font_map_t *map;
+	ft2_font_map_t *prevmap = NULL;
+	ft2_font_map_t *map;
 
 	if (maxlen < 1)
 		maxlen = 1<<30;

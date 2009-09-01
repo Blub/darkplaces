@@ -25,6 +25,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cl_video.h"
 #include "cl_dyntexture.h"
 
+#include "ft2.h"
+#include "ft2_fontdefs.h"
+
 dp_font_t dp_fonts[MAX_FONTS] = {{0}};
 
 cvar_t r_textshadow = {CVAR_SAVE, "r_textshadow", "0", "draws a shadow on all text to improve readability (note: value controls offset, 1 = 1 pixel, 1.5 = 1.5 pixels, etc)"};
@@ -598,7 +601,7 @@ void Draw_FreePic(const char *picname)
 }
 
 extern int con_linewidth; // to force rewrapping
-static void LoadFont(qboolean override, const char *name, dp_font_t *fnt)
+static void LoadFont(qboolean override, const char *name, dp_font_t *fnt, int size)
 {
 	int i;
 	float maxwidth, scale;
@@ -706,12 +709,12 @@ static dp_font_t *FindFont(const char *title)
 static void LoadFont_f(void)
 {
 	dp_font_t *f;
-	int i;
+	int i, size;
 	if(Cmd_Argc() < 2)
 	{
 		Con_Printf("Available font commands:\n");
 		for(i = 0; i < MAX_FONTS; ++i)
-			Con_Printf("  loadfont %s gfx/tgafile\n", dp_fonts[i].title);
+			Con_Printf("  loadfont %s gfx/tgafile [size]\n", dp_fonts[i].title);
 		return;
 	}
 	f = FindFont(Cmd_Argv(1));
@@ -720,7 +723,11 @@ static void LoadFont_f(void)
 		Con_Printf("font function not found\n");
 		return;
 	}
-	LoadFont(true, (Cmd_Argc() < 3) ? "gfx/conchars" : Cmd_Argv(2), f);
+	if (Cmd_Argc() == 3)
+		size = atoi(Cmd_Argv(3));
+	else
+		size = 16;
+	LoadFont(true, (Cmd_Argc() < 3) ? "gfx/conchars" : Cmd_Argv(2), f, size);
 }
 
 /*
@@ -737,7 +744,7 @@ static void gl_draw_start(void)
 	memset(cachepichash, 0, sizeof(cachepichash));
 
 	for(i = 0; i < MAX_FONTS; ++i)
-		LoadFont(false, va("gfx/font_%s", dp_fonts[i].title), &dp_fonts[i]);
+		LoadFont(false, va("gfx/font_%s", dp_fonts[i].title), &dp_fonts[i], 16);
 
 	// draw the loading screen so people have something to see in the newly opened window
 	SCR_UpdateLoadingScreen(true);
