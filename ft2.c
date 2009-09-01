@@ -1013,17 +1013,6 @@ float Font_DrawString_Font(float startx, float starty,
 			av[ 6] = x + w*map->glyphs[ch].vxmax; av[ 7] = y + h*map->glyphs[ch].vymax; av[ 8] = 10;
 			av[ 9] = x + w*map->glyphs[ch].vxmin; av[10] = y + h*map->glyphs[ch].vymax; av[11] = 10;
 
-			/*
-			av[ 0] = x;           av[ 1] = y;     av[ 2] = 10;
-			av[ 3] = x + w*thisw; av[ 4] = y;     av[ 5] = 10;
-			av[ 6] = x + w*thisw; av[ 7] = y + h; av[ 8] = 10;
-			av[ 9] = x;           av[10] = y + h; av[11] = 10;
-			*/
-			/*
-			ac += 16;
-			at += 8;
-			av += 12;
-			*/
 			GL_LockArrays(0, 4);
 			R_Mesh_Draw(0, 4, 0, 2, NULL, quadelements, 0, 0);
 			GL_LockArrays(0, 0);
