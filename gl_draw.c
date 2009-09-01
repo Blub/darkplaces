@@ -1184,12 +1184,13 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			if (*text == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < maxlen)
 			{
 				++text;
-				ch = *text;
 				++i;
+				ch = *text;
 				if (ch <= '9' && ch >= '0') // ^[0-9] found
 				{
 					colorindex = ch - '0';
 					DrawQ_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
+					++text;
 					continue;
 				}
 				else if (ch == STRING_COLOR_RGB_TAG_CHAR && i+3 < maxlen ) // ^x found
@@ -1219,7 +1220,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 								//Con_Printf("^1colorindex:^7 %x\n", colorindex);
 								DrawQ_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
 								i+=3;
-								text+=3;
+								text+=4;
 								continue;
 							}
 						}
