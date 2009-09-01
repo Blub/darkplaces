@@ -1100,7 +1100,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 
 float DrawQ_String_Font(float startx, float starty, const char *text, size_t maxlen, float w, float h, float basered, float basegreen, float baseblue, float basealpha, int flags, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt)
 {
-	int num, shadow, colorindex = STRING_COLOR_DEFAULT;
+	int shadow, colorindex = STRING_COLOR_DEFAULT;
 	size_t i;
 	float x = startx, y, s, t, u, v, thisw;
 	float *av, *at, *ac;
@@ -1109,7 +1109,6 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	float vertex3f[QUADELEMENTS_MAXQUADS*4*3];
 	float texcoord2f[QUADELEMENTS_MAXQUADS*4*2];
 	float color4f[QUADELEMENTS_MAXQUADS*4*4];
-	//int ch;
 	Uchar ch, mapch;
 	int tempcolorindex;
 	ft2_font_map_t *prevmap = NULL;
@@ -1260,8 +1259,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				//thisw = fnt->width_of[num];
 				thisw = fnt->width_of[ch];
 				// FIXME make these smaller to just include the occupied part of the character for slightly faster rendering
-				s = (num & 15)*0.0625f + (0.5f / tw);
-				t = (num >> 4)*0.0625f + (0.5f / th);
+				s = (ch & 15)*0.0625f + (0.5f / tw);
+				t = (ch >> 4)*0.0625f + (0.5f / th);
 				u = 0.0625f * thisw - (1.0f / tw);
 				v = 0.0625f - (1.0f / th);
 				ac[ 0] = color[0];ac[ 1] = color[1];ac[ 2] = color[2];ac[ 3] = color[3];
