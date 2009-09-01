@@ -774,33 +774,6 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 			fprintf(stderr, "    T: ( %f  --  %f )\n", mapglyph->tymin, mapglyph->tymax);
 			fprintf(stderr, "  Advance: %f, %f\n", mapglyph->advance_x, mapglyph->advance_y);
 		}
-
-		/*
-		g->verts[0].set(bearingX, -bearingY, 0);
-		g->verts[1].set(bearingX + mWidth, -bearingY, 0);
-		g->verts[2].set(bearingX + mWidth, mHeight - bearingY, 0);
-		g->verts[3].set(bearingX, mHeight - bearingY, 0);
-		g->texCoords[0].set(0, 0);
-		g->texCoords[1].set(tWidth, 0);
-		g->texCoords[2].set(tWidth, tHeight);
-		g->texCoords[3].set(0, tHeight);
-		g->advance = advance;
-
-		g->verts[0].x *= sizeX;
-		g->verts[1].x *= sizeX;
-		g->verts[2].x *= sizeX;
-		g->verts[3].x *= sizeX;
-		g->verts[0].y *= sizeY;
-		g->verts[1].y *= sizeY;
-		g->verts[2].y *= sizeY;
-		g->verts[3].y *= sizeY;
-		g->advance *= sizeX;
-
-		// xmin is the left start of the character within the texture
-		// TODO: support vertical fonts maybe?
-		mapglyph->advance_x = (double)glyph->metrics.horiAdvance * (1.0/64.0) / (double)font->size;
-		mapglyph->advance_y = 0;
-		*/
 	}
 
 	// create a texture from the data now
