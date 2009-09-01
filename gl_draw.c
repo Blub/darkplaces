@@ -623,9 +623,9 @@ static void LoadFont(qboolean override, const char *name, dp_font_t *fnt, int si
 	}
 
 	fnt->ft2 = Font_Alloc();
-	if (fnt->ft2)
+	if(fnt->ft2)
 	{
-		if (!Font_LoadFont(name, size, fnt->ft2))
+		if(!Font_LoadFont(name, size, fnt->ft2))
 		{
 			Mem_Free(fnt->ft2);
 			fnt->ft2 = NULL;
@@ -1233,6 +1233,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			}
 			ch = u8_getchar(text, &text);
 			i = text - text_start;
+			// using a value of -1 for the oldstyle map because NULL means uninitialized...
+			// this way we don't need to rebind fnt->tex for every old-style character
 #define oldstyle_map ((ft2_font_map_t*)-1)
 			// E000..E0FF: emulate old-font characters (to still have smileys and such available)
 			if (!fnt->ft2 || (ch >= 0xE000 && ch <= 0xE0FF))
