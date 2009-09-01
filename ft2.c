@@ -627,7 +627,8 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		unsigned char *imagedata, *dst, *src;
 		glyph_slot_t *mapglyph;
 
-		fprintf(stderr, "------------- GLYPH INFO -----------------\n");
+		if (developer.integer)
+			Con_Print("------------- GLYPH INFO -----------------\n");
 
 		++gC;
 		if (gC >= FONT_CHARS_PER_LINE)
@@ -665,19 +666,24 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 		switch (bmp->pixel_mode)
 		{
 		case FT_PIXEL_MODE_MONO:
-			fprintf(stderr, "  Pixel Mode: MONO\n");
+			if (developer.integer)
+				Con_Print(stderr, "  Pixel Mode: MONO\n");
 			break;
 		case FT_PIXEL_MODE_GRAY2:
-			fprintf(stderr, "  Pixel Mode: GRAY2\n");
+			if (developer.integer)
+				Con_Print("  Pixel Mode: GRAY2\n");
 			break;
 		case FT_PIXEL_MODE_GRAY4:
-			fprintf(stderr, "  Pixel Mode: GRAY4\n");
+			if (developer.integer)
+				Con_Print("  Pixel Mode: GRAY4\n");
 			break;
 		case FT_PIXEL_MODE_GRAY:
-			fprintf(stderr, "  Pixel Mode: GRAY\n");
+			if (developer.integer)
+				Con_Print("  Pixel Mode: GRAY\n");
 			break;
 		default:
-			fprintf(stderr, "  Pixel Mode: Unknown: %i\n", bmp->pixel_mode);
+			if (developer.integer)
+				Con_Printf("  Pixel Mode: Unknown: %i\n", bmp->pixel_mode);
 			Mem_Free(data);
 			return false;
 		}
@@ -763,29 +769,30 @@ static qboolean Font_LoadMapForIndex(font_t *font, Uchar _ch, font_map_t **outma
 			mapglyph->advance_x = advance;
 			mapglyph->advance_y = 0;
 
-			if (developer)
+			if (developer.integer)
 			{
-				fprintf(stderr, "  Glyph: %lu   at (%i, %i)\n", (unsigned long)ch, gC, gR);
+				Con_Printf("  Glyph: %lu   at (%i, %i)\n", (unsigned long)ch, gC, gR);
 				if (ch >= 32 && ch <= 128)
-					fprintf(stderr, "  Character: %c\n", (int)ch);
-				fprintf(stderr, "  Vertex info:\n");
-				fprintf(stderr, "    X: ( %f  --  %f )\n", mapglyph->vxmin, mapglyph->vxmax);
-				fprintf(stderr, "    Y: ( %f  --  %f )\n", mapglyph->vymin, mapglyph->vymax);
-				fprintf(stderr, "  Texture info:\n");
-				fprintf(stderr, "    S: ( %f  --  %f )\n", mapglyph->txmin, mapglyph->txmax);
-				fprintf(stderr, "    T: ( %f  --  %f )\n", mapglyph->tymin, mapglyph->tymax);
-				fprintf(stderr, "  Advance: %f, %f\n", mapglyph->advance_x, mapglyph->advance_y);
+					Con_Printf("  Character: %c\n", (int)ch);
+				Con_Printf("  Vertex info:\n");
+				Con_Printf("    X: ( %f  --  %f )\n", mapglyph->vxmin, mapglyph->vxmax);
+				Con_Printf("    Y: ( %f  --  %f )\n", mapglyph->vymin, mapglyph->vymax);
+				Con_Printf("  Texture info:\n");
+				Con_Printf("    S: ( %f  --  %f )\n", mapglyph->txmin, mapglyph->txmax);
+				Con_Printf("    T: ( %f  --  %f )\n", mapglyph->tymin, mapglyph->tymax);
+				Con_Printf("  Advance: %f, %f\n", mapglyph->advance_x, mapglyph->advance_y);
 			}
 		}
 	}
 
 	// create a texture from the data now
-	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u_%x.rgba", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP, (unsigned)map->start);
+
+	if (developer.integer)
 	{
-		FILE *f = fopen(map_identifier, "wb");
-		fwrite(data, pitch * FONT_CHAR_LINES * font->glyphSize, 1, f);
-		fclose(f);
+		dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u_%x.rgba", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP, (unsigned)map->start);
+		FS_WriteFile(map_identifier, data, pitch * FONT_CHAR_LINES * font->glyphSize);
 	}
+	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u_%x.rgba", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP, (unsigned)map->start);
 	map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
 				       font->glyphSize * FONT_CHARS_PER_LINE,
 				       font->glyphSize * FONT_CHAR_LINES,
