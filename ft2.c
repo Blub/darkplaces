@@ -478,7 +478,7 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 		Con_Printf("Failed to load TTF version of font %s\n", name);
 		return false;
 	}
-	Con_Printf("Loading font %s...\n", filename);
+	Con_Printf("Loading font %s face 0 size %i...\n", filename, size);
 
 	status = qFT_New_Memory_Face(font_ft2lib, (FT_Bytes)font->data, font->datasize, 0, (FT_Face*)&font->face);
 	if (status)

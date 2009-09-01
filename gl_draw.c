@@ -1299,24 +1299,6 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				}
 				x += thisw * w;
 			} else {
-				if (prevmap != map)
-				{
-					if (batchcount)
-					{
-						// we need a different character map, render what we currently have:
-						GL_LockArrays(0, batchcount * 4);
-						R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
-						GL_LockArrays(0, 0);
-						batchcount = 0;
-						ac = color4f;
-						at = texcoord2f;
-						av = vertex3f;
-					}
-					R_Mesh_TexBind(0, R_GetTexture(map->texture));
-					R_SetupGenericShader(true);
-				}
-
-
 				map = fnt->ft2->font_map;
 				while(map && map->start + FONT_CHARS_PER_MAP < ch)
 					map = map->next;
@@ -1333,6 +1315,23 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 						shadow = -1;
 						break;
 					}
+				}
+
+				if (prevmap != map)
+				{
+					if (batchcount)
+					{
+						// we need a different character map, render what we currently have:
+						GL_LockArrays(0, batchcount * 4);
+						R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+						GL_LockArrays(0, 0);
+						batchcount = 0;
+						ac = color4f;
+						at = texcoord2f;
+						av = vertex3f;
+					}
+					R_Mesh_TexBind(0, R_GetTexture(map->texture));
+					R_SetupGenericShader(true);
 				}
 
 				mapch = ch - map->start;
