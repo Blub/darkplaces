@@ -527,7 +527,10 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 		{
 			for (r = 0; r < 256; ++r)
 			{
-				if (qFT_Get_Kerning(font->face, l, r, FT_KERNING_DEFAULT, &kernvec))
+				FT_ULong ul, ur;
+				ul = qFT_Get_Char_Index(font->face, l);
+				ur = qFT_Get_Char_Index(font->face, r);
+				if (qFT_Get_Kerning(font->face, ul, ur, FT_KERNING_DEFAULT, &kernvec))
 				{
 					font->kerning.kerning[l][r][0] = 0;
 					font->kerning.kerning[l][r][1] = 0;
@@ -536,6 +539,11 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 				{
 					font->kerning.kerning[l][r][0] = kernvec.x * font->sfx;
 					font->kerning.kerning[l][r][1] = kernvec.y * font->sfy;
+					/*
+					fprintf(stderr, "Kerning from %x to %x is %g,%g\n", l, r,
+						font->kerning.kerning[l][r][0],
+						font->kerning.kerning[l][r][1]);
+					*/
 				}
 			}
 		}
@@ -558,10 +566,13 @@ qboolean Font_GetKerning(ft2_font_t *font, Uchar left, Uchar right, float *outx,
 	else
 	{
 		FT_Vector kernvec;
-		if (qFT_Get_Kerning(font->face, left, right, FT_KERNING_DEFAULT, &kernvec))
+		FT_ULong ul, ur;
+		ul = qFT_Get_Char_Index(font->face, left);
+		ur = qFT_Get_Char_Index(font->face, right);
+		if (qFT_Get_Kerning(font->face, ul, ur, FT_KERNING_DEFAULT, &kernvec))
 		{
-			if (outx) *outx = kernvec.x;
-			if (outy) *outy = kernvec.y;
+			if (outx) *outx = kernvec.x * font->sfx;
+			if (outy) *outy = kernvec.y * font->sfy;
 			return true;
 		}
 		return false;

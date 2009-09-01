@@ -1353,8 +1353,10 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 				x += ftbase_x;
 				y += ftbase_y;
-				if (prevch && Font_GetKerning(fnt->ft2, prevch, ch, &kx, &ky))
+				if (!developer.integer && prevch && Font_GetKerning(fnt->ft2, prevch, ch, &kx, &ky))
 				{
+					kx *= w;
+					ky *= h;
 					x += kx;
 					y += ky;
 				}
@@ -1368,21 +1370,14 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				at[2] = map->glyphs[mapch].txmax; at[3] = map->glyphs[mapch].tymin;
 				at[4] = map->glyphs[mapch].txmax; at[5] = map->glyphs[mapch].tymax;
 				at[6] = map->glyphs[mapch].txmin; at[7] = map->glyphs[mapch].tymax;
-#define PIXEL_X(x) ( (x)/vid_conwidth.value * vid.width )
-#define PIXEL_Y(x) ( (x)/vid_conheight.value * vid.height )
-				av[ 0] = x + w * PIXEL_X(map->glyphs[mapch].vxmin); av[ 1] = y + h * PIXEL_Y(map->glyphs[mapch].vymin); av[ 2] = 10;
-				av[ 3] = x + w * PIXEL_X(map->glyphs[mapch].vxmax); av[ 4] = y + h * PIXEL_Y(map->glyphs[mapch].vymin); av[ 5] = 10;
-				av[ 6] = x + w * PIXEL_X(map->glyphs[mapch].vxmax); av[ 7] = y + h * PIXEL_Y(map->glyphs[mapch].vymax); av[ 8] = 10;
-				av[ 9] = x + w * PIXEL_X(map->glyphs[mapch].vxmin); av[10] = y + h * PIXEL_Y(map->glyphs[mapch].vymax); av[11] = 10;
-				if (fnt->ft2->has_kerning && prevch)
-				{
-					x -= kx;
-					y -= ky;
-				}
+				av[ 0] = x + w * map->glyphs[mapch].vxmin; av[ 1] = y + h * map->glyphs[mapch].vymin; av[ 2] = 10;
+				av[ 3] = x + w * map->glyphs[mapch].vxmax; av[ 4] = y + h * map->glyphs[mapch].vymin; av[ 5] = 10;
+				av[ 6] = x + w * map->glyphs[mapch].vxmax; av[ 7] = y + h * map->glyphs[mapch].vymax; av[ 8] = 10;
+				av[ 9] = x + w * map->glyphs[mapch].vxmin; av[10] = y + h * map->glyphs[mapch].vymax; av[11] = 10;
 				x -= ftbase_x;
 				y -= ftbase_y;
 
-				x += PIXEL_X(thisw * w);
+				x += thisw * w;
 				ac += 16;
 				at += 8;
 				av += 12;
