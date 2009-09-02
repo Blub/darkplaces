@@ -26,6 +26,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #endif
 #include <time.h>
 
+// for u8_encodech
+#include "ft2.h"
+
 float con_cursorspeed = 4;
 
 #define		CON_TEXTSIZE	1048576
@@ -1360,7 +1363,24 @@ void Con_DrawInput (void)
 
 	// add the cursor frame
 	if ((int)(realtime*con_cursorspeed) & 1)		// cursor is visible
-		text[key_linepos] = 11 + 130 * key_insert;	// either solid or triangle facing right
+	{
+		if (key_linepos + 2 < (int)sizeof(editlinecopy)-1)
+		{
+			if (key_insert)
+			{
+				text[key_linepos] = '\xee';
+				text[key_linepos+1] = '\x80';
+				text[key_linepos+2] = '\x8b';
+			} else {
+				text[key_linepos] = '\xee';
+				text[key_linepos+1] = '\x82';
+				text[key_linepos+2] = '\x82';
+			}
+		} else {
+			//text[key_linepos] = 11 + 130 * key_insert;	// either solid or triangle facing right
+			text[key_linepos] = '-' + ('+' - '-') * key_insert;
+		}
+	}
 
 //	text[key_linepos + 1] = 0;
 
@@ -1587,20 +1607,21 @@ void Con_DrawNotify (void)
 	if(numChatlines)
 	{
 		v = chatstart + numChatlines * con_chatsize.value;
-		Con_DrawNotifyRect(CON_MASK_CHAT, CON_MASK_INPUT, con_chattime.value, 0, chatstart, vid_conwidth.value * con_chatwidth.value, v - chatstart, con_chatsize.value, 0.0, 1.0, "^3\014\014\014 "); // 015 is ·> character in conchars.tga
+		Con_DrawNotifyRect(CON_MASK_CHAT, CON_MASK_INPUT, con_chattime.value, 0, chatstart, vid_conwidth.value * con_chatwidth.value, v - chatstart, con_chatsize.value, 0.0, 1.0, /*"^3\014\014\014 "*/ "^3\0356\0200\0225\0356\0200\0225\0356\0200\0225 "); // 015 is ·> character in conchars.tga
 	}
 
 	if (key_dest == key_message)
 	{
+		static char *cursor[2] = { "\xee\x80\x8a", "\xee\x80\x8b" }; // { off, on }
 		int colorindex = -1;
 
 		// LordHavoc: speedup, and other improvements
 		if (chat_mode < 0)
-			dpsnprintf(temptext, sizeof(temptext), "]%s%c", chat_buffer, (int) 10+((int)(realtime*con_cursorspeed)&1));
+			dpsnprintf(temptext, sizeof(temptext), "]%s%s", chat_buffer, cursor[(int)(realtime*con_cursorspeed)&1]);
 		else if(chat_mode)
-			dpsnprintf(temptext, sizeof(temptext), "say_team:%s%c", chat_buffer, (int) 10+((int)(realtime*con_cursorspeed)&1));
+			dpsnprintf(temptext, sizeof(temptext), "say_team:%s%s", chat_buffer, cursor[(int)(realtime*con_cursorspeed)&1]);
 		else
-			dpsnprintf(temptext, sizeof(temptext), "say:%s%c", chat_buffer, (int) 10+((int)(realtime*con_cursorspeed)&1));
+			dpsnprintf(temptext, sizeof(temptext), "say:%s%s", chat_buffer, cursor[(int)(realtime*con_cursorspeed)&1]);
 
 		// FIXME word wrap
 		inputsize = (numChatlines ? con_chatsize : con_notifysize).value;

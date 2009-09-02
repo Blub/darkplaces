@@ -25,6 +25,9 @@ Uchar  u8_getchar(const char*, const char**);
 int    u8_fromchar(Uchar, char*, size_t);
 size_t u8_wcstombs(char*, const Uchar*, size_t);
 
+// returns a static buffer, use this for inlining
+char  *u8_encodech(Uchar ch);
+
 /* 
  * From http://www.unicode.org/Public/UNIDATA/Blocks.txt
  *

@@ -423,6 +423,18 @@ int u8_fromchar(Uchar w, char *to, size_t maxlen)
 	return i;
 }
 
+/** uses u8_fromchar on a static buffer
+ * @param ch        The unicode character to convert to encode
+ * @return          A statically allocated buffer containing the character's utf8 representation, or NULL if it fails.
+ */
+char *u8_encodech(Uchar ch)
+{
+	static char buf[16];
+	if (u8_fromchar(ch, buf, sizeof(buf)) > 0)
+		return buf;
+	return NULL;
+}
+
 /** Convert a utf-8 multibyte string to a wide character string.
  * @param wcs       The target wide-character buffer.
  * @param mb        The utf-8 encoded multibyte string to convert.
