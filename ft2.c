@@ -13,6 +13,7 @@ CVars introduced with the freetype extension
 ================================================================================
 */
 
+cvar_t r_font_disable_freetype = {CVAR_SAVE, "r_font_disable_freetype", "0", "disable freetype support for fonts entirely"};
 cvar_t r_font_use_alpha_textures = {CVAR_SAVE, "r_font_use_alpha_textures", "0", "use alpha-textures for font rendering, this should safe memory"};
 
 /*
@@ -161,6 +162,9 @@ qboolean Font_OpenLibrary (void)
 		NULL
 	};
 
+	if (r_font_disable_freetype.integer)
+		return false;
+
 	// Already loaded?
 	if (ft2_dll)
 		return true;
@@ -235,6 +239,7 @@ void font_newmap(void)
 
 void Font_Init(void)
 {
+	Cvar_RegisterVariable(&r_font_disable_freetype);
 	Cvar_RegisterVariable(&r_font_use_alpha_textures);
 }
 
@@ -466,6 +471,8 @@ Implementation of a more or less lazy font loading and rendering code.
 
 ft2_font_t *Font_Alloc(void)
 {
+	if (!ft2_dll)
+		return NULL;
 	return Mem_Alloc(font_mempool, sizeof(ft2_font_t));
 }
 
@@ -501,9 +508,12 @@ qboolean Font_LoadFont(const char *name, int size, int _face, ft2_font_t *font)
 
 	if (!Font_OpenLibrary())
 	{
-		Con_Printf("WARNING: can't open load font %s\n"
-			   "You need the FreeType2 DLL to load font files\n",
-			   name);
+		if (!r_font_disable_freetype.integer)
+		{
+			Con_Printf("WARNING: can't open load font %s\n"
+				   "You need the FreeType2 DLL to load font files\n",
+				   name);
+		}
 		return false;
 	}
 

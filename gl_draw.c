@@ -1028,11 +1028,18 @@ static void DrawQ_GetTextColor(float color[4], int colorindex, float r, float g,
 
 float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
 {
-	int num, colorindex = STRING_COLOR_DEFAULT;
+	int colorindex = STRING_COLOR_DEFAULT;
 	size_t i;
 	float x = 0;
-	char ch;
+	Uchar ch, mapch;
+	Uchar prevch = 0; // used for kerning
 	int tempcolorindex;
+	float kx;
+	ft2_font_map_t *map = NULL;
+	ft2_font_map_t *prevmap = NULL;
+	ft2_font_t *ft2 = fnt->ft2;
+	// float ftbase_x;
+	const char *text_start = text;
 
 	if (*maxlen < 1)
 		*maxlen = 1<<30;
@@ -1044,40 +1051,49 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 
 	maxwidth /= fnt->scale;
 
-	for (i = 0;i < *maxlen && text[i];i++)
+	if (developer.integer == 63)
+		ft2 = NULL;
+	// ftbase_x = snap_to_pixel_x(0);
+
+	for (i = 0;i < *maxlen && *text;i++)
 	{
-		if (text[i] == ' ')
+		if (text[i] == ' ' && !ft2)
 		{
 			if(x + fnt->width_of[(int) ' '] > maxwidth)
 				break; // oops, can't draw this
 			x += fnt->width_of[(int) ' '];
+			++text;
+			++i;
 			continue;
 		}
 		if (text[i] == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < *maxlen)
 		{
-			ch = text[++i];
-            if (ch <= '9' && ch >= '0') // ^[0-9] found
+			++text;
+			++i;
+			ch = *text; // colors are ascii, so no u8_ needed
+			if (ch <= '9' && ch >= '0') // ^[0-9] found
 			{
 				colorindex = ch - '0';
-                continue;
+				++text;
+				continue;
 			}
 			else if (ch == STRING_COLOR_RGB_TAG_CHAR && i + 3 < *maxlen ) // ^x found
 			{
 				// building colorindex...
-				ch = tolower(text[i+1]);
+				ch = tolower(text[1]);
 				tempcolorindex = 0x10000; // binary: 1,0000,0000,0000,0000
 				if (ch <= '9' && ch >= '0') tempcolorindex |= (ch - '0') << 12;
 				else if (ch >= 'a' && ch <= 'f') tempcolorindex |= (ch - 87) << 12;
 				else tempcolorindex = 0;
 				if (tempcolorindex)
 				{
-					ch = tolower(text[i+2]);
+					ch = tolower(text[2]);
 					if (ch <= '9' && ch >= '0') tempcolorindex |= (ch - '0') << 8;
 					else if (ch >= 'a' && ch <= 'f') tempcolorindex |= (ch - 87) << 8;
 					else tempcolorindex = 0;
 					if (tempcolorindex)
 					{
-						ch = tolower(text[i+3]);
+						ch = tolower(text[3]);
 						if (ch <= '9' && ch >= '0') tempcolorindex |= (ch - '0') << 4;
 						else if (ch >= 'a' && ch <= 'f') tempcolorindex |= (ch - 87) << 4;
 						else tempcolorindex = 0;
@@ -1086,19 +1102,55 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 							colorindex = tempcolorindex | 0xf;
 							// ...done! now colorindex has rgba codes (1,rrrr,gggg,bbbb,aaaa)
 							i+=3;
+							text += 4;
 							continue;
 						}
 					}
 				}
 			}
 			else if (ch == STRING_COLOR_TAG) // ^^ found, ignore the first ^ and go to print the second
+			{
 				i++;
+				text++;
+			}
 			i--;
+			text--;
 		}
-		num = (unsigned char) text[i];
-		if(x + fnt->width_of[num] > maxwidth)
-			break; // oops, can't draw this
-		x += fnt->width_of[num];
+		ch = u8_getchar(text, &text);
+		i = text - text_start;
+
+		if (!ft2 || (ch >= 0xE000 && ch <= 0xE0FF))
+		{
+			if (ch > 0xE000)
+				ch -= 0xE000;
+			if (ch > 0xFF)
+				continue;
+			map = ft2_oldstyle_map;
+			prevch = 0;
+			if(x + fnt->width_of[ch] > maxwidth)
+				break; // oops, can't draw this
+			x += fnt->width_of[ch];
+		} else {
+			if (!map || map == ft2_oldstyle_map || map->start < ch || map->start + FONT_CHARS_PER_MAP >= ch)
+			{
+				map = ft2->font_map;
+				while (map && map->start + FONT_CHARS_PER_MAP < ch)
+					map = map->next;
+				if (!map)
+				{
+					if (!Font_LoadMapForIndex(ft2, ch, &map))
+						break;
+					if (!map)
+						break;
+				}
+			}
+			mapch = ch - map->start;
+			if (prevch && Font_GetKerning(ft2, prevch, ch, &kx, NULL))
+				x += kx;
+			x += map->glyphs[mapch].advance_x;
+			prevmap = map;
+			prevch = ch;
+		}
 	}
 
 	*maxlen = i;
@@ -1227,7 +1279,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			{
 				++text;
 				++i;
-				ch = *text;
+				ch = *text; // colors are ascii, so no u8_ needed
 				if (ch <= '9' && ch >= '0') // ^[0-9] found
 				{
 					colorindex = ch - '0';
@@ -1360,7 +1412,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 					}
 					// find the new map
 					map = ft2->font_map;
-					while(map && map->start + FONT_CHARS_PER_MAP < ch)
+					while (map && map->start + FONT_CHARS_PER_MAP < ch)
 						map = map->next;
 					if (!map)
 					{
@@ -1396,7 +1448,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 				x += ftbase_x;
 				y += ftbase_y;
-				if (!developer.integer && prevch && Font_GetKerning(ft2, prevch, ch, &kx, &ky))
+				if (prevch && Font_GetKerning(ft2, prevch, ch, &kx, &ky))
 				{
 					kx *= w;
 					ky *= h;
