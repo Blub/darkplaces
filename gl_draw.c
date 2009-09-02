@@ -620,15 +620,19 @@ static void LoadFont(qboolean override, const char *name, dp_font_t *fnt)
 		// clear freetype font
 		Font_UnloadFont(fnt->ft2);
 		Mem_Free(fnt->ft2);
+		fnt->ft2 = NULL;
 	}
 
-	fnt->ft2 = Font_Alloc();
-	if(fnt->ft2)
+	if (fnt->req_face != -1)
 	{
-		if(!Font_LoadFont(fnt->texpath, fnt->req_size, fnt->req_face, fnt->ft2))
+		fnt->ft2 = Font_Alloc();
+		if(fnt->ft2)
 		{
-			Mem_Free(fnt->ft2);
-			fnt->ft2 = NULL;
+			if(!Font_LoadFont(fnt->texpath, fnt->req_size, fnt->req_face, fnt->ft2))
+			{
+				Mem_Free(fnt->ft2);
+				fnt->ft2 = NULL;
+			}
 		}
 	}
 
