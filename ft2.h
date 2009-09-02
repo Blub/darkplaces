@@ -21,9 +21,13 @@ typedef int32_t U_int32;
 typedef U_int32 Uchar;
 
 size_t u8_strlen(const char*);
+int    u8_byteofs(const char*, size_t, size_t*);
+int    u8_charidx(const char*, size_t, size_t*);
+size_t u8_bytelen(const char*, size_t);
 Uchar  u8_getchar(const char*, const char**);
 int    u8_fromchar(Uchar, char*, size_t);
 size_t u8_wcstombs(char*, const Uchar*, size_t);
+size_t u8_COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid);
 
 // returns a static buffer, use this for inlining
 char  *u8_encodech(Uchar ch);

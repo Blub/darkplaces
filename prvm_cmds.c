@@ -10,6 +10,8 @@
 #include "libcurl.h"
 #include <time.h>
 
+#include "ft2.h"
+
 extern cvar_t prvm_backtraceforwarnings;
 
 // LordHavoc: changed this to NOT use a return statement, so that it can be used in functions that must return a value
@@ -1978,7 +1980,8 @@ void VM_strlen(void)
 {
 	VM_SAFEPARMCOUNT(1,VM_strlen);
 
-	PRVM_G_FLOAT(OFS_RETURN) = strlen(PRVM_G_STRING(OFS_PARM0));
+	//PRVM_G_FLOAT(OFS_RETURN) = strlen(PRVM_G_STRING(OFS_PARM0));
+	PRVM_G_FLOAT(OFS_RETURN) = u8_strlen(PRVM_G_STRING(OFS_PARM0));
 }
 
 // DRESK - Decolorized String
@@ -2021,7 +2024,8 @@ void VM_strlennocol(void)
 
 	szString = PRVM_G_STRING(OFS_PARM0);
 
-	nCnt = COM_StringLengthNoColors(szString, 0, NULL);
+	//nCnt = COM_StringLengthNoColors(szString, 0, NULL);
+	nCnt = u8_COM_StringLengthNoColors(szString, 0, NULL);
 
 	PRVM_G_FLOAT(OFS_RETURN) = nCnt;
 }
@@ -2102,11 +2106,14 @@ string	substring(string s, float start, float length)
 void VM_substring(void)
 {
 	int start, length, slength, maxlen;
+	int u_slength = 0, u_start;
+	size_t u_length;
 	const char *s;
 	char string[VM_STRINGTEMP_LENGTH];
 
 	VM_SAFEPARMCOUNT(3,VM_substring);
 
+	/*
 	s = PRVM_G_STRING(OFS_PARM0);
 	start = (int)PRVM_G_FLOAT(OFS_PARM1);
 	length = (int)PRVM_G_FLOAT(OFS_PARM2);
@@ -2123,6 +2130,40 @@ void VM_substring(void)
 
 	memcpy(string, s + start, length);
 	string[length] = 0;
+	PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(string);
+	*/
+	
+	s = PRVM_G_STRING(OFS_PARM0);
+	start = (int)PRVM_G_FLOAT(OFS_PARM1);
+	length = (int)PRVM_G_FLOAT(OFS_PARM2);
+
+	if (start < 0) // FTE_STRINGS feature
+	{
+		u_slength = u8_strlen(s);
+		start += u_slength;
+		start = bound(0, start, u_slength);
+	}
+
+	if (length < 0) // FTE_STRINGS feature
+	{
+		if (!u_slength) // it's not calculated when it's not needed above
+			u_slength = u8_strlen(s);
+		length += u_slength - start + 1;
+	}
+		
+	// positive start, positive length
+	u_start = u8_byteofs(s, start, NULL);
+	if (u_start < 0)
+	{
+		PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString("");
+		return;
+	}
+	u_length = u8_bytelen(s + u_start, length);
+	if (u_length >= sizeof(string)-1)
+		u_length = sizeof(string)-1;
+	
+	memcpy(string, s + u_start, u_length);
+	string[u_length] = 0;
 	PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(string);
 }
 

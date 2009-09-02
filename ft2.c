@@ -249,7 +249,7 @@ UTF-8 encoding and decoding functions follow.
 ================================================================================
 */
 
-/** Get the number of characters in in an UTF-8 string.
+/** Get the number of characters in an UTF-8 string.
  * @param _s    An utf-8 encoded null-terminated string.
  * @return      The number of unicode characters in the string.
  */
@@ -283,6 +283,147 @@ size_t u8_strlen(const char *_s)
 		}
 	}
 	return len;
+}
+
+/** Get the number of bytes used in a string to represent an amount of characters.
+ * @param _s    An utf-8 encoded null-terminated string.
+ * @param n     The number of characters we want to know the byte-size for.
+ * @return      The number of bytes used to represent n characters.
+ */
+size_t u8_bytelen(const char *_s, size_t n)
+{
+	size_t len = 0;
+	unsigned char *s = (unsigned char*)_s;
+	while (*s && n)
+	{
+		// ascii char
+		if (*s <= 0x7F)
+		{
+			++len;
+			++s;
+			--n;
+			continue;
+		}
+
+		// start of a wide character
+		if (*s & 0xC0)
+		{
+			--n;
+			for (++len, ++s; *s >= 0x80 && *s <= 0xC0; ++s, ++len);
+			continue;
+		}
+
+		// part of a wide character, ignore only if at the beginning of the text
+		if (*s <= 0xBF) // 10111111
+		{
+			++s;
+			if (s != (unsigned char*)_s)
+				++len;
+			continue;
+		}
+	}
+	return len;
+}
+
+/** Get the byte-index for a character-index.
+ * @param _s      An utf-8 encoded string.
+ * @param i       The character-index for which you want the byte offset.
+ * @param len     If not null, character's length will be stored in there.
+ * @return        The byte-index at which the character begins, or -1 if the string is too short.
+ */
+int u8_byteofs(const char *_s, size_t i, size_t *len)
+{
+	size_t ofs = 0;
+	unsigned char *s = (unsigned char*)_s;
+	while (i > 0 && s[ofs])
+	{
+		// ascii character
+		if (s[ofs] <= 0x7F)
+		{
+			++ofs;
+			--i;
+			continue;
+		}
+
+		// start of a wide character
+		if (s[ofs] & 0xC0)
+		{
+			for (++ofs; s[ofs] >= 0x80 && s[ofs] <= 0xC0; ++ofs);
+			--i;
+			continue;
+		}
+
+		// part of a wide character, weignore that one
+		if (s[ofs] <= 0xBF)
+		{
+			++ofs;
+			continue;
+		}
+	}
+	if (!s[ofs])
+		return -1;
+	if (len) {
+		size_t i;
+		if (s[ofs] < 0x7F)
+			*len = 1;
+		else if (s[ofs] & 0xC0)
+		{
+			for (i = 1; s[ofs+i] >= 0x80 && s[ofs+i] <= 0xC0; ++i);
+			*len = i;
+		}
+		else if (s[ofs] <= 0xBF)
+			*len = 0;
+	}
+	return ofs;
+}
+
+/** Get the char-index for a byte-index.
+ * @param _s      An utf-8 encoded string.
+ * @param i       The byte offset for which you want the character index.
+ * @param len     If not null, the offset within the character is stored here.
+ * @return        The character-index, or -1 if the string is too short.
+ */
+int u8_charidx(const char *_s, size_t i, size_t *len)
+{
+	size_t ofs = 0;
+	int idx = 0;
+	unsigned char *s = (unsigned char*)_s;
+	
+	while (ofs < i && s[ofs])
+	{
+		// ascii character
+		if (s[ofs] <= 0x7F)
+		{
+			++idx;
+			++ofs;
+			continue;
+		}
+
+		// start of a wide character
+		if (s[ofs] & 0xC0)
+		{
+			size_t start = ofs;
+			for (++ofs; s[ofs] >= 0x80 && s[ofs] <= 0xC0 && ofs < i; ++ofs);
+			if (s[ofs] >= 0x80 && s[ofs] <= 0xC0)
+			{
+				// it ends within this character
+				if (len)
+					*len = ofs - start;
+				return idx;
+			}
+			++idx;
+			continue;
+		}
+
+		// part of a wide character, weignore that one
+		if (s[ofs] <= 0xBF)
+		{
+			++ofs;
+			continue;
+		}
+	}
+	if (len) *len = 0;
+	return idx;
 }
 
 /** Fetch a character from an utf-8 encoded string.
@@ -471,6 +612,87 @@ size_t u8_wcstombs(char *mb, const Uchar *wcs, size_t maxlen)
 	if (i < maxlen)
 		*mb = 0;
 	return (mb - start);
+}
+
+/*
+============
+UTF-8 aware COM_StringLengthNoColors
+
+calculates the visible width of a color coded string.
+
+*valid is filled with TRUE if the string is a valid colored string (that is, if
+it does not end with an unfinished color code). If it gets filled with FALSE, a
+fix would be adding a STRING_COLOR_TAG at the end of the string.
+
+valid can be set to NULL if the caller doesn't care.
+
+For size_s, specify the maximum number of characters from s to use, or 0 to use
+all characters until the zero terminator.
+============
+*/
+size_t
+u8_COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid)
+{
+	const char *end = size_s ? (s + size_s) : NULL;
+	size_t len = 0;
+
+	for(;;)
+	{
+		switch((s == end) ? 0 : *s)
+		{
+			case 0:
+				if(valid)
+					*valid = TRUE;
+				return len;
+			case STRING_COLOR_TAG:
+				++s;
+				switch((s == end) ? 0 : *s)
+				{
+					case STRING_COLOR_RGB_TAG_CHAR:
+						if (s+1 != end && isxdigit(s[1]) &&
+							s+2 != end && isxdigit(s[2]) &&
+							s+3 != end && isxdigit(s[3]) )
+						{
+							s+=3;
+							break;
+						}
+						++len; // STRING_COLOR_TAG
+						++len; // STRING_COLOR_RGB_TAG_CHAR
+						break;
+					case 0: // ends with unfinished color code!
+						++len;
+						if(valid)
+							*valid = FALSE;
+						return len;
+					case STRING_COLOR_TAG: // escaped ^
+						++len;
+						break;
+					case '0': case '1': case '2': case '3': case '4':
+					case '5': case '6': case '7': case '8': case '9': // color code
+						break;
+					default: // not a color code
+						++len; // STRING_COLOR_TAG
+						++len; // the character
+						break;
+				}
+				break;
+			default:
+				++len;
+				break;
+		}
+		
+		// start of a wide character
+		if (*s & 0xC0)
+		{
+			for (++s; *s >= 0x80 && *s <= 0xC0; ++s);
+			continue;
+		}
+		// part of a wide character, we ignore that one
+		if (*s <= 0xBF)
+			--len;
+		++s;
+	}
+	// never get here
 }
 
 /*
