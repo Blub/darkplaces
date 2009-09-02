@@ -536,6 +536,11 @@ qboolean Font_LoadFont(const char *name, int size, int _face, ft2_font_t *font)
 	font->data = FS_LoadFile(filename, font_mempool, false, &font->datasize);
 	if (!font->data)
 	{
+		memcpy(filename + namelen, ".otf", 5);
+		font->data = FS_LoadFile(filename, font_mempool, false, &font->datasize);
+	}
+	if (!font->data)
+	{
 		ft2_attachment_t afm;
 
 		memcpy(filename + namelen, ".pfb", 5);
