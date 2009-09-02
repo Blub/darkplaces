@@ -2105,7 +2105,7 @@ string	substring(string s, float start, float length)
 // returns a section of a string as a tempstring
 void VM_substring(void)
 {
-	int start, length, slength, maxlen;
+	int start, length;
 	int u_slength = 0, u_start;
 	size_t u_length;
 	const char *s;
@@ -4782,6 +4782,7 @@ void VM_strstrofs (void)
 	instr = PRVM_G_STRING(OFS_PARM0);
 	match = PRVM_G_STRING(OFS_PARM1);
 	firstofs = (prog->argc > 2)?(int)PRVM_G_FLOAT(OFS_PARM2):0;
+	firstofs = u8_bytelen(instr, firstofs);
 
 	if (firstofs && (firstofs < 0 || firstofs > (int)strlen(instr)))
 	{
@@ -4800,10 +4801,17 @@ void VM_strstrofs (void)
 void VM_str2chr (void)
 {
 	const char *s;
+	Uchar ch;
+	int index;
 	VM_SAFEPARMCOUNT(2, VM_str2chr);
 	s = PRVM_G_STRING(OFS_PARM0);
-	if((unsigned)PRVM_G_FLOAT(OFS_PARM1) < strlen(s))
-		PRVM_G_FLOAT(OFS_RETURN) = (unsigned char)s[(unsigned)PRVM_G_FLOAT(OFS_PARM1)];
+	index = u8_bytelen(s, (int)PRVM_G_FLOAT(OFS_PARM1));
+
+	if((unsigned)index < strlen(s))
+	{
+		ch = u8_getchar(s + index, NULL);
+		PRVM_G_FLOAT(OFS_RETURN) = ch;
+	}
 	else
 		PRVM_G_FLOAT(OFS_RETURN) = 0;
 }
@@ -4811,12 +4819,26 @@ void VM_str2chr (void)
 //#223 string(float c, ...) chr2str (FTE_STRINGS)
 void VM_chr2str (void)
 {
+	/*
 	char	t[9];
 	int		i;
 	VM_SAFEPARMCOUNTRANGE(0, 8, VM_chr2str);
 	for(i = 0;i < prog->argc && i < (int)sizeof(t) - 1;i++)
 		t[i] = (unsigned char)PRVM_G_FLOAT(OFS_PARM0+i*3);
 	t[i] = 0;
+	PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(t);
+	*/
+	char t[9 * 4 + 1];
+	int i;
+	size_t len = 0;
+	VM_SAFEPARMCOUNTRANGE(0, 8, VM_chr2str);
+	for(i = 0; i < prog->argc && len < sizeof(t)-1; ++i)
+	{
+		int add = u8_fromchar((Uchar)PRVM_G_FLOAT(OFS_PARM0+i*3), t + len, sizeof(t)-1);
+		if(add > 0)
+			len += add;
+	}
+	t[len] = 0;
 	PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(t);
 }
 
