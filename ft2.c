@@ -713,7 +713,7 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 	     ch < (FT_ULong)map->start + FONT_CHARS_PER_MAP;
 	     ++ch)
 	{
-		FT_ULong glyphIndex;
+		//FT_ULong glyphIndex;
 		int w, h, x, y;
 		FT_GlyphSlot glyph;
 		FT_Bitmap *bmp;
@@ -731,15 +731,17 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 		}
 
 		imagedata = data + gR * pitch * font->glyphSize + gC * font->glyphSize * bytesPerPixel;
-		glyphIndex = qFT_Get_Char_Index(face, ch);
-
-		status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_DEFAULT);
+		//glyphIndex = qFT_Get_Char_Index(face, ch);
+		//status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER);
+		status = qFT_Load_Char(face, ch, FT_LOAD_RENDER);
 		if (status)
 		{
-			Con_Printf("failed to load glyph %lu for %s\n", glyphIndex, font->name);
+			//Con_Printf("failed to load glyph %lu for %s\n", glyphIndex, font->name);
+			Con_Printf("failed to load glyph for char %x from font %s\n", ch, font->name);
 			continue;
 		}
 
+		/* obsolete when using FT_LOAD_RENDER
 		if (face->glyph->format != FT_GLYPH_FORMAT_BITMAP)
 		{
 			status = qFT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
@@ -749,6 +751,7 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 				continue;
 			}
 		}
+		*/
 
 		glyph = face->glyph;
 		bmp = &glyph->bitmap;
@@ -846,6 +849,7 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 			double bearingX = (double)glyph->metrics.horiBearingX * font->sfx;
 			double bearingY = (double)glyph->metrics.horiBearingY * font->sfy;
 			double advance = (double)glyph->metrics.horiAdvance * font->sfx;
+			//double advance = glyph->advance.x >> 6;
 			double mWidth = (double)glyph->metrics.width * font->sfx;
 			double mHeight = (double)glyph->metrics.height * font->sfy;
 			//double tWidth = bmp->width / (double)font->size;
