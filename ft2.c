@@ -473,7 +473,7 @@ qboolean Font_Attach(ft2_font_t *font, ft2_attachment_t *attachment)
 	return true;
 }
 
-qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
+qboolean Font_LoadFont(const char *name, int size, int _face, ft2_font_t *font)
 {
 	size_t namelen;
 	char filename[PATH_MAX];
@@ -523,7 +523,13 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 	}
 	Con_Printf("Loading font %s face 0 size %i...\n", filename, size);
 
-	status = qFT_New_Memory_Face(font_ft2lib, (FT_Bytes)font->data, font->datasize, 0, (FT_Face*)&font->face);
+	status = qFT_New_Memory_Face(font_ft2lib, (FT_Bytes)font->data, font->datasize, _face, (FT_Face*)&font->face);
+	if (status && _face != 0)
+	{
+		Con_Printf("Failed to load face %i of %s. Falling back to face 0\n", _face, name);
+		_face = 0;
+		status = qFT_New_Memory_Face(font_ft2lib, (FT_Bytes)font->data, font->datasize, 0, (FT_Face*)&font->face);
+	}
 	if (status)
 	{
 		Con_Printf("ERROR: can't create face for %s\n"
@@ -740,7 +746,7 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 		if (status)
 		{
 			//Con_Printf("failed to load glyph %lu for %s\n", glyphIndex, font->name);
-			Con_Printf("failed to load glyph for char %x from font %s\n", ch, font->name);
+			Con_Printf("failed to load glyph for char %lx from font %s\n", (unsigned long)ch, font->name);
 			continue;
 		}
 

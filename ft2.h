@@ -77,7 +77,7 @@ void        Font_Init(void);
 qboolean    Font_OpenLibrary(void);
 ft2_font_t* Font_Alloc(void);
 void        Font_UnloadFont(ft2_font_t *font);
-qboolean    Font_LoadFont(const char *name, int size, ft2_font_t *font);
+qboolean    Font_LoadFont(const char *name, int size, int face, ft2_font_t *font);
 qboolean    Font_GetKerning(ft2_font_t *font, Uchar left, Uchar right, float *outx, float *outy);
 /*
 float Font_DrawString_Font(

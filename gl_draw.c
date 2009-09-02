@@ -625,7 +625,7 @@ static void LoadFont(qboolean override, const char *name, dp_font_t *fnt)
 	fnt->ft2 = Font_Alloc();
 	if(fnt->ft2)
 	{
-		if(!Font_LoadFont(fnt->texpath, fnt->req_size, fnt->ft2))
+		if(!Font_LoadFont(fnt->texpath, fnt->req_size, fnt->req_face, fnt->ft2))
 		{
 			Mem_Free(fnt->ft2);
 			fnt->ft2 = NULL;
@@ -731,7 +731,7 @@ static void LoadFont_f(void)
 	{
 		Con_Printf("Available font commands:\n");
 		for(i = 0; i < MAX_FONTS; ++i)
-			Con_Printf("  loadfont %s gfx/tgafile [size]\n", dp_fonts[i].title);
+			Con_Printf("  loadfont %s gfx/tgafile [face] [size]\n", dp_fonts[i].title);
 		return;
 	}
 	f = FindFont(Cmd_Argv(1));
@@ -740,8 +740,10 @@ static void LoadFont_f(void)
 		Con_Printf("font function not found\n");
 		return;
 	}
-	if (Cmd_Argc() == 3)
-		f->req_size = atoi(Cmd_Argv(3)); // for some reason this argc is 3 even when using 2 arguments
+	if (Cmd_Argc() >= 3)
+		f->req_face = atoi(Cmd_Argv(3));
+	if (Cmd_Argc() >= 4)
+		f->req_size = atoi(Cmd_Argv(4)); // for some reason this argc is 3 even when using 2 arguments
 	LoadFont(true, (Cmd_Argc() < 3) ? "gfx/conchars" : Cmd_Argv(2), f);
 }
 

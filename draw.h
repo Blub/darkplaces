@@ -92,6 +92,7 @@ typedef struct dp_font_s
 	char title[MAX_QPATH];
 
 	int req_size; // requested size
+	int req_face; // requested face index, usually 0
 	struct ft2_font_s *ft2;
 }
 dp_font_t;
