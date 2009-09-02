@@ -9,6 +9,14 @@
 
 /*
 ================================================================================
+CVars introduced with the freetype extension
+================================================================================
+*/
+
+cvar_t r_font_use_alpha_textures = {CVAR_SAVE, "r_font_use_alpha_textures", "0", "use alpha-textures for font rendering, this should safe memory"};
+
+/*
+================================================================================
 Function definitions. Taken from the freetype2 headers.
 ================================================================================
 */
@@ -211,6 +219,13 @@ void font_start(void)
 
 void font_shutdown(void)
 {
+	int i;
+	for (i = 0; i < MAX_FONTS; ++i)
+	{
+		if (dp_fonts[i].ft2)
+			Font_UnloadFont(dp_fonts[i].ft2);
+		dp_fonts[i].ft2 = NULL;
+	}
 	Font_CloseLibrary();
 }
 
@@ -220,8 +235,7 @@ void font_newmap(void)
 
 void Font_Init(void)
 {
-	// dummy this for now
-	// R_RegisterModule("Font_FreeType2", font_start, font_shutdown, font_newmap);
+	Cvar_RegisterVariable(&r_font_use_alpha_textures);
 }
 
 /*
@@ -677,6 +691,9 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 	if (outmap)
 		*outmap = NULL;
 
+	if (r_font_use_alpha_textures.integer)
+		bytesPerPixel = 1;
+
 	map = Mem_Alloc(font_mempool, sizeof(ft2_font_map_t));
 	if (!map)
 	{
@@ -697,9 +714,12 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 	tp = 0;
 	while (tp < (FONT_CHAR_LINES * font->glyphSize) * pitch)
 	{
-		data[tp++] = 0xFF;
-		data[tp++] = 0xFF;
-		data[tp++] = 0xFF;
+		if (bytesPerPixel == 4)
+		{
+			data[tp++] = 0xFF;
+			data[tp++] = 0xFF;
+			data[tp++] = 0xFF;
+		}
 		data[tp++] = 0x00;
 	}
 
@@ -803,44 +823,44 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 			switch (bmp->pixel_mode)
 			{
 			case FT_PIXEL_MODE_MONO:
+				dst += bytesPerPixel - 1; // shift to alpha byte
 				for (x = 0; x < bmp->width; x += 8)
 				{
 					unsigned char ch = *src++;
-					dst += 3; // shift to alpha byte
-					*dst = 255 * ((ch & 0x80) >> 7); dst += 4;
-					*dst = 255 * ((ch & 0x40) >> 6); dst += 4;
-					*dst = 255 * ((ch & 0x20) >> 5); dst += 4;
-					*dst = 255 * ((ch & 0x10) >> 4); dst += 4;
-					*dst = 255 * ((ch & 0x08) >> 3); dst += 4;
-					*dst = 255 * ((ch & 0x04) >> 2); dst += 4;
-					*dst = 255 * ((ch & 0x02) >> 1); dst += 4;
-					*dst = 255 * ((ch & 0x01) >> 0); dst++; // compensate the first += 3
+					*dst = 255 * ((ch & 0x80) >> 7); dst += bytesPerPixel;
+					*dst = 255 * ((ch & 0x40) >> 6); dst += bytesPerPixel;
+					*dst = 255 * ((ch & 0x20) >> 5); dst += bytesPerPixel;
+					*dst = 255 * ((ch & 0x10) >> 4); dst += bytesPerPixel;
+					*dst = 255 * ((ch & 0x08) >> 3); dst += bytesPerPixel;
+					*dst = 255 * ((ch & 0x04) >> 2); dst += bytesPerPixel;
+					*dst = 255 * ((ch & 0x02) >> 1); dst += bytesPerPixel;
+					*dst = 255 * ((ch & 0x01) >> 0); dst += bytesPerPixel;
 				}
 				break;
 			case FT_PIXEL_MODE_GRAY2:
+				dst += bytesPerPixel - 1; // shift to alpha byte
 				for (x = 0; x < bmp->width; x += 4)
 				{
 					unsigned char ch = *src++;
-					dst += 3; // shift to alpha byte
-					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst += 4;
-					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst += 4;
-					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst += 4;
-					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst++; // compensate the +=3
+					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst += bytesPerPixel;
+					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst += bytesPerPixel;
+					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst += bytesPerPixel;
+					*dst = ( ((ch & 0xA0) >> 6) * 0x55 ); ch <<= 2; dst += bytesPerPixel;
 				}
 				break;
 			case FT_PIXEL_MODE_GRAY4:
+				dst += bytesPerPixel - 1; // shift to alpha byte
 				for (x = 0; x < bmp->width; x += 2)
 				{
 					unsigned char ch = *src++;
-					dst += 3; // shift to alpha byte
-					*dst = ( ((ch & 0xF0) >> 4) * 0x24); dst += 4;
-					*dst = ( ((ch & 0x0F) ) * 0x24); dst++; // compensate the += 3
+					*dst = ( ((ch & 0xF0) >> 4) * 0x24); dst += bytesPerPixel;
+					*dst = ( ((ch & 0x0F) ) * 0x24); dst += bytesPerPixel;
 				}
 				break;
 			case FT_PIXEL_MODE_GRAY:
 				// in this case pitch should equal width
 				for (tp = 0; tp < bmp->pitch; ++tp)
-					dst[3 + tp*4] = src[tp]; // copy the grey value into the alpha bytes
+					dst[(bytesPerPixel - 1) + tp*bytesPerPixel] = src[tp]; // copy the grey value into the alpha bytes
 
 				//memcpy((void*)dst, (void*)src, bmp->pitch);
 				//dst += bmp->pitch;
@@ -901,10 +921,21 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 		FS_WriteFile(map_identifier, data, pitch * FONT_CHAR_LINES * font->glyphSize);
 	}
 	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP);
-	map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
-				       font->glyphSize * FONT_CHARS_PER_LINE,
-				       font->glyphSize * FONT_CHAR_LINES,
-				       data, TEXTYPE_RGBA, TEXF_ALPHA | TEXF_ALWAYSPRECACHE/* | TEXF_MIPMAP*/, NULL);
+
+	// probably use bytesPerPixel here instead?
+	if (r_font_use_alpha_textures.integer)
+	{
+		map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
+					       font->glyphSize * FONT_CHARS_PER_LINE,
+					       font->glyphSize * FONT_CHAR_LINES,
+					       data, TEXTYPE_ALPHA, TEXF_ALPHA | TEXF_ALWAYSPRECACHE/* | TEXF_MIPMAP*/, NULL);
+	} else {
+		map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
+					       font->glyphSize * FONT_CHARS_PER_LINE,
+					       font->glyphSize * FONT_CHAR_LINES,
+					       data, TEXTYPE_RGBA, TEXF_ALPHA | TEXF_ALWAYSPRECACHE/* | TEXF_MIPMAP*/, NULL);
+	}
+
 	Mem_Free(data);
 	if (!map->texture)
 	{
