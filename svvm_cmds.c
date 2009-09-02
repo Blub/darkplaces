@@ -1385,12 +1385,36 @@ static void VM_SV_WriteUnterminatedString (void)
 	MSG_WriteUnterminatedString (WriteDest(), PRVM_G_STRING(OFS_PARM1));
 }
 
-
 static void VM_SV_WriteEntity (void)
 {
 	VM_SAFEPARMCOUNT(2, VM_SV_WriteEntity);
 	MSG_WriteShort (WriteDest(), PRVM_G_EDICTNUM(OFS_PARM1));
 }
+
+static void VM_SV_WriteByteINT (void)
+{
+	VM_SAFEPARMCOUNT(2, VM_SV_WriteByteINT);
+	MSG_WriteByte (WriteDest(), PRVM_G_INT(OFS_PARM1));
+}
+
+static void VM_SV_WriteCharINT (void)
+{
+	VM_SAFEPARMCOUNT(2, VM_SV_WriteCharINT);
+	MSG_WriteChar (WriteDest(), PRVM_G_INT(OFS_PARM1));
+}
+
+static void VM_SV_WriteShortINT (void)
+{
+	VM_SAFEPARMCOUNT(2, VM_SV_WriteShortINT);
+	MSG_WriteShort (WriteDest(), PRVM_G_INT(OFS_PARM1));
+}
+
+static void VM_SV_WriteLongINT (void)
+{
+	VM_SAFEPARMCOUNT(2, VM_SV_WriteLongINT);
+	MSG_WriteLong (WriteDest(), PRVM_G_INT(OFS_PARM1));
+}
+
 
 // writes a picture as at most size bytes of data
 // message:

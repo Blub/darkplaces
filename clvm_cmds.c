@@ -1394,6 +1394,34 @@ static void VM_CL_ReadPicture (void)
 	PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(name);
 }
 
+//#??? int() readbytei (DP_???)
+static void VM_CL_ReadByteINT (void)
+{
+	VM_SAFEPARMCOUNT(0, VM_CL_ReadByteINT);
+	PRVM_G_INT(OFS_RETURN) = MSG_ReadByte();
+}
+
+//#??? float() readchari (DP_???)
+static void VM_CL_ReadCharINT (void)
+{
+	VM_SAFEPARMCOUNT(0, VM_CL_ReadCharINT);
+	PRVM_G_INT(OFS_RETURN) = MSG_ReadChar();
+}
+
+//#??? float() readshorti (DP_???)
+static void VM_CL_ReadShortINT (void)
+{
+	VM_SAFEPARMCOUNT(0, VM_CL_ReadShortINT);
+	PRVM_G_INT(OFS_RETURN) = MSG_ReadShort();
+}
+
+//#??? float() readlongi (DP_???)
+static void VM_CL_ReadLongINT (void)
+{
+	VM_SAFEPARMCOUNT(0, VM_CL_ReadLongINT);
+	PRVM_G_INT(OFS_RETURN) = MSG_ReadLong();
+}
+
 //////////////////////////////////////////////////////////
 
 static void VM_CL_makestatic (void)
