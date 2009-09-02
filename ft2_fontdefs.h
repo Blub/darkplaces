@@ -11,16 +11,16 @@ typedef struct glyph_slot_s
 {
 	// we keep the quad coords here only currently
 	// if you need other info, make Font_LoadMapForIndex fill it into this slot
-	double txmin; // texture coordinate in [0,1]
-	double txmax;
-	double tymin;
-	double tymax;
-	float  vxmin;
-	float  vxmax;
-	float  vymin;
-	float  vymax;
-	float  advance_x;
-	float  advance_y;
+	float txmin; // texture coordinate in [0,1]
+	float txmax;
+	float tymin;
+	float tymax;
+	float vxmin;
+	float vxmax;
+	float vymin;
+	float vymax;
+	float advance_x;
+	float advance_y;
 } glyph_slot_t;
 
 struct ft2_font_map_s
