@@ -1176,6 +1176,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	ftbase_x = snap_to_pixel_x(ftbase_x);
 	ftbase_y = snap_to_pixel_x(ftbase_y);
+
 	/*
 	w = snap_to_pixel_x(w);
 	h = snap_to_pixel_y(h);
@@ -1389,6 +1390,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				{
 					kx *= w;
 					ky *= h;
+					//x += snap_to_pixel_x(kx);
+					//y += snap_to_pixel_x(ky);
 					x += kx;
 					y += ky;
 				}
@@ -1409,6 +1412,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				x -= ftbase_x;
 				y -= ftbase_y;
 
+				//x += snap_to_pixel_x(thisw * w);
 				x += thisw * w;
 				ac += 16;
 				at += 8;
