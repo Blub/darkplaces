@@ -1303,26 +1303,9 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				}
 				x += thisw * w;
 			} else {
-				map = fnt->ft2->font_map;
-				while(map && map->start + FONT_CHARS_PER_MAP < ch)
-					map = map->next;
-				if (!map)
+				if (!map || map == oldstyle_map || map->start < ch || map->start + FONT_CHARS_PER_MAP >= ch)
 				{
-					if (!Font_LoadMapForIndex(fnt->ft2, ch, &map))
-					{
-						shadow = -1;
-						break;
-					}
-					if (!map)
-					{
-						// this shouldn't happen
-						shadow = -1;
-						break;
-					}
-				}
-
-				if (prevmap != map)
-				{
+					// new charmap - need to render
 					if (batchcount)
 					{
 						// we need a different character map, render what we currently have:
@@ -1333,6 +1316,24 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 						ac = color4f;
 						at = texcoord2f;
 						av = vertex3f;
+					}
+					// find the new map
+					map = fnt->ft2->font_map;
+					while(map && map->start + FONT_CHARS_PER_MAP < ch)
+						map = map->next;
+					if (!map)
+					{
+						if (!Font_LoadMapForIndex(fnt->ft2, ch, &map))
+						{
+							shadow = -1;
+							break;
+						}
+						if (!map)
+						{
+							// this shouldn't happen
+							shadow = -1;
+							break;
+						}
 					}
 					R_Mesh_TexBind(0, R_GetTexture(map->texture));
 					R_SetupGenericShader(true);
