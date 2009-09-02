@@ -550,7 +550,7 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 	font->sfx = (1.0/64.0) / (double)font->size;
 	font->sfy = (1.0/64.0) / (double)font->size;
 
-	status = qFT_Set_Pixel_Sizes((FT_Face)font->face, size, size);
+	status = qFT_Set_Pixel_Sizes((FT_Face)font->face, /*size*/0, size);
 	if (status)
 	{
 		Con_Printf("ERROR: can't size pixel sizes for face of font %s\n"
@@ -740,11 +740,14 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 			continue;
 		}
 
-		status = qFT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
-		if (status)
+		if (face->glyph->format != FT_GLYPH_FORMAT_BITMAP)
 		{
-			Con_Printf("failed to render glyph %lu for %s\n", glyphIndex, font->name);
-			continue;
+			status = qFT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL);
+			if (status)
+			{
+				Con_Printf("failed to render glyph %lu for %s\n", glyphIndex, font->name);
+				continue;
+			}
 		}
 
 		glyph = face->glyph;
