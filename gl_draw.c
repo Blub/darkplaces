@@ -1145,10 +1145,14 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	float ftbase_x, ftbase_y;
 	const char *text_start = text;
 	float kx, ky;
+	ft2_font_t *ft2 = fnt->ft2;
 
 	int tw, th;
 	tw = R_TextureWidth(fnt->tex);
 	th = R_TextureHeight(fnt->tex);
+
+	if (developer.integer == 63)
+		ft2 = NULL;
 
 	starty -= (fnt->scale - 1) * h * 0.5; // center
 	w *= fnt->scale;
@@ -1165,7 +1169,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	R_Mesh_ColorPointer(color4f, 0, 0);
 	R_Mesh_ResetTextureState();
-	if (!fnt->ft2)
+	if (!ft2)
 		R_Mesh_TexBind(0, R_GetTexture(fnt->tex));
 	R_Mesh_TexCoordPointer(0, 2, texcoord2f, 0, 0);
 	R_Mesh_VertexPointer(vertex3f, 0, 0);
@@ -1207,7 +1211,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 		}
 		for (i = 0;i < maxlen && *text;)
 		{
-			if (*text == ' ' && !fnt->ft2)
+			if (*text == ' ' && !ft2)
 			{
 				x += fnt->width_of[(int) ' '] * w;
 				++text;
@@ -1273,27 +1277,27 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			// this way we don't need to rebind fnt->tex for every old-style character
 #define oldstyle_map ((ft2_font_map_t*)-1)
 			// E000..E0FF: emulate old-font characters (to still have smileys and such available)
-			if (!fnt->ft2 || (ch >= 0xE000 && ch <= 0xE0FF))
+			if (!ft2 || (ch >= 0xE000 && ch <= 0xE0FF))
 			{
 				if (ch > 0xE000)
 					ch -= 0xE000;
 				if (ch > 0xFF)
 					continue;
-				if (fnt->ft2)
+				if (ft2)
 				{
-					if (batchcount)
-					{
-						// switching from freetype to non-freetype rendering
-						GL_LockArrays(0, batchcount * 4);
-						R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
-						GL_LockArrays(0, 0);
-						batchcount = 0;
-						ac = color4f;
-						at = texcoord2f;
-						av = vertex3f;
-					}
 					if (map != oldstyle_map)
 					{
+						if (batchcount)
+						{
+							// switching from freetype to non-freetype rendering
+							GL_LockArrays(0, batchcount * 4);
+							R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+							GL_LockArrays(0, 0);
+							batchcount = 0;
+							ac = color4f;
+							at = texcoord2f;
+							av = vertex3f;
+						}
 						R_Mesh_TexBind(0, R_GetTexture(fnt->tex));
 						R_SetupGenericShader(true);
 						map = oldstyle_map;
@@ -1351,12 +1355,12 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 						av = vertex3f;
 					}
 					// find the new map
-					map = fnt->ft2->font_map;
+					map = ft2->font_map;
 					while(map && map->start + FONT_CHARS_PER_MAP < ch)
 						map = map->next;
 					if (!map)
 					{
-						if (!Font_LoadMapForIndex(fnt->ft2, ch, &map))
+						if (!Font_LoadMapForIndex(ft2, ch, &map))
 						{
 							shadow = -1;
 							break;
@@ -1388,7 +1392,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 				x += ftbase_x;
 				y += ftbase_y;
-				if (!developer.integer && prevch && Font_GetKerning(fnt->ft2, prevch, ch, &kx, &ky))
+				if (!developer.integer && prevch && Font_GetKerning(ft2, prevch, ch, &kx, &ky))
 				{
 					kx *= w;
 					ky *= h;
