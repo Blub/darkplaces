@@ -601,7 +601,7 @@ void Draw_FreePic(const char *picname)
 }
 
 extern int con_linewidth; // to force rewrapping
-static void LoadFont(qboolean override, const char *name, dp_font_t *fnt, int size)
+static void LoadFont(qboolean override, const char *name, dp_font_t *fnt)
 {
 	int i;
 	float maxwidth, scale;
@@ -625,7 +625,7 @@ static void LoadFont(qboolean override, const char *name, dp_font_t *fnt, int si
 	fnt->ft2 = Font_Alloc();
 	if(fnt->ft2)
 	{
-		if(!Font_LoadFont(fnt->texpath, size, fnt->ft2))
+		if(!Font_LoadFont(fnt->texpath, fnt->req_size, fnt->ft2))
 		{
 			Mem_Free(fnt->ft2);
 			fnt->ft2 = NULL;
@@ -726,7 +726,7 @@ static dp_font_t *FindFont(const char *title)
 static void LoadFont_f(void)
 {
 	dp_font_t *f;
-	int i, size;
+	int i;
 	if(Cmd_Argc() < 2)
 	{
 		Con_Printf("Available font commands:\n");
@@ -741,10 +741,8 @@ static void LoadFont_f(void)
 		return;
 	}
 	if (Cmd_Argc() == 3)
-		size = atoi(Cmd_Argv(3));
-	else
-		size = 16;
-	LoadFont(true, (Cmd_Argc() < 3) ? "gfx/conchars" : Cmd_Argv(2), f, size);
+		f->req_size = atoi(Cmd_Argv(3)); // for some reason this argc is 3 even when using 2 arguments
+	LoadFont(true, (Cmd_Argc() < 3) ? "gfx/conchars" : Cmd_Argv(2), f);
 }
 
 /*
@@ -763,7 +761,7 @@ static void gl_draw_start(void)
 	font_start();
 
 	for(i = 0; i < MAX_FONTS; ++i)
-		LoadFont(false, va("gfx/font_%s", dp_fonts[i].title), &dp_fonts[i], 16);
+		LoadFont(false, va("gfx/font_%s", dp_fonts[i].title), &dp_fonts[i]);
 
 	// draw the loading screen so people have something to see in the newly opened window
 	SCR_UpdateLoadingScreen(true);
@@ -1104,6 +1102,28 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 	return x * fnt->scale;
 }
 
+static inline float snap_to_pixel_x(float x)
+{
+	if (developer.integer == 2)
+		return (int)x;
+	if (developer.integer)
+		return x;
+	x = (int)(x * vid.width / vid_conwidth.value);
+	x = (x * vid_conwidth.value / vid.width);
+	return x;
+}
+
+static inline float snap_to_pixel_y(float y)
+{
+	if (developer.integer == 2)
+		return (int)y;
+	if (developer.integer)
+		return y;
+	y = (int)(y * vid.height / vid_conheight.value);
+	y = (y * vid_conheight.value / vid.height);
+	return y;
+}
+
 float DrawQ_String_Font(float startx, float starty, const char *text, size_t maxlen, float w, float h, float basered, float basegreen, float baseblue, float basealpha, int flags, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt)
 {
 	int shadow, colorindex = STRING_COLOR_DEFAULT;
@@ -1153,6 +1173,16 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	at = texcoord2f;
 	av = vertex3f;
 	batchcount = 0;
+
+	ftbase_x = snap_to_pixel_x(ftbase_x);
+	ftbase_y = snap_to_pixel_x(ftbase_y);
+	/*
+	w = snap_to_pixel_x(w);
+	h = snap_to_pixel_y(h);
+	x = snap_to_pixel_x(x);
+	startx = snap_to_pixel_x(startx);
+	starty = snap_to_pixel_x(starty);
+	*/
 
 	for (shadow = r_textshadow.value != 0 && basealpha > 0;shadow >= 0;shadow--)
 	{

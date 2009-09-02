@@ -482,6 +482,9 @@ qboolean Font_LoadFont(const char *name, int size, ft2_font_t *font)
 
 	memset(font, 0, sizeof(*font));
 
+	if (size <= 0) // default size requested
+		size = 16;
+
 	if (!Font_OpenLibrary())
 	{
 		Con_Printf("WARNING: can't open load font %s\n"

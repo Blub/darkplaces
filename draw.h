@@ -91,6 +91,7 @@ typedef struct dp_font_s
 	char texpath[MAX_QPATH];
 	char title[MAX_QPATH];
 
+	int req_size; // requested size
 	struct ft2_font_s *ft2;
 }
 dp_font_t;
