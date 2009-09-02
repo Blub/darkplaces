@@ -1055,9 +1055,9 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 		ft2 = NULL;
 	// ftbase_x = snap_to_pixel_x(0);
 
-	for (i = 0;i < *maxlen && *text;i++)
+	for (i = 0;i < *maxlen && *text;)
 	{
-		if (text[i] == ' ' && !ft2)
+		if (*text == ' ' && !ft2)
 		{
 			if(x + fnt->width_of[(int) ' '] > maxwidth)
 				break; // oops, can't draw this
@@ -1066,7 +1066,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 			++i;
 			continue;
 		}
-		if (text[i] == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < *maxlen)
+		if (*text == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < *maxlen)
 		{
 			++text;
 			++i;
@@ -1075,6 +1075,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 			{
 				colorindex = ch - '0';
 				++text;
+				++i;
 				continue;
 			}
 			else if (ch == STRING_COLOR_RGB_TAG_CHAR && i + 3 < *maxlen ) // ^x found
@@ -1285,6 +1286,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 					colorindex = ch - '0';
 					DrawQ_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
 					++text;
+					++i;
 					continue;
 				}
 				else if (ch == STRING_COLOR_RGB_TAG_CHAR && i+3 < maxlen ) // ^x found
