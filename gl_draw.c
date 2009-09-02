@@ -1280,7 +1280,6 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			i = text - text_start;
 			// using a value of -1 for the oldstyle map because NULL means uninitialized...
 			// this way we don't need to rebind fnt->tex for every old-style character
-#define oldstyle_map ((ft2_font_map_t*)-1)
 			// E000..E0FF: emulate old-font characters (to still have smileys and such available)
 			if (!ft2 || (ch >= 0xE000 && ch <= 0xE0FF))
 			{
@@ -1290,7 +1289,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 					continue;
 				if (ft2)
 				{
-					if (map != oldstyle_map)
+					if (map != ft2_oldstyle_map)
 					{
 						if (batchcount)
 						{
@@ -1305,7 +1304,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 						}
 						R_Mesh_TexBind(0, R_GetTexture(fnt->tex));
 						R_SetupGenericShader(true);
-						map = oldstyle_map;
+						map = ft2_oldstyle_map;
 					}
 				}
 				prevch = 0;
@@ -1345,7 +1344,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				}
 				x += thisw * w;
 			} else {
-				if (!map || map == oldstyle_map || map->start < ch || map->start + FONT_CHARS_PER_MAP >= ch)
+				if (!map || map == ft2_oldstyle_map || map->start < ch || map->start + FONT_CHARS_PER_MAP >= ch)
 				{
 					// new charmap - need to render
 					if (batchcount)
@@ -1445,7 +1444,6 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			}
 		}
 	}
-#undef oldstyle_map
 	if (batchcount > 0)
 	{
 		GL_LockArrays(0, batchcount * 4);

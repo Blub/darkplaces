@@ -38,6 +38,7 @@ size_t u8_wcstombs(char*, const Uchar*, size_t);
 
 typedef struct ft2_font_map_s ft2_font_map_t;
 typedef struct ft2_attachment_s ft2_attachment_t;
+#define ft2_oldstyle_map ((ft2_font_map_t*)-1)
 
 typedef float ft2_kernvec[2];
 typedef struct ft2_kerning_s
