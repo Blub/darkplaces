@@ -1040,7 +1040,7 @@ static void DrawQ_GetTextColor(float color[4], int colorindex, float r, float g,
 	}
 }
 
-float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float fsize, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
+float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w, float h, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
 {
 	int colorindex = STRING_COLOR_DEFAULT;
 	size_t i;
@@ -1062,8 +1062,11 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float f
 	// find the most fitting size:
 	if (ft2 != NULL)
 	{
-		map_index = Font_IndexForSize(ft2, fsize);
+		map_index = Font_IndexForSize(ft2, h);
 		fontmap = Font_MapForIndex(ft2, map_index);
+	}
+	if (!h) {
+		w = h = 1;
 	}
 
 	if (*maxlen < 1)
@@ -1169,9 +1172,9 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float f
 				}
 			}
 			mapch = ch - map->start;
-			if (prevch && Font_GetKerningForMap(ft2, map_index, prevch, ch, &kx, NULL))
+			if (prevch && Font_GetKerningForMap(ft2, map_index, w, h, prevch, ch, &kx, NULL))
 				x += kx;
-			x += map->glyphs[mapch].advance_x;
+			x += map->glyphs[mapch].advance_x * w;
 			prevmap = map;
 			prevch = ch;
 		}
@@ -1481,7 +1484,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 				x += ftbase_x;
 				y += ftbase_y;
-				if (prevch && Font_GetKerningForMap(ft2, map_index, prevch, ch, &kx, &ky))
+				if (prevch && Font_GetKerningForMap(ft2, map_index, w, h, prevch, ch, &kx, &ky))
 				{
 					kx *= w;
 					ky *= h;
@@ -1560,7 +1563,7 @@ float DrawQ_TextWidth_Font_UntilWidth(const char *text, size_t *maxlen, qboolean
 
 float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
 {
-	return DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(text, -1, maxlen, outcolor, ignorecolorcodes, fnt, maxwidth);
+	return DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(text, 0, 0, maxlen, outcolor, ignorecolorcodes, fnt, maxwidth);
 }
 
 #if 0

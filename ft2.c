@@ -427,7 +427,8 @@ static qboolean Font_LoadSize(ft2_font_t *font, int size)
 		if (!font->font_maps[map_index])
 			break;
 		// if a similar size has already been loaded, ignore this one
-		if (abs(font->font_maps[map_index]->size - size) < 4)
+		//abs(font->font_maps[map_index]->size - size) < 4
+		if (font->font_maps[map_index]->size == size)
 			return true;
 	}
 	
@@ -490,6 +491,8 @@ int Font_IndexForSize(ft2_font_t *font, float fsize)
 	int m;
 	int size;
 	ft2_font_map_t **maps = font->font_maps;
+
+	fsize = fsize * vid.height / vid_conheight.value;
 	
 	if (fsize < 0)
 		size = 16;
@@ -536,12 +539,14 @@ ft2_font_map_t *Font_MapForIndex(ft2_font_t *font, int index)
 	return font->font_maps[index];
 }
 
-qboolean Font_GetKerningForSize(ft2_font_t *font, int size, Uchar left, Uchar right, float *outx, float *outy)
+static qboolean Font_SetSize(ft2_font_t *font, float w, float h)
 {
-	return Font_GetKerningForMap(font, Font_IndexForSize(font, size), left, right, outx, outy);
+	if (qFT_Set_Char_Size((FT_Face)font->face, w*64, h*64, 72, 72))
+		return false;
+	return true;
 }
 
-qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, Uchar left, Uchar right, float *outx, float *outy)
+qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, float w, float h, Uchar left, Uchar right, float *outx, float *outy)
 {
 	ft2_font_map_t *fmap;
 	if (!font->has_kerning)
@@ -553,9 +558,9 @@ qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, Uchar left, Ucha
 		return false;
 	if (left < 256 && right < 256)
 	{
-		// quick-kerning
-		if (outx) *outx = fmap->kerning.kerning[left][right][0];
-		if (outy) *outy = fmap->kerning.kerning[left][right][1];
+		// quick-kerning, be aware of the size: scale it
+		if (outx) *outx = fmap->kerning.kerning[left][right][0] * w / (float)fmap->size;
+		if (outy) *outy = fmap->kerning.kerning[left][right][1] * h / (float)fmap->size;
 		return true;
 	}
 	else
@@ -563,7 +568,8 @@ qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, Uchar left, Ucha
 		FT_Vector kernvec;
 		FT_ULong ul, ur;
 
-		if (qFT_Set_Pixel_Sizes((FT_Face)font->face, 0, fmap->size))
+		//if (qFT_Set_Pixel_Sizes((FT_Face)font->face, 0, fmap->size))
+		if (!Font_SetSize(font, w, h))
 		{
 			// this deserves an error message
 			Con_Printf("Failed to get kerning for %s\n", font->name);
@@ -579,6 +585,11 @@ qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, Uchar left, Ucha
 		}
 		return false;
 	}
+}
+
+qboolean Font_GetKerningForSize(ft2_font_t *font, float w, float h, Uchar left, Uchar right, float *outx, float *outy)
+{
+	return Font_GetKerningForMap(font, Font_IndexForSize(font, h), w, h, left, right, outx, outy);
 }
 
 static void UnloadMapRec(ft2_font_map_t *map)
@@ -753,7 +764,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		h = bmp->rows;
 
 		if (w > map->glyphSize || h > map->glyphSize)
-			Con_Printf("WARNING: Glyph %lu is too big in font %s\n", ch, font->name);
+			Con_Printf("WARNING: Glyph %lu is too big in font %s, size %i\n", ch, font->name, map->size);
 
 		switch (bmp->pixel_mode)
 		{
