@@ -27,7 +27,7 @@ struct ft2_font_map_s
 {
 	Uchar                  start;
 	struct ft2_font_map_s *next;
-	int                    size;
+	float                  size;
 	int                    glyphSize;
 
 	rtexture_t            *texture;

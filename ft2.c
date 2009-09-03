@@ -437,7 +437,7 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size)
 
 	memset(&temp, 0, sizeof(temp));
 	temp.size = size;
-	temp.glyphSize = size*2;
+	temp.glyphSize = CeilPowerOf2(size*2);
 	temp.sfx = (1.0/64.0)/(double)size;
 	temp.sfy = (1.0/64.0)/(double)size;
 	if (!Font_LoadMap(font, &temp, 0, &fmap))
@@ -472,8 +472,8 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size)
 				}
 				else
 				{
-					fmap->kerning.kerning[l][r][0] = kernvec.x * fmap->sfx;
-					fmap->kerning.kerning[l][r][1] = kernvec.y * fmap->sfy;
+					fmap->kerning.kerning[l][r][0] = (kernvec.x >> 6) / fmap->size;
+					fmap->kerning.kerning[l][r][1] = (kernvec.y >> 6) / fmap->size;
 				}
 			}
 		}
@@ -684,7 +684,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 	data = Mem_Alloc(font_mempool, (FONT_CHAR_LINES * map->glyphSize) * pitch);
 	if (!data)
 	{
-		Con_Printf("ERROR: Failed to allocate memory for font %s size %i\n", font->name, map->size);
+		Con_Printf("ERROR: Failed to allocate memory for font %s size %g\n", font->name, map->size);
 		Mem_Free(map);
 		return false;
 	}
@@ -763,7 +763,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		h = bmp->rows;
 
 		if (w > map->glyphSize || h > map->glyphSize)
-			Con_Printf("WARNING: Glyph %lu is too big in font %s, size %i\n", ch, font->name, map->size);
+			Con_Printf("WARNING: Glyph %lu is too big in font %s, size %g\n", ch, font->name, map->size);
 
 		switch (bmp->pixel_mode)
 		{
@@ -849,14 +849,14 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		mapglyph = &map->glyphs[mapch];
 
 		{
-			double bearingX = (double)glyph->metrics.horiBearingX * map->sfx;
-			double bearingY = (double)glyph->metrics.horiBearingY * map->sfy;
-			double advance = (double)glyph->metrics.horiAdvance * map->sfx;
-			//double advance = glyph->advance.x >> 6;
-			double mWidth = (double)glyph->metrics.width * map->sfx;
-			double mHeight = (double)glyph->metrics.height * map->sfy;
-			//double tWidth = bmp->width / (double)font->size;
-			//double tHeight = bmp->rows / (double)font->size;
+			// old way
+			// double advance = (double)glyph->metrics.horiAdvance * map->sfx;
+
+			double bearingX = (glyph->metrics.horiBearingX >> 6) / map->size;
+			double bearingY = (glyph->metrics.horiBearingY >> 6) / map->size;
+			double advance = (glyph->advance.x >> 6) / map->size;
+			double mWidth = (glyph->metrics.width >> 6) / map->size;
+			double mHeight = (glyph->metrics.height >> 6) / map->size;
 
 			mapglyph->vxmin = bearingX;
 			mapglyph->vxmax = bearingX + mWidth;
