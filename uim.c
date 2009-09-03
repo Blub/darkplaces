@@ -12,7 +12,7 @@ CVars introduced with the UIM extension
 */
 
 cvar_t im_enabled = {CVAR_SAVE, "im_enabled", "0", "use UIM input"};
-cvar_t im_method = {CVAR_SAVE, "im_method", "anthy", "which input method to use if uim is supported and active"};
+cvar_t im_engine = {CVAR_SAVE, "im_engine", "anthy", "which input method to use if uim is supported and active"};
 cvar_t im_language = {CVAR_SAVE, "im_language", "ja", "which language should be used for the input editor (en for english, ja for japanese, etc.)"};
 
 /*
@@ -32,7 +32,7 @@ const char*   (*quim_candidate_get_cand_str)(uim_candidate);
 const char*   (*quim_get_default_im_name)(const char *localename);
 uim_context   (*quim_create_context)(void *cookie,
 				     const char *encoding,
-				     const char *im, const char *lang,
+				     const char *lang,
 				     const char *engine,
 				     struct uim_code_converter *conv,
 				     void (*commit_cb)(void *ptr, const char *str));
@@ -137,7 +137,31 @@ qboolean UIM_OpenLibrary (void)
 	return true;
 }
 
+/*
+================================================================================
+UIM input method implementation.
+================================================================================
+*/
 
+typedef struct
+{
+	uim_context ctx;
+	int         fd;
+} quim_state;
+
+static quim_state quim;
+
+static void UIM_Commit(void*, const char *str);
+static void UIM_HelperDisconnected(void);
+static void UIM_Clear(void*);
+static void UIM_Push(void*, int attr, const char *str);
+static void UIM_Update(void*);
+static void UIM_Activate(void*, int nr, int display_limit);
+static void UIM_Select(void*, int index);
+static void UIM_Shift(void*, int dir);
+static void UIM_Deactivate(void*);
+
+static void UIM_Start(void);
 /*
 ====================
 UIM_Init
@@ -150,9 +174,86 @@ void UIM_Init(void)
 	// register the cvars in any case so they're at least saved,
 	// after all, they're for the user
 
-	Cvar_RegisterVariable(&im_method);
+	Cvar_RegisterVariable(&im_engine);
 	Cvar_RegisterVariable(&im_language);
 	Cvar_RegisterVariable(&im_enabled);
 
-	UIM_OpenLibrary();
+	UIM_Start();
 }
+
+/*
+====================
+UIM_Start
+
+Try starting up UIM, this should be made available as console command maybe?
+====================
+*/
+static void UIM_Start(void)
+{
+	if (!UIM_OpenLibrary())
+		return;
+
+	if (quim_init() != 0)
+	{
+		Con_Print("Failed to initialize UIM support\n");
+		return;
+	}
+
+	quim.ctx = quim_create_context(NULL, "UTF-8", im_language.string, im_engine.string, quim_iconv, &UIM_Commit);
+	if (quim.ctx == NULL)
+	{
+		Con_Print("Failed to create UIM context\n");
+		UIM_CloseLibrary();
+		return;
+	}
+
+	quim.fd = quim_helper_init_client_fd(&UIM_HelperDisconnected);
+	if (quim.fd < 0)
+	{
+		quim_release_context(quim.ctx);
+		quim.ctx = NULL;
+		UIM_CloseLibrary();
+		return;
+	}
+
+	quim_set_preedit_cb(quim.ctx, &UIM_Clear, &UIM_Push, &UIM_Update);
+	quim_set_candidate_selector_cb(quim.ctx, &UIM_Activate, &UIM_Select, &UIM_Shift, &UIM_Deactivate);
+	quim_prop_list_update(quim.ctx);
+}
+
+static void UIM_Commit(void *cookie, const char *str)
+{
+}
+
+static void UIM_HelperDisconnected(void)
+{
+}
+
+static void UIM_Clear(void *cookie)
+{
+}
+
+static void UIM_Push(void *cookie, int attr, const char *str)
+{
+}
+
+static void UIM_Update(void *cookie)
+{
+}
+
+static void UIM_Activate(void *cookie, int nr, int display_limit)
+{
+}
+
+static void UIM_Select(void *cookie, int index)
+{
+}
+
+static void UIM_Shift(void *cookie, int dir)
+{
+}
+
+static void UIM_Deactivate(void *cookie)
+{
+}
+
