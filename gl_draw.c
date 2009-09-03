@@ -1059,14 +1059,16 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 
 	if (developer.integer == 63)
 		ft2 = NULL;
+	if (!h) {
+		w = h = 1;
+	}
+	w *= fnt->scale;
+	h *= fnt->scale;
 	// find the most fitting size:
 	if (ft2 != NULL)
 	{
 		map_index = Font_IndexForSize(ft2, h);
 		fontmap = Font_MapForIndex(ft2, map_index);
-	}
-	if (!h) {
-		w = h = 1;
 	}
 
 	if (*maxlen < 1)
@@ -1156,7 +1158,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 			prevch = 0;
 			if(x + fnt->width_of[ch] > maxwidth)
 				break; // oops, can't draw this
-			x += fnt->width_of[ch];
+			x += fnt->width_of[ch] * w;
 		} else {
 			if (!map || map == ft2_oldstyle_map || map->start < ch || map->start + FONT_CHARS_PER_MAP >= ch)
 			{
