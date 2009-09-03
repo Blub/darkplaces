@@ -279,7 +279,7 @@ qboolean Font_Attach(ft2_font_t *font, ft2_attachment_t *attachment)
 }
 
 static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font);
-static qboolean Font_LoadSize(ft2_font_t *font, int size);
+static qboolean Font_LoadSize(ft2_font_t *font, float size);
 qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 {
 	int s, count;
@@ -412,14 +412,14 @@ static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font)
 }
 
 static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _ch, ft2_font_map_t **outmap);
-static qboolean Font_LoadSize(ft2_font_t *font, int size)
+static qboolean Font_LoadSize(ft2_font_t *font, float size)
 {
 	int map_index;
 	ft2_font_map_t *fmap, temp;
 
 	if (size < 0)
 		return false;
-	if (size == 0)
+	if (!size)
 		size = 16;
 
 	for (map_index = 0; map_index < MAX_FONT_SIZES; ++map_index)
@@ -659,12 +659,11 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 	if (r_font_use_alpha_textures.integer)
 		bytesPerPixel = 1;
 
-	status = qFT_Set_Pixel_Sizes((FT_Face)font->face, /*size*/0, mapstart->size);
-	if (status)
+	//status = qFT_Set_Pixel_Sizes((FT_Face)font->face, /*size*/0, mapstart->size);
+	//if (status)
+	if (!Font_SetSize(font, mapstart->size, mapstart->size))
 	{
-		Con_Printf("ERROR: can't set pixel sizes for font %s\n"
-			   "Error %i\n", // TODO: error strings
-			   font->name, status);
+		Con_Printf("ERROR: can't set pixel sizes for font %s\n", font->name);
 		return false;
 	}
 

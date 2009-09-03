@@ -760,7 +760,7 @@ static void LoadFont_f(void)
 	if(Cmd_Argc() >= 4)
 	{
 		for(i = 0; i < Cmd_Argc()-4; ++i)
-			f->req_sizes[i] = atoi(Cmd_Argv(i+4));
+			f->req_sizes[i] = atof(Cmd_Argv(i+4));
 	}
 	LoadFont(true, (Cmd_Argc() < 3) ? "gfx/conchars" : Cmd_Argv(2), f);
 }

@@ -93,7 +93,7 @@ typedef struct dp_font_s
 	char title[MAX_QPATH];
 
 	int req_face; // requested face index, usually 0
-	int req_sizes[MAX_FONT_SIZES]; // sizes to render the font with, 0 still defaults to 16 (backward compatibility when loadfont doesn't get a size parameter) and -1 = disabled
+	float req_sizes[MAX_FONT_SIZES]; // sizes to render the font with, 0 still defaults to 16 (backward compatibility when loadfont doesn't get a size parameter) and -1 = disabled
 	struct ft2_font_s *ft2;
 }
 dp_font_t;
