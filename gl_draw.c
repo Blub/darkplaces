@@ -1236,15 +1236,16 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	if (developer.integer == 63)
 		ft2 = NULL;
+
+	starty -= (fnt->scale - 1) * h * 0.5; // center
+	w *= fnt->scale;
+	h *= fnt->scale;
+
 	if (ft2 != NULL)
 	{
 		map_index = Font_IndexForSize(ft2, h);
 		fontmap = Font_MapForIndex(ft2, map_index);
 	}
-
-	starty -= (fnt->scale - 1) * h * 0.5; // center
-	w *= fnt->scale;
-	h *= fnt->scale;
 
 	// draw the font at its baseline when using freetype
 	ftbase_x = 0;

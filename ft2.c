@@ -513,9 +513,19 @@ int Font_IndexForSize(ft2_font_t *font, float fsize)
 			match = m;
 			matchsize = maps[m]->size;
 			if (value == 0) // there is no better match
+			{
+				/*
+				if (fsize != -1 && (fsize < 4.591 || fsize > 4.5914))
+					Con_Printf(" %f -> %i [%i]\n", fsize, match, matchsize);
+				*/
 				return match;
+			}
 		}
 	}
+	/*
+	if (fsize != -1 && (fsize < 4.591 || fsize > 4.5914))
+		Con_Printf(" %f -> %i [%i]\n", fsize, match, matchsize);
+	*/
 	return match;
 }
 
