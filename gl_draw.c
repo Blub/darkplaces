@@ -1277,13 +1277,11 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	ftbase_x = snap_to_pixel_x(ftbase_x);
 	ftbase_y = snap_to_pixel_x(ftbase_y);
 
-	/*
-	w = snap_to_pixel_x(w);
-	h = snap_to_pixel_y(h);
+	//w = snap_to_pixel_x(w);
+	//h = snap_to_pixel_y(h);
 	x = snap_to_pixel_x(x);
 	startx = snap_to_pixel_x(startx);
 	starty = snap_to_pixel_x(starty);
-	*/
 
 	for (shadow = r_textshadow.value != 0 && basealpha > 0;shadow >= 0;shadow--)
 	{
@@ -1300,8 +1298,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 		y = starty;
 		if (shadow)
 		{
-			x += r_textshadow.value;
-			y += r_textshadow.value;
+			x += r_textshadow.value * vid.width / vid_conwidth.value;
+			y += r_textshadow.value * vid.width / vid_conwidth.value;
 		}
 		for (i = 0;i < maxlen && *text;)
 		{
