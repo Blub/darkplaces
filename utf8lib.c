@@ -88,7 +88,8 @@ size_t u8_bytelen(const char *_s, size_t n)
 		}
 
 		// start of a wide character
-		for (++len, ++s; *s >= 0x80 && *s <= 0xC0; ++s, ++len);
+		for (++len, ++s; *s >= 0x80 && *s < 0xC0; ++s, ++len);
+		--n;
 	}
 	return len;
 }
