@@ -1040,7 +1040,7 @@ static void DrawQ_GetTextColor(float color[4], int colorindex, float r, float g,
 	}
 }
 
-float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, int fsize, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
+float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float fsize, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
 {
 	int colorindex = STRING_COLOR_DEFAULT;
 	size_t i;

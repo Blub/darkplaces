@@ -57,7 +57,7 @@ qboolean        Font_OpenLibrary(void);
 ft2_font_t*     Font_Alloc(void);
 void            Font_UnloadFont(ft2_font_t *font);
 //qboolean        Font_LoadFont(const char *name, int size, int face, ft2_font_t *font);
-int             Font_IndexForSize(ft2_font_t *font, int size);
+int             Font_IndexForSize(ft2_font_t *font, float size);
 ft2_font_map_t *Font_MapForIndex(ft2_font_t *font, int index);
 qboolean        Font_LoadFont(const char *name, dp_font_t *dpfnt);
 qboolean        Font_GetKerningForSize(ft2_font_t *font, int size, Uchar left, Uchar right, float *outx, float *outy);

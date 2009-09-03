@@ -313,6 +313,7 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 		dpfnt->ft2 = NULL;
 		return false;
 	}
+	//Con_Printf("%i sizes loaded\n", count);
 	dpfnt->ft2 = ft2;
 	return true;
 }
@@ -413,7 +414,6 @@ static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font)
 static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _ch, ft2_font_map_t **outmap);
 static qboolean Font_LoadSize(ft2_font_t *font, int size)
 {
-	int status;
 	int map_index;
 	ft2_font_map_t *fmap, temp;
 
@@ -433,16 +433,6 @@ static qboolean Font_LoadSize(ft2_font_t *font, int size)
 	
 	if (map_index >= MAX_FONT_SIZES)
 		return false;
-
-	status = qFT_Set_Pixel_Sizes((FT_Face)font->face, /*size*/0, size);
-	if (status)
-	{
-		Con_Printf("ERROR: can't set pixel sizes for font %s\n"
-			   "Error %i\n", // TODO: error strings
-			   font->name, status);
-		Font_UnloadFont(font);
-		return false;
-	}
 
 	memset(&temp, 0, sizeof(temp));
 	temp.size = size;
@@ -491,22 +481,37 @@ static qboolean Font_LoadSize(ft2_font_t *font, int size)
 	return true;
 }
 
-int Font_IndexForSize(ft2_font_t *font, int size)
+int Font_IndexForSize(ft2_font_t *font, float fsize)
 {
 	int match = -1;
 	int value = 1000000;
+	int nval;
+	int matchsize = -10000;
 	int m;
+	int size;
 	ft2_font_map_t **maps = font->font_maps;
-	if (size < 0)
+	
+	if (fsize < 0)
 		size = 16;
+	else
+	{
+		// round up
+		size = (int)fsize;
+		if (fsize - (float)size >= 0.49)
+			++size;
+	}
+	
 	for (m = 0; m < MAX_FONT_SIZES; ++m)
 	{
 		if (!maps[m])
 			continue;
-		if (match == -1 || abs(maps[m]->size - size) < value)
+		// "round up" to the bigger size if two equally-valued matches exist
+		nval = abs(maps[m]->size - size);
+		if (match == -1 || nval < value || (nval == value && matchsize < maps[m]->size))
 		{
-			value = abs(maps[m]->size - size);
+			value = nval;
 			match = m;
+			matchsize = maps[m]->size;
 			if (value == 0) // there is no better match
 				return match;
 		}
@@ -632,6 +637,15 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 
 	if (r_font_use_alpha_textures.integer)
 		bytesPerPixel = 1;
+
+	status = qFT_Set_Pixel_Sizes((FT_Face)font->face, /*size*/0, mapstart->size);
+	if (status)
+	{
+		Con_Printf("ERROR: can't set pixel sizes for font %s\n"
+			   "Error %i\n", // TODO: error strings
+			   font->name, status);
+		return false;
+	}
 
 	map = Mem_Alloc(font_mempool, sizeof(ft2_font_map_t));
 	if (!map)
