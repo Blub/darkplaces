@@ -5,32 +5,9 @@
 #ifndef DP_FREETYPE2_H__
 #define DP_FREETYPE2_H__
 
-#include <sys/types.h>
+//#include <sys/types.h>
 
-// types for unicode strings
-// let them be 32 bit for now
-// normally, whcar_t is 16 or 32 bit, 16 on linux I think, 32 on haiku and maybe windows
-#ifdef _MSC_VER
-#include <stdint.h>
-typedef __int32 U_int32;
-#else
-typedef int32_t U_int32;
-#endif
-
-// Uchar, a wide character
-typedef U_int32 Uchar;
-
-size_t u8_strlen(const char*);
-int    u8_byteofs(const char*, size_t, size_t*);
-int    u8_charidx(const char*, size_t, size_t*);
-size_t u8_bytelen(const char*, size_t);
-Uchar  u8_getchar(const char*, const char**);
-int    u8_fromchar(Uchar, char*, size_t);
-size_t u8_wcstombs(char*, const Uchar*, size_t);
-size_t u8_COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid);
-
-// returns a static buffer, use this for inlining
-char  *u8_encodech(Uchar ch);
+#include "utf8lib.h"
 
 /* 
  * From http://www.unicode.org/Public/UNIDATA/Blocks.txt
@@ -56,50 +33,34 @@ typedef struct ft2_kerning_s
 typedef struct ft2_font_s
 {
 	char            name[64];
-	int             size;
-	int             glyphSize;
 
 	qboolean        has_kerning;
 
 	// TODO: clean this up and do not expose everything.
 	
-	unsigned char  *data;
-	fs_offset_t     datasize;
+	//unsigned char  *data;
+	//fs_offset_t     datasize;
 	void           *face;
 
-	// an ordered linked list of glyph maps
-	ft2_font_map_t *font_map;
-	// contains the kerning information for the first 256 characters
-	// for the other characters, we will lookup the kerning information
-	ft2_kerning_t   kerning;
-	// size factor to convert from freetype units
-	double          sfx, sfy;
+	// an unordered array of ordered linked lists of glyph maps for a specific size
+	ft2_font_map_t *font_maps[MAX_FONT_SIZES];
+	int             num_sizes;
 
 	// attachments
 	size_t            attachmentcount;
 	ft2_attachment_t *attachments;
 } ft2_font_t;
 
-void        Font_CloseLibrary(void);
-void        Font_Init(void);
-qboolean    Font_OpenLibrary(void);
-ft2_font_t* Font_Alloc(void);
-void        Font_UnloadFont(ft2_font_t *font);
-qboolean    Font_LoadFont(const char *name, int size, int face, ft2_font_t *font);
-qboolean    Font_GetKerning(ft2_font_t *font, Uchar left, Uchar right, float *outx, float *outy);
-/*
-float Font_DrawString_Font(
-	float startx, float starty,
-	const char *text, size_t maxlen,
-	float width, float height,
-	float basered, float basegreen, float baseblue, float basealpha,
-	int flags, int *outcolor, qboolean ignorecolorcodes,
-	ft2_font_t *font);
-float Font_DrawString(
-	float startx, float starty,
-	const char *text, size_t maxlen,
-	float width, float height,
-	float basered, float basegreen, float baseblue, float basealpha,
-	int flags, int *outcolor, qboolean ignorecolorcodes);
-*/
+void            Font_CloseLibrary(void);
+void            Font_Init(void);
+qboolean        Font_OpenLibrary(void);
+ft2_font_t*     Font_Alloc(void);
+void            Font_UnloadFont(ft2_font_t *font);
+//qboolean        Font_LoadFont(const char *name, int size, int face, ft2_font_t *font);
+int             Font_IndexForSize(ft2_font_t *font, int size);
+ft2_font_map_t *Font_MapForIndex(ft2_font_t *font, int index);
+qboolean        Font_LoadFont(const char *name, dp_font_t *dpfnt);
+qboolean        Font_GetKerningForSize(ft2_font_t *font, int size, Uchar left, Uchar right, float *outx, float *outy);
+qboolean        Font_GetKerningForMap(ft2_font_t *font, int map_index, Uchar left, Uchar right, float *outx, float *outy);
+
 #endif // DP_FREETYPE2_H__

@@ -25,11 +25,19 @@ typedef struct glyph_slot_s
 
 struct ft2_font_map_s
 {
-	Uchar start;
+	Uchar                  start;
 	struct ft2_font_map_s *next;
+	int                    size;
+	int                    glyphSize;
 
-	rtexture_t *texture;
-	glyph_slot_t glyphs[FONT_CHARS_PER_MAP];
+	rtexture_t            *texture;
+	glyph_slot_t           glyphs[FONT_CHARS_PER_MAP];
+
+	// contains the kerning information for the first 256 characters
+	// for the other characters, we will lookup the kerning information
+	ft2_kerning_t          kerning;
+	// safes us the trouble of calculating these over and over again
+	double                 sfx, sfy;
 };
 
 struct ft2_attachment_s
@@ -38,7 +46,8 @@ struct ft2_attachment_s
 	fs_offset_t    size;
 };
 
-qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap);
+//qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap);
+qboolean Font_LoadMapForIndex(ft2_font_t *font, int map_index, Uchar _ch, ft2_font_map_t **outmap);
 
 void font_start(void);
 void font_shutdown(void);

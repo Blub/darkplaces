@@ -103,6 +103,7 @@ OBJ_COMMON= \
 	fractalnoise.o \
 	fs.o \
 	ft2.o \
+	utf8lib.o \
 	gl_backend.o \
 	gl_draw.o \
 	gl_rmain.o \

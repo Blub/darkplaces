@@ -227,8 +227,10 @@ void font_shutdown(void)
 	for (i = 0; i < MAX_FONTS; ++i)
 	{
 		if (dp_fonts[i].ft2)
+		{
 			Font_UnloadFont(dp_fonts[i].ft2);
-		dp_fonts[i].ft2 = NULL;
+			dp_fonts[i].ft2 = NULL;
+		}
 	}
 	Font_CloseLibrary();
 }
@@ -241,458 +243,6 @@ void Font_Init(void)
 {
 	Cvar_RegisterVariable(&r_font_disable_freetype);
 	Cvar_RegisterVariable(&r_font_use_alpha_textures);
-}
-
-/*
-================================================================================
-UTF-8 encoding and decoding functions follow.
-================================================================================
-*/
-
-/** Get the number of characters in an UTF-8 string.
- * @param _s    An utf-8 encoded null-terminated string.
- * @return      The number of unicode characters in the string.
- */
-size_t u8_strlen(const char *_s)
-{
-	size_t len = 0;
-	unsigned char *s = (unsigned char*)_s;
-	while (*s)
-	{
-		// ascii char
-		if (*s <= 0x7F)
-		{
-			++len;
-			++s;
-			continue;
-		}
-
-		// start of a wide character
-		if (*s & 0xC0)
-		{
-			++len;
-			for (++s; *s >= 0x80 && *s <= 0xC0; ++s);
-			continue;
-		}
-
-		// part of a wide character, we ignore that one
-		if (*s <= 0xBF) // 10111111
-		{
-			++s;
-			continue;
-		}
-	}
-	return len;
-}
-
-/** Get the number of bytes used in a string to represent an amount of characters.
- * @param _s    An utf-8 encoded null-terminated string.
- * @param n     The number of characters we want to know the byte-size for.
- * @return      The number of bytes used to represent n characters.
- */
-size_t u8_bytelen(const char *_s, size_t n)
-{
-	size_t len = 0;
-	unsigned char *s = (unsigned char*)_s;
-	while (*s && n)
-	{
-		// ascii char
-		if (*s <= 0x7F)
-		{
-			++len;
-			++s;
-			--n;
-			continue;
-		}
-
-		// start of a wide character
-		if (*s & 0xC0)
-		{
-			--n;
-			for (++len, ++s; *s >= 0x80 && *s <= 0xC0; ++s, ++len);
-			continue;
-		}
-
-		// part of a wide character, ignore only if at the beginning of the text
-		if (*s <= 0xBF) // 10111111
-		{
-			++s;
-			if (s != (unsigned char*)_s)
-				++len;
-			continue;
-		}
-	}
-	return len;
-}
-
-/** Get the byte-index for a character-index.
- * @param _s      An utf-8 encoded string.
- * @param i       The character-index for which you want the byte offset.
- * @param len     If not null, character's length will be stored in there.
- * @return        The byte-index at which the character begins, or -1 if the string is too short.
- */
-int u8_byteofs(const char *_s, size_t i, size_t *len)
-{
-	size_t ofs = 0;
-	unsigned char *s = (unsigned char*)_s;
-	while (i > 0 && s[ofs])
-	{
-		// ascii character
-		if (s[ofs] <= 0x7F)
-		{
-			++ofs;
-			--i;
-			continue;
-		}
-
-		// start of a wide character
-		if (s[ofs] & 0xC0)
-		{
-			for (++ofs; s[ofs] >= 0x80 && s[ofs] <= 0xC0; ++ofs);
-			--i;
-			continue;
-		}
-
-		// part of a wide character, weignore that one
-		if (s[ofs] <= 0xBF)
-		{
-			++ofs;
-			continue;
-		}
-	}
-	if (!s[ofs])
-		return -1;
-	if (len) {
-		size_t i;
-		if (s[ofs] < 0x7F)
-			*len = 1;
-		else if (s[ofs] & 0xC0)
-		{
-			for (i = 1; s[ofs+i] >= 0x80 && s[ofs+i] <= 0xC0; ++i);
-			*len = i;
-		}
-		else if (s[ofs] <= 0xBF)
-			*len = 0;
-	}
-	return ofs;
-}
-
-/** Get the char-index for a byte-index.
- * @param _s      An utf-8 encoded string.
- * @param i       The byte offset for which you want the character index.
- * @param len     If not null, the offset within the character is stored here.
- * @return        The character-index, or -1 if the string is too short.
- */
-int u8_charidx(const char *_s, size_t i, size_t *len)
-{
-	size_t ofs = 0;
-	int idx = 0;
-	unsigned char *s = (unsigned char*)_s;
-	
-	while (ofs < i && s[ofs])
-	{
-		// ascii character
-		if (s[ofs] <= 0x7F)
-		{
-			++idx;
-			++ofs;
-			continue;
-		}
-
-		// start of a wide character
-		if (s[ofs] & 0xC0)
-		{
-			size_t start = ofs;
-			for (++ofs; s[ofs] >= 0x80 && s[ofs] <= 0xC0 && ofs < i; ++ofs);
-			if (s[ofs] >= 0x80 && s[ofs] <= 0xC0)
-			{
-				// it ends within this character
-				if (len)
-					*len = ofs - start;
-				return idx;
-			}
-			++idx;
-			continue;
-		}
-
-		// part of a wide character, weignore that one
-		if (s[ofs] <= 0xBF)
-		{
-			++ofs;
-			continue;
-		}
-	}
-	if (len) *len = 0;
-	return idx;
-}
-
-/** Fetch a character from an utf-8 encoded string.
- * @param _s      The start of an utf-8 encoded multi-byte character.
- * @param _end    Will point to after the first multi-byte character.
- * @return        The 32-bit integer representation of the first multi-byte character.
- */
-Uchar u8_getchar(const char *_s, const char **_end)
-{
-	const unsigned char *s = (unsigned char*)_s;
-	Uchar u;
-	unsigned char mask;
-	unsigned char v;
-
-	if (*s < 0x80)
-	{
-		if (_end)
-			*_end = _s + 1;
-		return (U_int32)*s;
-	}
-
-	if (*s < 0xC0)
-	{
-		// starting within a wide character - skip it and retrieve the one after it
-		for (++s; *s >= 0x80 && *s < 0xC0; ++s);
-		// or we could return '?' here?
-	}
-	// for a little speedup:
-	if ( (*s & 0xE0) == 0xC0 )
-	{
-		// 2-byte character
-		u = ( (s[0] & 0x1F) << 6 ) | (s[1] & 0x3F);
-		if (_end)
-			*_end = _s + 2;
-		return u;
-	}
-	if ( (*s & 0xF0) == 0xE0 )
-	{
-		// 3-byte character
-		u = ( (s[0] & 0x0F) << 12 ) | ( (s[1] & 0x3F) << 6 ) | (s[2] & 0x3F);
-		if (_end)
-			*_end = _s + 3;
-		return u;
-	}
-
-	u = 0;
-	mask = 0x7F;
-	v = *s & mask;
-	for (mask >>= 1; v > (*s & mask); mask >>= 1)
-		v = (*s & mask);
-	u = (Uchar)(*s & mask);
-	for (++s; *s >= 0x80 && *s < 0xC0; ++s)
-		u = (u << 6) | (*s & 0x3F);
-
-	if (_end)
-		*_end = (const char*)s;
-
-	return u;
-}
-
-/** Encode a wide-character into utf-8.
- * @param w        The wide character to encode.
- * @param to       The target buffer the utf-8 encoded string is stored to.
- * @param maxlen   The maximum number of bytes that fit into the target buffer.
- * @return         Number of bytes written to the buffer, or less or equal to 0 if the buffer is too small.
- */
-int u8_fromchar(Uchar w, char *to, size_t maxlen)
-{
-	size_t i, j;
-	char bt;
-	char tmp[16];
-
-	if (maxlen < 1)
-		return -2;
-
-	if (w < 0x80)
-	{
-		to[0] = (char)w;
-		if (maxlen < 2)
-			return -1;
-		to[1] = 0;
-		return 1;
-	}
-	// for a little speedup
-	if (w < 0x800)
-	{
-		if (maxlen < 3)
-		{
-			to[0] = 0;
-			return -1;
-		}
-		to[2] = 0;
-		to[1] = 0x80 | (w & 0x3F); w >>= 6;
-		to[0] = 0xC0 | w;
-		return 2;
-	}
-	if (w < 0x10000)
-	{
-		if (maxlen < 4)
-		{
-			to[0] = 0;
-			return -1;
-		}
-		to[3] = 0;
-		to[2] = 0x80 | (w & 0x3F); w >>= 6;
-		to[1] = 0x80 | (w & 0x3F); w >>= 6;
-		to[0] = 0xE0 | w;
-		return 3;
-	}
-
-	// "more general" version:
-
-	// check how much space we need and store data into a
-	// temp buffer - this is faster than recalculating again
-	i = 0;
-	bt = 0;
-	while (w)
-	{
-		tmp[i++] = 0x80 | (w & 0x3F);
-		bt = (bt >> 1) | 0x80;
-		w >>= 6;
-		// see if we still fit into the target buffer
-		if (i+1 >= maxlen) // +1 for the \0
-			return -i;
-
-		// there are no characters which take up that much space yet
-		// and there won't be for the next many many years, still... let's be safe
-		if (i >= sizeof(tmp))
-			return -1;
-	}
-	tmp[i-1] |= bt;
-	for (j = 0; j < i; ++j)
-	{
-		to[i-j-1] = tmp[j];
-	}
-
-	to[i] = 0;
-	return i;
-}
-
-/** uses u8_fromchar on a static buffer
- * @param ch        The unicode character to convert to encode
- * @return          A statically allocated buffer containing the character's utf8 representation, or NULL if it fails.
- */
-char *u8_encodech(Uchar ch)
-{
-	static char buf[16];
-	if (u8_fromchar(ch, buf, sizeof(buf)) > 0)
-		return buf;
-	return NULL;
-}
-
-/** Convert a utf-8 multibyte string to a wide character string.
- * @param wcs       The target wide-character buffer.
- * @param mb        The utf-8 encoded multibyte string to convert.
- * @param maxlen    The maximum number of wide-characters that fit into the target buffer.
- * @return          The number of characters written to the target buffer.
- */
-size_t u8_mbstowcs(Uchar *wcs, const char *mb, size_t maxlen)
-{
-	size_t i;
-	for (i = 0; *mb && i < maxlen; ++i)
-		*wcs++ = u8_getchar(mb, &mb);
-	if (i < maxlen)
-		*wcs = 0;
-	return i;
-}
-
-/** Convert a wide-character string to a utf-8 multibyte string.
- * @param mb      The target buffer the utf-8 string is written to.
- * @param wcs     The wide-character string to convert.
- * @param maxlen  The number bytes that fit into the multibyte target buffer.
- * @return        The number of bytes written, not including the terminating \0
- */
-size_t u8_wcstombs(char *mb, const Uchar *wcs, size_t maxlen)
-{
-	size_t i;
-	const char *start = mb;
-	for (i = 0; *wcs && i < maxlen; ++i)
-	{
-		int len;
-		if ( (len = u8_fromchar(*wcs++, mb, maxlen - i)) < 0)
-			return (mb - start);
-		mb += len;
-	}
-	if (i < maxlen)
-		*mb = 0;
-	return (mb - start);
-}
-
-/*
-============
-UTF-8 aware COM_StringLengthNoColors
-
-calculates the visible width of a color coded string.
-
-*valid is filled with TRUE if the string is a valid colored string (that is, if
-it does not end with an unfinished color code). If it gets filled with FALSE, a
-fix would be adding a STRING_COLOR_TAG at the end of the string.
-
-valid can be set to NULL if the caller doesn't care.
-
-For size_s, specify the maximum number of characters from s to use, or 0 to use
-all characters until the zero terminator.
-============
-*/
-size_t
-u8_COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid)
-{
-	const char *end = size_s ? (s + size_s) : NULL;
-	size_t len = 0;
-
-	for(;;)
-	{
-		switch((s == end) ? 0 : *s)
-		{
-			case 0:
-				if(valid)
-					*valid = TRUE;
-				return len;
-			case STRING_COLOR_TAG:
-				++s;
-				switch((s == end) ? 0 : *s)
-				{
-					case STRING_COLOR_RGB_TAG_CHAR:
-						if (s+1 != end && isxdigit(s[1]) &&
-							s+2 != end && isxdigit(s[2]) &&
-							s+3 != end && isxdigit(s[3]) )
-						{
-							s+=3;
-							break;
-						}
-						++len; // STRING_COLOR_TAG
-						++len; // STRING_COLOR_RGB_TAG_CHAR
-						break;
-					case 0: // ends with unfinished color code!
-						++len;
-						if(valid)
-							*valid = FALSE;
-						return len;
-					case STRING_COLOR_TAG: // escaped ^
-						++len;
-						break;
-					case '0': case '1': case '2': case '3': case '4':
-					case '5': case '6': case '7': case '8': case '9': // color code
-						break;
-					default: // not a color code
-						++len; // STRING_COLOR_TAG
-						++len; // the character
-						break;
-				}
-				break;
-			default:
-				++len;
-				break;
-		}
-		
-		// start of a wide character
-		if (*s & 0xC0)
-		{
-			for (++s; *s >= 0x80 && *s <= 0xC0; ++s);
-			continue;
-		}
-		// part of a wide character, we ignore that one
-		if (*s <= 0xBF)
-			--len;
-		++s;
-	}
-	// never get here
 }
 
 /*
@@ -728,17 +278,55 @@ qboolean Font_Attach(ft2_font_t *font, ft2_attachment_t *attachment)
 	return true;
 }
 
-qboolean Font_LoadFont(const char *name, int size, int _face, ft2_font_t *font)
+static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font);
+static qboolean Font_LoadSize(ft2_font_t *font, int size);
+qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
+{
+	int s, count;
+	ft2_font_t *ft2;
+
+	ft2 = Font_Alloc();
+	if (!ft2)
+	{
+		dpfnt->ft2 = NULL;
+		return false;
+	}
+
+	if (!Font_LoadFile(name, dpfnt->req_face, ft2))
+	{
+		dpfnt->ft2 = NULL;
+		Mem_Free(ft2);
+		return false;
+	}
+
+	count = 0;
+	for (s = 0; s < MAX_FONT_SIZES; ++s)
+	{
+		if (Font_LoadSize(ft2, dpfnt->req_sizes[s]))
+			++count;
+	}
+	if (!count)
+	{
+		// loading failed for every requested size
+		Font_UnloadFont(ft2);
+		Mem_Free(ft2);
+		dpfnt->ft2 = NULL;
+		return false;
+	}
+	dpfnt->ft2 = ft2;
+	return true;
+}
+
+static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font)
 {
 	size_t namelen;
 	char filename[PATH_MAX];
 	int status;
 	size_t i;
+	unsigned char *data;
+	fs_offset_t datasize;
 
 	memset(font, 0, sizeof(*font));
-
-	if (size <= 0) // default size requested
-		size = 16;
 
 	if (!Font_OpenLibrary())
 	{
@@ -755,20 +343,20 @@ qboolean Font_LoadFont(const char *name, int size, int _face, ft2_font_t *font)
 
 	memcpy(filename, name, namelen);
 	memcpy(filename + namelen, ".ttf", 5);
-	font->data = FS_LoadFile(filename, font_mempool, false, &font->datasize);
-	if (!font->data)
+	data = FS_LoadFile(filename, font_mempool, false, &datasize);
+	if (!data)
 	{
 		memcpy(filename + namelen, ".otf", 5);
-		font->data = FS_LoadFile(filename, font_mempool, false, &font->datasize);
+		data = FS_LoadFile(filename, font_mempool, false, &datasize);
 	}
-	if (!font->data)
+	if (!data)
 	{
 		ft2_attachment_t afm;
 
 		memcpy(filename + namelen, ".pfb", 5);
-		font->data = FS_LoadFile(filename, font_mempool, false, &font->datasize);
+		data = FS_LoadFile(filename, font_mempool, false, &datasize);
 
-		if (font->data)
+		if (data)
 		{
 			memcpy(filename + namelen, ".afm", 5);
 			afm.data = FS_LoadFile(filename, font_mempool, false, &afm.size);
@@ -778,27 +366,25 @@ qboolean Font_LoadFont(const char *name, int size, int _face, ft2_font_t *font)
 		}
 	}
 
-	if (!font->data)
+	if (!data)
 	{
 		// FS_LoadFile being not-quiet should print an error :)
-		Con_Printf("Failed to load font-file for '%s', it will not support as many characters.\n", name);
 		return false;
 	}
-	Con_Printf("Loading font %s face 0 size %i...\n", filename, size);
+	Con_Printf("Loading font %s face %i...\n", filename, _face);
 
-	status = qFT_New_Memory_Face(font_ft2lib, (FT_Bytes)font->data, font->datasize, _face, (FT_Face*)&font->face);
+	status = qFT_New_Memory_Face(font_ft2lib, (FT_Bytes)data, datasize, _face, (FT_Face*)&font->face);
 	if (status && _face != 0)
 	{
 		Con_Printf("Failed to load face %i of %s. Falling back to face 0\n", _face, name);
 		_face = 0;
-		status = qFT_New_Memory_Face(font_ft2lib, (FT_Bytes)font->data, font->datasize, 0, (FT_Face*)&font->face);
+		status = qFT_New_Memory_Face(font_ft2lib, (FT_Bytes)data, datasize, 0, (FT_Face*)&font->face);
 	}
 	if (status)
 	{
 		Con_Printf("ERROR: can't create face for %s\n"
 			   "Error %i\n", // TODO: error strings
 			   name, status);
-		// Mem_Free(font->data);
 		Font_UnloadFont(font);
 		return false;
 	}
@@ -816,32 +402,65 @@ qboolean Font_LoadFont(const char *name, int size, int _face, ft2_font_t *font)
 	}
 
 	memcpy(font->name, name, namelen+1);
-	font->size = size;
-	font->glyphSize = font->size * 2;
+	//font->size = size;
+	//font->glyphSize = font->size * 2;
 	font->has_kerning = !!(((FT_Face)(font->face))->face_flags & FT_FACE_FLAG_KERNING);
-	font->sfx = (1.0/64.0) / (double)font->size;
-	font->sfy = (1.0/64.0) / (double)font->size;
+	//font->sfx = (1.0/64.0) / (double)font->size;
+	//font->sfy = (1.0/64.0) / (double)font->size;
+	return true;
+}
+
+static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _ch, ft2_font_map_t **outmap);
+static qboolean Font_LoadSize(ft2_font_t *font, int size)
+{
+	int status;
+	int map_index;
+	ft2_font_map_t *fmap, temp;
+
+	if (size < 0)
+		return false;
+	if (size == 0)
+		size = 16;
+
+	for (map_index = 0; map_index < MAX_FONT_SIZES; ++map_index)
+	{
+		if (!font->font_maps[map_index])
+			break;
+		// if a similar size has already been loaded, ignore this one
+		if (abs(font->font_maps[map_index]->size - size) < 4)
+			return true;
+	}
+	
+	if (map_index >= MAX_FONT_SIZES)
+		return false;
 
 	status = qFT_Set_Pixel_Sizes((FT_Face)font->face, /*size*/0, size);
 	if (status)
 	{
-		Con_Printf("ERROR: can't size pixel sizes for face of font %s\n"
+		Con_Printf("ERROR: can't set pixel sizes for font %s\n"
 			   "Error %i\n", // TODO: error strings
-			   name, status);
-		//Mem_Free(font->data);
+			   font->name, status);
 		Font_UnloadFont(font);
 		return false;
 	}
 
-	if (!Font_LoadMapForIndex(font, 0, NULL))
+	memset(&temp, 0, sizeof(temp));
+	temp.size = size;
+	temp.glyphSize = size*2;
+	temp.sfx = (1.0/64.0)/(double)size;
+	temp.sfy = (1.0/64.0)/(double)size;
+	if (!Font_LoadMap(font, &temp, 0, &fmap))
 	{
 		Con_Printf("ERROR: can't load the first character map for %s\n"
 			   "This is fatal\n",
-			   name);
-		//Mem_Free(font->data);
+			   font->name);
 		Font_UnloadFont(font);
 		return false;
 	}
+	font->font_maps[map_index] = temp.next;
+
+	fmap->sfx = temp.sfx;
+	fmap->sfy = temp.sfy;
 
 	// load the default kerning vector:
 	if (font->has_kerning)
@@ -857,13 +476,13 @@ qboolean Font_LoadFont(const char *name, int size, int _face, ft2_font_t *font)
 				ur = qFT_Get_Char_Index(font->face, r);
 				if (qFT_Get_Kerning(font->face, ul, ur, FT_KERNING_DEFAULT, &kernvec))
 				{
-					font->kerning.kerning[l][r][0] = 0;
-					font->kerning.kerning[l][r][1] = 0;
+					fmap->kerning.kerning[l][r][0] = 0;
+					fmap->kerning.kerning[l][r][1] = 0;
 				}
 				else
 				{
-					font->kerning.kerning[l][r][0] = kernvec.x * font->sfx;
-					font->kerning.kerning[l][r][1] = kernvec.y * font->sfy;
+					fmap->kerning.kerning[l][r][0] = kernvec.x * fmap->sfx;
+					fmap->kerning.kerning[l][r][1] = kernvec.y * fmap->sfy;
 				}
 			}
 		}
@@ -872,42 +491,113 @@ qboolean Font_LoadFont(const char *name, int size, int _face, ft2_font_t *font)
 	return true;
 }
 
-qboolean Font_GetKerning(ft2_font_t *font, Uchar left, Uchar right, float *outx, float *outy)
+int Font_IndexForSize(ft2_font_t *font, int size)
 {
+	int match = -1;
+	int value = 1000000;
+	int m;
+	ft2_font_map_t **maps = font->font_maps;
+	if (size < 0)
+		size = 16;
+	for (m = 0; m < MAX_FONT_SIZES; ++m)
+	{
+		if (!maps[m])
+			continue;
+		if (match == -1 || abs(maps[m]->size - size) < value)
+		{
+			value = abs(maps[m]->size - size);
+			match = m;
+			if (value == 0) // there is no better match
+				return match;
+		}
+	}
+	return match;
+}
+
+ft2_font_map_t *Font_MapForIndex(ft2_font_t *font, int index)
+{
+	if (index < 0 || index >= MAX_FONT_SIZES)
+		return NULL;
+	return font->font_maps[index];
+}
+
+qboolean Font_GetKerningForSize(ft2_font_t *font, int size, Uchar left, Uchar right, float *outx, float *outy)
+{
+	return Font_GetKerningForMap(font, Font_IndexForSize(font, size), left, right, outx, outy);
+}
+
+qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, Uchar left, Uchar right, float *outx, float *outy)
+{
+	ft2_font_map_t *fmap;
 	if (!font->has_kerning)
+		return false;
+	if (map_index < 0 || map_index >= MAX_FONT_SIZES)
+		return false;
+	fmap = font->font_maps[map_index];
+	if (!fmap)
 		return false;
 	if (left < 256 && right < 256)
 	{
 		// quick-kerning
-		if (outx) *outx = font->kerning.kerning[left][right][0];
-		if (outy) *outy = font->kerning.kerning[left][right][1];
+		if (outx) *outx = fmap->kerning.kerning[left][right][0];
+		if (outy) *outy = fmap->kerning.kerning[left][right][1];
 		return true;
 	}
 	else
 	{
 		FT_Vector kernvec;
 		FT_ULong ul, ur;
+
+		if (qFT_Set_Pixel_Sizes((FT_Face)font->face, 0, fmap->size))
+		{
+			// this deserves an error message
+			Con_Printf("Failed to get kerning for %s\n", font->name);
+			return false;
+		}
 		ul = qFT_Get_Char_Index(font->face, left);
 		ur = qFT_Get_Char_Index(font->face, right);
 		if (qFT_Get_Kerning(font->face, ul, ur, FT_KERNING_DEFAULT, &kernvec))
 		{
-			if (outx) *outx = kernvec.x * font->sfx;
-			if (outy) *outy = kernvec.y * font->sfy;
+			if (outx) *outx = kernvec.x * fmap->sfx;
+			if (outy) *outy = kernvec.y * fmap->sfy;
 			return true;
 		}
 		return false;
 	}
 }
 
+static void UnloadMapRec(ft2_font_map_t *map)
+{
+	if (map->texture)
+	{
+		R_FreeTexture(map->texture);
+		map->texture = NULL;
+	}
+	if (map->next)
+		UnloadMapRec(map->next);
+	Mem_Free(map);
+}
+
 void Font_UnloadFont(ft2_font_t *font)
 {
+	int i;
+	/*
 	if (font->data)
 		Mem_Free(font->data);
+	*/
 	if (font->attachments && font->attachmentcount)
 	{
 		Mem_Free(font->attachments);
 		font->attachmentcount = 0;
 		font->attachments = NULL;
+	}
+	for (i = 0; i < MAX_FONT_SIZES; ++i)
+	{
+		if (font->font_maps[i])
+		{
+			UnloadMapRec(font->font_maps[i]);
+			font->font_maps[i] = NULL;
+		}
 	}
 	if (ft2_dll)
 	{
@@ -919,7 +609,7 @@ void Font_UnloadFont(ft2_font_t *font)
 	}
 }
 
-qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outmap)
+static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _ch, ft2_font_map_t **outmap)
 {
 	char map_identifier[PATH_MAX];
 	unsigned long mapidx = _ch / FONT_CHARS_PER_MAP;
@@ -933,7 +623,7 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 	int pitch;
 	int gR, gC; // glyph position: row and column
 
-	ft2_font_map_t *map;
+	ft2_font_map_t *map, *next;
 
 	int bytesPerPixel = 4; // change the conversion loop too if you change this!
 
@@ -950,18 +640,24 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 		return false;
 	}
 
-	pitch = font->glyphSize * FONT_CHARS_PER_LINE * bytesPerPixel;
-	data = Mem_Alloc(font_mempool, (FONT_CHAR_LINES * font->glyphSize) * pitch);
+	// copy over the information
+	map->size = mapstart->size;
+	map->glyphSize = mapstart->glyphSize;
+	map->sfx = mapstart->sfx;
+	map->sfy = mapstart->sfy;
+
+	pitch = map->glyphSize * FONT_CHARS_PER_LINE * bytesPerPixel;
+	data = Mem_Alloc(font_mempool, (FONT_CHAR_LINES * map->glyphSize) * pitch);
 	if (!data)
 	{
+		Con_Printf("ERROR: Failed to allocate memory for font %s size %i\n", font->name, map->size);
 		Mem_Free(map);
-		Con_Printf("ERROR: Failed to allocate memory for glyph data for font %s\n", font->name);
 		return false;
 	}
 
 	// initialize as white texture with zero alpha
 	tp = 0;
-	while (tp < (FONT_CHAR_LINES * font->glyphSize) * pitch)
+	while (tp < (FONT_CHAR_LINES * map->glyphSize) * pitch)
 	{
 		if (bytesPerPixel == 4)
 		{
@@ -972,18 +668,13 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 		data[tp++] = 0x00;
 	}
 
+	// insert the map
 	map->start = mapidx * FONT_CHARS_PER_MAP;
-	if (!font->font_map)
-		font->font_map = map;
-	else
-	{
-		// insert the map at the right place
-		ft2_font_map_t *next = font->font_map;
-		while(next->next && next->next->start < map->start)
-			next = next->next;
-		map->next = next->next;
-		next->next = map;
-	}
+	next = mapstart;
+	while(next->next && next->next->start < map->start)
+		next = next->next;
+	map->next = next->next;
+	next->next = map;
 
 	gR = 0;
 	gC = -1;
@@ -999,7 +690,7 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 		glyph_slot_t *mapglyph;
 
 		if (developer.integer)
-			Con_Print("------------- GLYPH INFO -----------------\n");
+			Con_Print("glyphinfo: ------------- GLYPH INFO -----------------\n");
 
 		++gC;
 		if (gC >= FONT_CHARS_PER_LINE)
@@ -1008,7 +699,7 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 			++gR;
 		}
 
-		imagedata = data + gR * pitch * font->glyphSize + gC * font->glyphSize * bytesPerPixel;
+		imagedata = data + gR * pitch * map->glyphSize + gC * map->glyphSize * bytesPerPixel;
 		//glyphIndex = qFT_Get_Char_Index(face, ch);
 		//status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER);
 		status = qFT_Load_Char(face, ch, FT_LOAD_RENDER);
@@ -1037,30 +728,30 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 		w = bmp->width;
 		h = bmp->rows;
 
-		if (w > font->glyphSize || h > font->glyphSize)
+		if (w > map->glyphSize || h > map->glyphSize)
 			Con_Printf("WARNING: Glyph %lu is too big in font %s\n", ch, font->name);
 
 		switch (bmp->pixel_mode)
 		{
 		case FT_PIXEL_MODE_MONO:
 			if (developer.integer)
-				Con_Print("  Pixel Mode: MONO\n");
+				Con_Print("glyphinfo:   Pixel Mode: MONO\n");
 			break;
 		case FT_PIXEL_MODE_GRAY2:
 			if (developer.integer)
-				Con_Print("  Pixel Mode: GRAY2\n");
+				Con_Print("glyphinfo:   Pixel Mode: GRAY2\n");
 			break;
 		case FT_PIXEL_MODE_GRAY4:
 			if (developer.integer)
-				Con_Print("  Pixel Mode: GRAY4\n");
+				Con_Print("glyphinfo:   Pixel Mode: GRAY4\n");
 			break;
 		case FT_PIXEL_MODE_GRAY:
 			if (developer.integer)
-				Con_Print("  Pixel Mode: GRAY\n");
+				Con_Print("glyphinfo:   Pixel Mode: GRAY\n");
 			break;
 		default:
 			if (developer.integer)
-				Con_Printf("  Pixel Mode: Unknown: %i\n", bmp->pixel_mode);
+				Con_Printf("glyphinfo:   Pixel Mode: Unknown: %i\n", bmp->pixel_mode);
 			Mem_Free(data);
 			return false;
 		}
@@ -1124,12 +815,12 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 		mapglyph = &map->glyphs[mapch];
 
 		{
-			double bearingX = (double)glyph->metrics.horiBearingX * font->sfx;
-			double bearingY = (double)glyph->metrics.horiBearingY * font->sfy;
-			double advance = (double)glyph->metrics.horiAdvance * font->sfx;
+			double bearingX = (double)glyph->metrics.horiBearingX * map->sfx;
+			double bearingY = (double)glyph->metrics.horiBearingY * map->sfy;
+			double advance = (double)glyph->metrics.horiAdvance * map->sfx;
 			//double advance = glyph->advance.x >> 6;
-			double mWidth = (double)glyph->metrics.width * font->sfx;
-			double mHeight = (double)glyph->metrics.height * font->sfy;
+			double mWidth = (double)glyph->metrics.width * map->sfx;
+			double mHeight = (double)glyph->metrics.height * map->sfy;
 			//double tWidth = bmp->width / (double)font->size;
 			//double tHeight = bmp->rows / (double)font->size;
 
@@ -1137,26 +828,27 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 			mapglyph->vxmax = bearingX + mWidth;
 			mapglyph->vymin = -bearingY;
 			mapglyph->vymax = mHeight - bearingY;
-			mapglyph->txmin = ( (double)(gC * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHARS_PER_LINE) );
-			mapglyph->txmax = mapglyph->txmin + (double)bmp->width / ( (double)(font->glyphSize * FONT_CHARS_PER_LINE) );
-			mapglyph->tymin = ( (double)(gR * font->glyphSize) ) / ( (double)(font->glyphSize * FONT_CHAR_LINES) );
-			mapglyph->tymax = mapglyph->tymin + (double)bmp->rows / ( (double)(font->glyphSize * FONT_CHAR_LINES) );
+			mapglyph->txmin = ( (double)(gC * map->glyphSize) ) / ( (double)(map->glyphSize * FONT_CHARS_PER_LINE) );
+			mapglyph->txmax = mapglyph->txmin + (double)bmp->width / ( (double)(map->glyphSize * FONT_CHARS_PER_LINE) );
+			mapglyph->tymin = ( (double)(gR * map->glyphSize) ) / ( (double)(map->glyphSize * FONT_CHAR_LINES) );
+			mapglyph->tymax = mapglyph->tymin + (double)bmp->rows / ( (double)(map->glyphSize * FONT_CHAR_LINES) );
 			//mapglyph->advance_x = advance * font->size;
 			mapglyph->advance_x = advance;
 			mapglyph->advance_y = 0;
 
 			if (developer.integer)
 			{
-				Con_Printf("  Glyph: %lu   at (%i, %i)\n", (unsigned long)ch, gC, gR);
+				Con_Printf("glyphinfo:   Glyph: %lu   at (%i, %i)\n", (unsigned long)ch, gC, gR);
+				Con_Printf("glyphinfo:   %f, %f, %lu\n", bearingX, map->sfx, (unsigned long)glyph->metrics.horiBearingX);
 				if (ch >= 32 && ch <= 128)
-					Con_Printf("  Character: %c\n", (int)ch);
-				Con_Printf("  Vertex info:\n");
-				Con_Printf("    X: ( %f  --  %f )\n", mapglyph->vxmin, mapglyph->vxmax);
-				Con_Printf("    Y: ( %f  --  %f )\n", mapglyph->vymin, mapglyph->vymax);
-				Con_Printf("  Texture info:\n");
-				Con_Printf("    S: ( %f  --  %f )\n", mapglyph->txmin, mapglyph->txmax);
-				Con_Printf("    T: ( %f  --  %f )\n", mapglyph->tymin, mapglyph->tymax);
-				Con_Printf("  Advance: %f, %f\n", mapglyph->advance_x, mapglyph->advance_y);
+					Con_Printf("glyphinfo:   Character: %c\n", (int)ch);
+				Con_Printf("glyphinfo:   Vertex info:\n");
+				Con_Printf("glyphinfo:     X: ( %f  --  %f )\n", mapglyph->vxmin, mapglyph->vxmax);
+				Con_Printf("glyphinfo:     Y: ( %f  --  %f )\n", mapglyph->vymin, mapglyph->vymax);
+				Con_Printf("glyphinfo:   Texture info:\n");
+				Con_Printf("glyphinfo:     S: ( %f  --  %f )\n", mapglyph->txmin, mapglyph->txmax);
+				Con_Printf("glyphinfo:     T: ( %f  --  %f )\n", mapglyph->tymin, mapglyph->tymax);
+				Con_Printf("glyphinfo:   Advance: %f, %f\n", mapglyph->advance_x, mapglyph->advance_y);
 			}
 		}
 	}
@@ -1167,7 +859,7 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 	{
 		// view using `display -depth 8 -size 512x512 name_page.rgba` (be sure to use a correct -size parameter)
 		dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u.rgba", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP);
-		FS_WriteFile(map_identifier, data, pitch * FONT_CHAR_LINES * font->glyphSize);
+		FS_WriteFile(map_identifier, data, pitch * FONT_CHAR_LINES * map->glyphSize);
 	}
 	dpsnprintf(map_identifier, sizeof(map_identifier), "%s_%u", font->name, (unsigned)map->start/FONT_CHARS_PER_MAP);
 
@@ -1175,13 +867,13 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 	if (r_font_use_alpha_textures.integer)
 	{
 		map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
-					       font->glyphSize * FONT_CHARS_PER_LINE,
-					       font->glyphSize * FONT_CHAR_LINES,
+					       map->glyphSize * FONT_CHARS_PER_LINE,
+					       map->glyphSize * FONT_CHAR_LINES,
 					       data, TEXTYPE_ALPHA, TEXF_ALPHA | TEXF_ALWAYSPRECACHE/* | TEXF_MIPMAP*/, NULL);
 	} else {
 		map->texture = R_LoadTexture2D(font_texturepool, map_identifier,
-					       font->glyphSize * FONT_CHARS_PER_LINE,
-					       font->glyphSize * FONT_CHAR_LINES,
+					       map->glyphSize * FONT_CHARS_PER_LINE,
+					       map->glyphSize * FONT_CHAR_LINES,
 					       data, TEXTYPE_RGBA, TEXF_ALPHA | TEXF_ALWAYSPRECACHE/* | TEXF_MIPMAP*/, NULL);
 	}
 
@@ -1197,4 +889,14 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, Uchar _ch, ft2_font_map_t **outm
 	if (outmap)
 		*outmap = map;
 	return true;
+}
+
+qboolean Font_LoadMapForIndex(ft2_font_t *font, int map_index, Uchar _ch, ft2_font_map_t **outmap)
+{
+	if (map_index < 0 || map_index >= MAX_FONT_SIZES)
+		return false;
+	// the first map must have been loaded already
+	if (!font->font_maps[map_index])
+		return false;
+	return Font_LoadMap(font, font->font_maps[map_index], _ch, outmap);
 }

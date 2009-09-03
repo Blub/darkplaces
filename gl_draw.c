@@ -623,17 +623,21 @@ static void LoadFont(qboolean override, const char *name, dp_font_t *fnt)
 		fnt->ft2 = NULL;
 	}
 
-	if (fnt->req_face != -1)
+	if(fnt->req_face != -1)
 	{
+		if(!Font_LoadFont(fnt->texpath, fnt))
+		{
+			Con_Printf("Failed to load font-file for '%s', it will not support as many characters.\n", fnt->texpath);
+			//Mem_Free(fnt->ft2);
+			//fnt->ft2 = NULL;
+		}
+		/*
 		fnt->ft2 = Font_Alloc();
 		if(fnt->ft2)
 		{
-			if(!Font_LoadFont(fnt->texpath, fnt->req_size, fnt->req_face, fnt->ft2))
-			{
-				Mem_Free(fnt->ft2);
-				fnt->ft2 = NULL;
-			}
+			//if(!Font_LoadFont(fnt->texpath, fnt->req_size, fnt->req_face, fnt->ft2))
 		}
+		*/
 	}
 
 	fnt->tex = Draw_CachePic_Flags(fnt->texpath, CACHEPICFLAG_QUIET | CACHEPICFLAG_NOCOMPRESSION)->tex;
@@ -735,7 +739,7 @@ static void LoadFont_f(void)
 	{
 		Con_Printf("Available font commands:\n");
 		for(i = 0; i < MAX_FONTS; ++i)
-			Con_Printf("  loadfont %s gfx/tgafile [face] [size]\n", dp_fonts[i].title);
+			Con_Printf("  loadfont %s gfx/tgafile [face] [size1 [size2 [... [size8]]]]\n", dp_fonts[i].title);
 		return;
 	}
 	f = FindFont(Cmd_Argv(1));
@@ -744,10 +748,20 @@ static void LoadFont_f(void)
 		Con_Printf("font function not found\n");
 		return;
 	}
-	if (Cmd_Argc() >= 3)
+	// for now: by default load only one size: the default size
+	f->req_sizes[0] = 0;
+	for(i = 1; i < MAX_FONT_SIZES; ++i)
+		f->req_sizes[i] = -1;
+
+	// for some reason this argc is 3 even when using 2 arguments here, maybe nexuiz screws up
+	if(Cmd_Argc() >= 3)
 		f->req_face = atoi(Cmd_Argv(3));
-	if (Cmd_Argc() >= 4)
-		f->req_size = atoi(Cmd_Argv(4)); // for some reason this argc is 3 even when using 2 arguments
+
+	if(Cmd_Argc() >= 4)
+	{
+		for(i = 0; i < Cmd_Argc()-4; ++i)
+			f->req_sizes[i] = atoi(Cmd_Argv(i+4));
+	}
 	LoadFont(true, (Cmd_Argc() < 3) ? "gfx/conchars" : Cmd_Argv(2), f);
 }
 
@@ -1026,7 +1040,7 @@ static void DrawQ_GetTextColor(float color[4], int colorindex, float r, float g,
 	}
 }
 
-float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
+float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, int fsize, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
 {
 	int colorindex = STRING_COLOR_DEFAULT;
 	size_t i;
@@ -1035,11 +1049,22 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 	Uchar prevch = 0; // used for kerning
 	int tempcolorindex;
 	float kx;
+	int map_index;
+	ft2_font_map_t *fontmap = NULL;
 	ft2_font_map_t *map = NULL;
 	ft2_font_map_t *prevmap = NULL;
 	ft2_font_t *ft2 = fnt->ft2;
 	// float ftbase_x;
 	const char *text_start = text;
+
+	if (developer.integer == 63)
+		ft2 = NULL;
+	// find the most fitting size:
+	if (ft2 != NULL)
+	{
+		map_index = Font_IndexForSize(ft2, fsize);
+		fontmap = Font_MapForIndex(ft2, map_index);
+	}
 
 	if (*maxlen < 1)
 		*maxlen = 1<<30;
@@ -1051,13 +1076,11 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 
 	maxwidth /= fnt->scale;
 
-	if (developer.integer == 63)
-		ft2 = NULL;
 	// ftbase_x = snap_to_pixel_x(0);
 
 	for (i = 0;i < *maxlen && *text;)
 	{
-		if (*text == ' ' && !ft2)
+		if (*text == ' ' && !fontmap)
 		{
 			if(x + fnt->width_of[(int) ' '] > maxwidth)
 				break; // oops, can't draw this
@@ -1120,7 +1143,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 		ch = u8_getchar(text, &text);
 		i = text - text_start;
 
-		if (!ft2 || (ch >= 0xE000 && ch <= 0xE0FF))
+		if (!fontmap || (ch >= 0xE000 && ch <= 0xE0FF))
 		{
 			if (ch > 0xE000)
 				ch -= 0xE000;
@@ -1134,19 +1157,19 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxl
 		} else {
 			if (!map || map == ft2_oldstyle_map || map->start < ch || map->start + FONT_CHARS_PER_MAP >= ch)
 			{
-				map = ft2->font_map;
+				map = fontmap;
 				while (map && map->start + FONT_CHARS_PER_MAP < ch)
 					map = map->next;
 				if (!map)
 				{
-					if (!Font_LoadMapForIndex(ft2, ch, &map))
+					if (!Font_LoadMapForIndex(ft2, map_index, ch, &map))
 						break;
 					if (!map)
 						break;
 				}
 			}
 			mapch = ch - map->start;
-			if (prevch && Font_GetKerning(ft2, prevch, ch, &kx, NULL))
+			if (prevch && Font_GetKerningForMap(ft2, map_index, prevch, ch, &kx, NULL))
 				x += kx;
 			x += map->glyphs[mapch].advance_x;
 			prevmap = map;
@@ -1198,8 +1221,10 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	Uchar ch, mapch;
 	Uchar prevch = 0; // used for kerning
 	int tempcolorindex;
-	ft2_font_map_t *prevmap = NULL;
-	ft2_font_map_t *map = NULL;
+	int map_index;
+	ft2_font_map_t *prevmap = NULL; // the previous map
+	ft2_font_map_t *map = NULL;     // the currently used map
+	ft2_font_map_t *fontmap = NULL; // the font map for the size
 	float ftbase_x, ftbase_y;
 	const char *text_start = text;
 	float kx, ky;
@@ -1211,6 +1236,11 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	if (developer.integer == 63)
 		ft2 = NULL;
+	if (ft2 != NULL)
+	{
+		map_index = Font_IndexForSize(ft2, h);
+		fontmap = Font_MapForIndex(ft2, map_index);
+	}
 
 	starty -= (fnt->scale - 1) * h * 0.5; // center
 	w *= fnt->scale;
@@ -1227,7 +1257,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	R_Mesh_ColorPointer(color4f, 0, 0);
 	R_Mesh_ResetTextureState();
-	if (!ft2)
+	if (!fontmap)
 		R_Mesh_TexBind(0, R_GetTexture(fnt->tex));
 	R_Mesh_TexCoordPointer(0, 2, texcoord2f, 0, 0);
 	R_Mesh_VertexPointer(vertex3f, 0, 0);
@@ -1269,7 +1299,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 		}
 		for (i = 0;i < maxlen && *text;)
 		{
-			if (*text == ' ' && !ft2)
+			if (*text == ' ' && !fontmap)
 			{
 				x += fnt->width_of[(int) ' '] * w;
 				++text;
@@ -1335,13 +1365,13 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			// using a value of -1 for the oldstyle map because NULL means uninitialized...
 			// this way we don't need to rebind fnt->tex for every old-style character
 			// E000..E0FF: emulate old-font characters (to still have smileys and such available)
-			if (!ft2 || (ch >= 0xE000 && ch <= 0xE0FF))
+			if (!fontmap || (ch >= 0xE000 && ch <= 0xE0FF))
 			{
 				if (ch > 0xE000)
 					ch -= 0xE000;
 				if (ch > 0xFF)
 					continue;
-				if (ft2)
+				if (fontmap)
 				{
 					if (map != ft2_oldstyle_map)
 					{
@@ -1413,12 +1443,12 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 						av = vertex3f;
 					}
 					// find the new map
-					map = ft2->font_map;
+					map = fontmap;
 					while (map && map->start + FONT_CHARS_PER_MAP < ch)
 						map = map->next;
 					if (!map)
 					{
-						if (!Font_LoadMapForIndex(ft2, ch, &map))
+						if (!Font_LoadMapForIndex(ft2, map_index, ch, &map))
 						{
 							shadow = -1;
 							break;
@@ -1450,7 +1480,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 				x += ftbase_x;
 				y += ftbase_y;
-				if (prevch && Font_GetKerning(ft2, prevch, ch, &kx, &ky))
+				if (prevch && Font_GetKerningForMap(ft2, map_index, prevch, ch, &kx, &ky))
 				{
 					kx *= w;
 					ky *= h;
@@ -1525,6 +1555,11 @@ float DrawQ_TextWidth_Font(const char *text, size_t maxlen, qboolean ignorecolor
 float DrawQ_TextWidth_Font_UntilWidth(const char *text, size_t *maxlen, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxWidth)
 {
 	return DrawQ_TextWidth_Font_UntilWidth_TrackColors(text, maxlen, NULL, ignorecolorcodes, fnt, maxWidth);
+}
+
+float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
+{
+	return DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(text, -1, maxlen, outcolor, ignorecolorcodes, fnt, maxwidth);
 }
 
 #if 0
