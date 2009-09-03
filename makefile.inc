@@ -104,6 +104,7 @@ OBJ_COMMON= \
 	fs.o \
 	ft2.o \
 	utf8lib.o \
+	uim.o \
 	gl_backend.o \
 	gl_draw.o \
 	gl_rmain.o \
