@@ -46,7 +46,7 @@ void          (*quim_set_preedit_cb)(uim_context,
 //					      void (*update_cb)(void*, const char *longstr));
 void          (*quim_set_candidate_selector_cb)(uim_context,
 						void (*activate_cb)(void*, int nr, int display_limit),
-						void (*select_cb)(void*, int index);
+						void (*select_cb)(void*, int index),
 						void (*shift_page_cb)(void*, int direction),
 						void (*deactivate_cb)(void*));
 void          (*quim_prop_list_update)(uim_context);
