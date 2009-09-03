@@ -417,7 +417,7 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size)
 	int map_index;
 	ft2_font_map_t *fmap, temp;
 
-	if (size < 0)
+	if (size < 2) // bogus sizes are not allowed - and they screw up our allocations
 		return false;
 	if (!size)
 		size = 16;
@@ -762,8 +762,13 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		w = bmp->width;
 		h = bmp->rows;
 
-		if (w > map->glyphSize || h > map->glyphSize)
-			Con_Printf("WARNING: Glyph %lu is too big in font %s, size %g\n", ch, font->name, map->size);
+		if (w > map->glyphSize || h > map->glyphSize) {
+			Con_Printf("WARNING: Glyph %lu is too big in font %s, size %g: %i x %i\n", ch, font->name, map->size, w, h);
+			if (w > map->glyphSize)
+				w = map->glyphSize;
+			if (h > map->glyphSize)
+				h = map->glyphSize;
+		}
 
 		switch (bmp->pixel_mode)
 		{
