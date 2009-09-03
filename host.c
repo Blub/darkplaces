@@ -965,6 +965,7 @@ qboolean sys_nostdout = false;
 extern void Render_Init(void);
 extern void Mathlib_Init(void);
 extern void FS_Init(void);
+extern void UIM_Init(void);
 extern void FS_Shutdown(void);
 extern void PR_Cmd_Init(void);
 extern void COM_Init_Commands(void);
@@ -1047,6 +1048,9 @@ static void Host_Init (void)
 
 	// initialize filesystem (including fs_basedir, fs_gamedir, -game, scr_screenshot_name)
 	FS_Init();
+
+	// initialize UIM
+	UIM_Init();
 
 	NetConn_Init();
 	Curl_Init();

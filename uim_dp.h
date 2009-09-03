@@ -295,7 +295,7 @@ enum UKey {
 
   UKey_Other = 0x10000
 };
-  
+
 enum UKeyModifier {
   UMod_Shift = 1,
   UMod_Control = 2,
@@ -306,7 +306,7 @@ enum UKeyModifier {
   UMod_Super = 64,
   UMod_Hyper = 128
 };
-  
+
 enum UPreeditAttr {
   UPreeditAttr_None = 0,
   UPreeditAttr_UnderLine = 1,

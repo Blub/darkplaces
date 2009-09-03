@@ -11,8 +11,9 @@ CVars introduced with the UIM extension
 ================================================================================
 */
 
-cvar_t im_method = {CVAR_SAVE, "im_method", "anthy", "which input method to use if uim is supported and active"};
 cvar_t im_enabled = {CVAR_SAVE, "im_enabled", "0", "use UIM input"};
+cvar_t im_method = {CVAR_SAVE, "im_method", "anthy", "which input method to use if uim is supported and active"};
+cvar_t im_language = {CVAR_SAVE, "im_language", "ja", "which language should be used for the input editor (en for english, ja for japanese, etc.)"};
 
 /*
 ================================================================================
@@ -78,7 +79,7 @@ static dllfunction_t uimfuncs[] =
 	{"uim_press_key",		(void **) &quim_press_key},
 	{"uim_release_key",		(void **) &quim_release_key},
 	{"uim_iconv",			(void **) &quim_iconv},
-	
+
 	{NULL, NULL}
 };
 
@@ -134,4 +135,24 @@ qboolean UIM_OpenLibrary (void)
 	if (!Sys_LoadLibrary (dllnames, &uim_dll, uimfuncs))
 		return false;
 	return true;
+}
+
+
+/*
+====================
+UIM_Init
+
+Load UIM support and register commands / cvars
+====================
+*/
+void UIM_Init(void)
+{
+	// register the cvars in any case so they're at least saved,
+	// after all, they're for the user
+
+	Cvar_RegisterVariable(&im_method);
+	Cvar_RegisterVariable(&im_language);
+	Cvar_RegisterVariable(&im_enabled);
+
+	UIM_OpenLibrary();
 }
