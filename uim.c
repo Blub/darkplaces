@@ -22,7 +22,7 @@ Library imports. Taken from the uim headers.
 ================================================================================
 */
 
-struct uim_code_converter *quim_iconv;
+struct uim_code_converter **quim_iconv;
 
 int           (*quim_init)(void);
 void          (*quim_quit)(void);
@@ -207,7 +207,7 @@ static void UIM_Start(void)
 		return;
 	}
 
-	quim.ctx = quim_create_context(NULL, "UTF-8", im_language.string, im_engine.string, quim_iconv, &UIM_Commit);
+	quim.ctx = quim_create_context(NULL, "UTF-8", im_language.string, im_engine.string, *quim_iconv, &UIM_Commit);
 	if (quim.ctx == NULL)
 	{
 		Con_Print("Failed to create UIM context\n");
