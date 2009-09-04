@@ -1205,9 +1205,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 		} else {
 			if (!map || map == ft2_oldstyle_map || map->start < ch || map->start + FONT_CHARS_PER_MAP >= ch)
 			{
-				map = fontmap;
-				while (map && map->start + FONT_CHARS_PER_MAP < ch)
-					map = map->next;
+				map = FontMap_FindForChar(fontmap, ch);
 				if (!map)
 				{
 					if (!Font_LoadMapForIndex(ft2, map_index, ch, &map))
@@ -1490,9 +1488,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 						av = vertex3f;
 					}
 					// find the new map
-					map = fontmap;
-					while (map && map->start + FONT_CHARS_PER_MAP < ch)
-						map = map->next;
+					map = FontMap_FindForChar(fontmap, ch);
 					if (!map)
 					{
 						if (!Font_LoadMapForIndex(ft2, map_index, ch, &map))
