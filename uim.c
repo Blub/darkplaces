@@ -591,6 +591,12 @@ static void UIM_Clear(void *cookie)
 	memmove(quim.buffer + quim.buffer_pos,
 		quim.buffer + quim.edit_pos,
 		quim.buffer_size - quim.edit_pos);
+	quim.edit_pos = quim.buffer_pos;
+	quim.edit_length = 0;
+	quim.cursor_pos = quim.edit_pos;
+	quim.cursor_length = 0;
+	quim.cursor_inpos = quim.edit_pos;
+	quim.cursor_inlength = 0;
 }
 
 // we have BUFSTART and QUIM_CURSOR
