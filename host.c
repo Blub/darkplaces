@@ -966,6 +966,7 @@ extern void Render_Init(void);
 extern void Mathlib_Init(void);
 extern void FS_Init(void);
 extern void UIM_Init(void);
+extern void UIM_Start(void);
 extern void FS_Shutdown(void);
 extern void UIM_Shutdown(void);
 extern void PR_Cmd_Init(void);
@@ -1077,6 +1078,7 @@ static void Host_Init (void)
 		S_Init();
 		CDAudio_Init();
 		Key_Init();
+		UIM_Init();
 		V_Init();
 		CL_Init();
 	}
@@ -1103,7 +1105,7 @@ static void Host_Init (void)
 	if (cls.state != ca_dedicated)
 	{
 		// this uses saved cvars
-		UIM_Init();
+		//UIM_Start();
 	}
 
 	// put up the loading image so the user doesn't stare at a black screen...

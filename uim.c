@@ -214,7 +214,7 @@ UIM_Init
 Load UIM support and register commands / cvars
 ====================
 */
-static void UIM_Start(void);
+void UIM_Start(void);
 static void UIM_InitConverter(void);
 void UIM_Init(void)
 {
@@ -238,8 +238,8 @@ void UIM_Init(void)
 
 static void UIM_Restart_f(void)
 {
-	UIM_Shutdown();
-	UIM_Start();
+	//UIM_Shutdown();
+	//UIM_Start();
 }
 
 static struct uim_code_converter *dp_converter;
@@ -285,7 +285,7 @@ UIM_Start
 Try starting up UIM, this should be made available as console command maybe?
 ====================
 */
-static void UIM_Start(void)
+void UIM_Start(void)
 {
 	if (!UIM_OpenLibrary())
 		return;
