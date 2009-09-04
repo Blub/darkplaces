@@ -967,6 +967,7 @@ extern void Mathlib_Init(void);
 extern void FS_Init(void);
 extern void UIM_Init(void);
 extern void FS_Shutdown(void);
+extern void UIM_Shutdown(void);
 extern void PR_Cmd_Init(void);
 extern void COM_Init_Commands(void);
 extern void FS_Init_Commands(void);
@@ -1049,9 +1050,6 @@ static void Host_Init (void)
 	// initialize filesystem (including fs_basedir, fs_gamedir, -game, scr_screenshot_name)
 	FS_Init();
 
-	// initialize UIM
-	UIM_Init();
-
 	NetConn_Init();
 	Curl_Init();
 	//PR_Init();
@@ -1079,6 +1077,7 @@ static void Host_Init (void)
 		S_Init();
 		CDAudio_Init();
 		Key_Init();
+		UIM_Init();
 		V_Init();
 		CL_Init();
 	}
@@ -1224,6 +1223,7 @@ void Host_Shutdown(void)
 	}
 
 	Cmd_Shutdown();
+	UIM_Shutdown();
 	Key_Shutdown();
 	CL_Shutdown();
 	Sys_Shutdown();

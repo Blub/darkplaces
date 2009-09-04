@@ -46,6 +46,7 @@ typedef struct uim_context_   *uim_context;
 typedef struct uim_candidate_ *uim_candidate;
 
 void UIM_Init(void);
+void UIM_Shutdown(void);
 qboolean UIM_Available(void);
 qboolean UIM_Direct(void);
 void UIM_Key(int key, Uchar unicode);

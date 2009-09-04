@@ -150,10 +150,14 @@ typedef struct
 {
 	uim_context    ctx;
 	int            fd;
+	mempool_t     *mempool;
 
 	char          *buffer;
 	size_t         size;
 	int            pos;
+
+	char          *copybuffer;
+	int            copypos;
 	qUIM_SetCursor setcursor;
 } quim_state;
 
@@ -186,7 +190,29 @@ void UIM_Init(void)
 	Cvar_RegisterVariable(&im_language);
 	Cvar_RegisterVariable(&im_enabled);
 
+	quim.mempool = Mem_AllocPool("UIM", 0, NULL);
 	UIM_Start();
+}
+
+/*
+====================
+UIM_Shutdown
+
+Unload all UIM resources
+====================
+*/
+void UIM_Shutdown(void)
+{
+	if (UIM_Available())
+	{
+		UIM_CancelBuffer();
+		quim_release_context(quim.ctx);
+		quim_helper_close_client_fd(quim.fd);
+		quim.ctx = NULL;
+		quim.fd = 0;
+	}
+	if (quim.mempool)
+		Mem_FreePool(&quim.mempool);
 }
 
 /*
