@@ -40,7 +40,7 @@ uim_context   (*quim_create_context)(void *cookie,
 void          (*quim_reset_context)(uim_context);
 void          (*quim_release_context)(uim_context);
 int           (*quim_helper_init_client_fd)(void (*disconnect_cb)(void));
-void          (*quim_close_client_fd)(int);
+void          (*quim_helper_close_client_fd)(int);
 void          (*quim_set_preedit_cb)(uim_context,
 				     void (*clear_cb)(void*),
 				     void (*pushback_cb)(void*, int attr, const char *str),
@@ -75,7 +75,7 @@ static dllfunction_t uimfuncs[] =
 	{"uim_reset_context",		(void **) &quim_reset_context},
 	{"uim_release_context",		(void **) &quim_release_context},
 	{"uim_helper_init_client_fd",	(void **) &quim_helper_init_client_fd},
-	{"uim_close_client_fd",		(void **) &quim_close_client_fd},
+	{"uim_helper_close_client_fd",	(void **) &quim_helper_close_client_fd},
 	{"uim_set_preedit_cb",		(void **) &quim_set_preedit_cb},
 	{"uim_set_candidate_selector_cb",		(void **) &quim_set_candidate_selector_cb},
 	{"uim_prop_list_update",	(void **) &quim_prop_list_update},
