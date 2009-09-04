@@ -19,8 +19,8 @@ cvar_t im_engine = {CVAR_SAVE, "im_engine", "anthy", "which input method to use 
 cvar_t im_language = {CVAR_SAVE, "im_language", "ja", "which language should be used for the input editor (en for english, ja for japanese, etc.)"};
 
 cvar_t im_cursor = {CVAR_SAVE, "im_cursor", "", "the cursor to append to what you type when not selecting candidates - you don't want this for the chatbox"};
-cvar_t im_cursor_start = {CVAR_SAVE, "im_cursor_start", "^3|", "how to mark the beginning of the input cursor"};
-cvar_t im_cursor_end = {CVAR_SAVE, "im_cursor_end", "^3|", "how to mark the end of the input cursor"};
+cvar_t im_cursor_start = {CVAR_SAVE, "im_cursor_start", "^3[^x888", "how to mark the beginning of the input cursor"};
+cvar_t im_cursor_end = {CVAR_SAVE, "im_cursor_end", "^3]", "how to mark the end of the input cursor"};
 cvar_t im_selection_start = {CVAR_SAVE, "im_selection_start", "^xf80", "how to mark the beginning of the current selection (as in, what UIM would display underlined)"};
 cvar_t im_selection_end = {CVAR_SAVE, "im_selection_end", "", "how to mark the end of the current selection (as in, what UIM would display underlined)"};
 cvar_t im_separator = {CVAR_SAVE, "im_separator", "|", "separator to use..."};
@@ -172,6 +172,7 @@ typedef struct
 	size_t         cursor_inlength;
 
 	// where can we find the previous color code?
+	size_t         pushcount;
 	const char    *pc;
 	size_t         pc_len;
 
@@ -526,16 +527,7 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCurso
 	if (!buffer)
 		return false;
 
-	/*
-	quim.copybuffer = Mem_Alloc(quim.mempool, bufsize);
-	if (!quim.copybuffer)
-	{
-		Con_Printf("ERROR: UIM_EnterBuffer: Mem_Alloc of size %lu failed.\n",
-			   (unsigned long)bufsize);
-		return false;
-	}
-	*/
-
+	quim.pushcount = 0;
 	quim.active = false;
 	quim.buffer = buffer;
 	quim.buffer_size = bufsize;
@@ -639,6 +631,7 @@ static void UIM_Commit(void *cookie, const char *str)
 	quim.buffer_pos = quim.edit_pos;
 	quim.edit_start = quim.edit_pos;
 	quim.edit_length = 0;
+	quim.pushcount = 0;
 	if (quim.setcursor)
 		quim.setcursor(quim.buffer_pos);
 }
@@ -662,13 +655,14 @@ static void UIM_Clear(void *cookie)
 	quim.cursor_length = 0;
 	quim.cursor_inpos = quim.edit_pos;
 	quim.cursor_inlength = 0;
+	quim.pushcount = 0;
 }
 
 // we have BUFSTART and QUIM_CURSOR
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
-	Con_Printf("UIM_Push: %s\n", str);
-	if (quim.active && (attr & UPreeditAttr_Cursor))
+	Con_Printf("UIM_Push: (%i) %s\n", attr, str);
+	if (attr & (UPreeditAttr_Cursor | UPreeditAttr_Reverse) == (UPreeditAttr_Cursor | UPreeditAttr_Reverse))
 	{
 		quim.cursor_pos = quim.edit_pos;
 		quim.cursor_length = 0;
@@ -696,7 +690,7 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 	}
 	if (attr & UPreeditAttr_Cursor)
 	{
-		if (quim.active)
+		if (attr & UPreeditAttr_Reverse)
 		{
 			size_t slen = strlen(str);
 			size_t cl = quim.cursor_length;
