@@ -146,8 +146,13 @@ UIM input method implementation.
 
 typedef struct
 {
-	uim_context ctx;
-	int         fd;
+	uim_context    ctx;
+	int            fd;
+
+	char          *buffer;
+	size_t         size;
+	int            pos;
+	qUIM_SetCursor setcursor;
 } quim_state;
 
 static quim_state quim;
@@ -231,7 +236,7 @@ qboolean UIM_Available(void)
 // api entry, must check for UIM availability
 qboolean UIM_Direct(void)
 {
-	if (!uim_dll)
+	if (!uim_dll || !quim.buffer || !quim.ctx || quim.fd <= 0 || !quim.size)
 		return true;
 	// FIXME: direct!
 	return false;
@@ -381,13 +386,21 @@ void UIM_Key(int key, Uchar unicode)
 }
 
 // api entry, must check for UIM availability
-void UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos)
+void UIM_EnterBuffer(char *buffer, size_t bufsize, int pos, qUIM_SetCursor setcursor_cb)
 {
+	if (!UIM_Available())
+		return;
+	quim.buffer = buffer;
+	quim.size = bufsize;
+	quim.pos = pos;
+	quim.setcursor = setcursor_cb;
 }
 
 // api entry, must check for UIM availability
-void UIM_CancelBuffer(qboolean commit)
+void UIM_CancelBuffer(void)
 {
+	quim.buffer = NULL;
+	quim.setcursor = NULL;
 }
 
 static void UIM_Commit(void *cookie, const char *str)
