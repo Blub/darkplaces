@@ -89,9 +89,6 @@ static dllfunction_t uimfuncs[] =
 /// Handle for UIM dll
 static dllhandle_t uim_dll = NULL;
 
-/// Memory pool for uim
-static mempool_t *uim_mempool= NULL;
-
 /*
 ====================
 UIM_CloseLibrary
@@ -101,8 +98,6 @@ Unload the UIM DLL
 */
 void UIM_CloseLibrary (void)
 {
-	if (uim_mempool)
-		Mem_FreePool(&uim_mempool);
 	Sys_UnloadLibrary (&uim_dll);
 }
 
@@ -150,16 +145,20 @@ typedef struct
 {
 	uim_context    ctx;
 	int            fd;
-	mempool_t     *mempool;
+	//mempool_t     *mempool;
 
 	char          *buffer;
 	size_t         len;
 	size_t         size;
 	size_t         pos;
+	size_t         editlen;
 
+	/*
 	char          *copybuffer;
 	size_t         copylen;
 	size_t         copypos;
+	*/
+
 	qUIM_SetCursor setcursor;
 } quim_state;
 
@@ -192,7 +191,7 @@ void UIM_Init(void)
 	Cvar_RegisterVariable(&im_language);
 	Cvar_RegisterVariable(&im_enabled);
 
-	quim.mempool = Mem_AllocPool("UIM", 0, NULL);
+	//quim.mempool = Mem_AllocPool("UIM", 0, NULL);
 	UIM_Start();
 }
 
@@ -213,8 +212,8 @@ void UIM_Shutdown(void)
 		quim.ctx = NULL;
 		quim.fd = 0;
 	}
-	if (quim.mempool)
-		Mem_FreePool(&quim.mempool);
+	//if (quim.mempool)
+	//	Mem_FreePool(&quim.mempool);
 }
 
 /*
@@ -425,6 +424,7 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCurso
 	if (!buffer)
 		return false;
 
+	/*
 	quim.copybuffer = Mem_Alloc(quim.mempool, bufsize);
 	if (!quim.copybuffer)
 	{
@@ -432,16 +432,20 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCurso
 			   (unsigned long)bufsize);
 		return false;
 	}
+	*/
 
 	quim.buffer = buffer;
 	quim.size = bufsize;
 	quim.pos = pos;
 	quim.setcursor = setcursor_cb;
 	quim.len = strlen(buffer);
+	quim.editlen = 0;
 
+	/*
 	memcpy(quim.copybuffer, quim.buffer, quim.size);
 	quim.copypos = quim.pos;
 	quim.copylen = quim.len;
+	*/
 	return true;
 }
 
@@ -455,16 +459,44 @@ void UIM_CancelBuffer(void)
 	quim.setcursor = NULL;
 }
 
+/*
+static void UIM_ClearBuffer()
+{
+	memmove(quim.buffer + quim.pos,
+		quim.buffer + quim.pos + quim.editlen,
+		quim.size - quim.pos - quim.editlen);
+}
+*/
+
+/** Commit a string to the actual buffer.
+ * This appends at the current insert-position
+ */
 static void UIM_Commit(void *cookie, const char *str)
 {
+	size_t slen = strlen(str);
+	if (quim.pos + slen >= quim.size - 1) {
+		Con_Print("UIM: Failed to commit buffer: not enough space!\n");
+		return;
+	}
+	memmove(quim.buffer + quim.pos + slen,
+		quim.buffer + quim.pos + quim.editlen,
+		quim.size - quim.pos - quim.editlen);
+	memcpy(quim.buffer + quim.pos, str, slen);
+	quim.pos += slen;
+	if (quim.setcursor)
+		quim.setcursor(quim.pos);
 }
 
 static void UIM_HelperDisconnected(void)
 {
+	UIM_Shutdown();
 }
 
 static void UIM_Clear(void *cookie)
 {
+	memmove(quim.buffer + quim.pos,
+		quim.buffer + quim.pos + quim.editlen,
+		quim.size - quim.pos - quim.editlen);
 }
 
 static void UIM_Push(void *cookie, int attr, const char *str)
