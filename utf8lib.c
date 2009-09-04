@@ -268,7 +268,8 @@ Uchar u8_getchar(const char *_s, const char **_end)
  * @param w        The wide character to encode.
  * @param to       The target buffer the utf-8 encoded string is stored to.
  * @param maxlen   The maximum number of bytes that fit into the target buffer.
- * @return         Number of bytes written to the buffer, or less or equal to 0 if the buffer is too small.
+ * @return         Number of bytes written to the buffer not including the terminating null.
+ *                 Less or equal to 0 if the buffer is too small.
  */
 int u8_fromchar(Uchar w, char *to, size_t maxlen)
 {

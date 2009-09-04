@@ -22,6 +22,7 @@
 
 #include "quakedef.h"
 #include "cl_video.h"
+#include "utf8lib.h"
 
 cvar_t con_closeontoggleconsole = {CVAR_SAVE, "con_closeontoggleconsole","1", "allows toggleconsole binds to close the console as well"};
 
@@ -824,7 +825,6 @@ extern int Nicks_CompleteChatLine(char *buffer, size_t size, unsigned int pos);
 static void
 Key_Message (int key, int ascii)
 {
-
 	if (key == K_ENTER || ascii == 10 || ascii == 13)
 	{
 		if(chat_mode < 0)
@@ -866,8 +866,10 @@ Key_Message (int key, int ascii)
 	if (!ascii)
 		return;							// non printable
 
-	chat_buffer[chat_bufferlen++] = ascii;
-	chat_buffer[chat_bufferlen] = 0;
+	chat_bufferlen += u8_fromchar(ascii, chat_buffer+chat_bufferlen, sizeof(chat_buffer) - chat_bufferlen - 1);
+
+	//chat_buffer[chat_bufferlen++] = ascii;
+	//chat_buffer[chat_bufferlen] = 0;
 }
 
 //============================================================================
