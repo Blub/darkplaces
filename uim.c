@@ -18,7 +18,7 @@ cvar_t im_enabled = {CVAR_SAVE, "im_enabled", "1", "use UIM input"};
 cvar_t im_engine = {CVAR_SAVE, "im_engine", "anthy", "which input method to use if uim is supported and active"};
 cvar_t im_language = {CVAR_SAVE, "im_language", "ja", "which language should be used for the input editor (en for english, ja for japanese, etc.)"};
 
-cvar_t im_cursor = {CVAR_SAVE, "im_cursor", "_", "the cursor to append to what you type when not selecting candidates - you don't want this for the chatbox"};
+cvar_t im_cursor = {CVAR_SAVE, "im_cursor", "", "the cursor to append to what you type when not selecting candidates - you don't want this for the chatbox"};
 cvar_t im_cursor_start = {CVAR_SAVE, "im_cursor_start", "^3[^x888", "how to mark the beginning of the input cursor"};
 cvar_t im_cursor_end = {CVAR_SAVE, "im_cursor_end", "^3]", "how to mark the end of the input cursor"};
 cvar_t im_selection_start = {CVAR_SAVE, "im_selection_start", "^xf80", "how to mark the beginning of the current selection (as in, what UIM would display underlined)"};
