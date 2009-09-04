@@ -249,7 +249,7 @@ size_t u8_prevbyte(const char *_s, size_t i)
  */
 Uchar u8_getchar(const char *_s, const char **_end)
 {
-	const unsigned char *s = (unsigned char*)_s;
+	const unsigned char *s = (const unsigned char*)_s;
 	Uchar u;
 	unsigned char mask;
 	unsigned char v;
@@ -323,6 +323,9 @@ int u8_fromchar(Uchar w, char *to, size_t maxlen)
 
 	if (maxlen < 1)
 		return -2;
+
+	if (!w)
+		return -5;
 
 	if (w < 0x80)
 	{
@@ -411,15 +414,16 @@ size_t u8_mbstowcs(Uchar *wcs, const char *mb, size_t maxlen)
 {
 	size_t i;
 	Uchar ch;
-	for (i = 0; *mb && i < maxlen; ++i)
+	if (maxlen < 1)
+		return 0;
+	for (i = 0; *mb && i < maxlen-1; ++i)
 	{
 		ch = u8_getchar(mb, &mb);
 		if (!ch)
 			break;
-		*wcs++ = ch;
+		wcs[i] = ch;
 	}
-	if (i < maxlen)
-		*wcs = 0;
+	wcs[i] = 0;
 	return i;
 }
 
@@ -433,15 +437,16 @@ size_t u8_wcstombs(char *mb, const Uchar *wcs, size_t maxlen)
 {
 	size_t i;
 	const char *start = mb;
-	for (i = 0; *wcs && i < maxlen; ++i)
+	if (maxlen < 2)
+		return 0;
+	for (i = 0; wcs[i] && i < maxlen-1; ++i)
 	{
 		int len;
-		if ( (len = u8_fromchar(*wcs++, mb, maxlen - i)) < 0)
+		if ( (len = u8_fromchar(wcs[i], mb, maxlen - i)) < 0)
 			return (mb - start);
 		mb += len;
 	}
-	if (i < maxlen)
-		*mb = 0;
+	*mb = 0;
 	return (mb - start);
 }
 
