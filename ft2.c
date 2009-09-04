@@ -279,7 +279,7 @@ qboolean Font_Attach(ft2_font_t *font, ft2_attachment_t *attachment)
 }
 
 static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font);
-static qboolean Font_LoadSize(ft2_font_t *font, float size);
+static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean no_texture, qboolean no_kerning);
 qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 {
 	int s, count, i;
@@ -312,17 +312,19 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 		}
 		if (!Font_LoadFile(dpfnt->fallbacks[i], dpfnt->fallback_faces[i], fb))
 		{
+			Con_Printf("Failed to allocate font for fallback %i of font %s\n", i, name);
 			Mem_Free(fb);
 			break;
 		}
 		count = 0;
 		for (s = 0; s < MAX_FONT_SIZES; ++s)
 		{
-			if (Font_LoadSize(fb, dpfnt->req_sizes[s]))
+			if (Font_LoadSize(fb, dpfnt->req_sizes[s], true, false))
 				++count;
 		}
 		if (!count)
 		{
+			Con_Printf("Failed to allocate font for fallback %i of font %s\n", i, name);
 			Font_UnloadFont(fb);
 			Mem_Free(fb);
 			break;
@@ -336,7 +338,7 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 	count = 0;
 	for (s = 0; s < MAX_FONT_SIZES; ++s)
 	{
-		if (Font_LoadSize(ft2, dpfnt->req_sizes[s]))
+		if (Font_LoadSize(ft2, dpfnt->req_sizes[s], false, false))
 			++count;
 	}
 	if (!count)
@@ -438,16 +440,12 @@ static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font)
 	}
 
 	memcpy(font->name, name, namelen+1);
-	//font->size = size;
-	//font->glyphSize = font->size * 2;
 	font->has_kerning = !!(((FT_Face)(font->face))->face_flags & FT_FACE_FLAG_KERNING);
-	//font->sfx = (1.0/64.0) / (double)font->size;
-	//font->sfy = (1.0/64.0) / (double)font->size;
 	return true;
 }
 
 static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _ch, ft2_font_map_t **outmap);
-static qboolean Font_LoadSize(ft2_font_t *font, float size)
+static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean no_texture, qboolean no_kerning)
 {
 	int map_index;
 	ft2_font_map_t *fmap, temp;
@@ -457,58 +455,63 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size)
 	if (size < 2) // bogus sizes are not allowed - and they screw up our allocations
 		return false;
 
-	for (map_index = 0; map_index < MAX_FONT_SIZES; ++map_index)
+	if (!no_texture)
 	{
-		if (!font->font_maps[map_index])
-			break;
-		// if a similar size has already been loaded, ignore this one
-		//abs(font->font_maps[map_index]->size - size) < 4
-		if (font->font_maps[map_index]->size == size)
-			return true;
-	}
-	
-	if (map_index >= MAX_FONT_SIZES)
-		return false;
-
-	memset(&temp, 0, sizeof(temp));
-	temp.size = size;
-	temp.glyphSize = CeilPowerOf2(size*2);
-	temp.sfx = (1.0/64.0)/(double)size;
-	temp.sfy = (1.0/64.0)/(double)size;
-	if (!Font_LoadMap(font, &temp, 0, &fmap))
-	{
-		Con_Printf("ERROR: can't load the first character map for %s\n"
-			   "This is fatal\n",
-			   font->name);
-		Font_UnloadFont(font);
-		return false;
-	}
-	font->font_maps[map_index] = temp.next;
-
-	fmap->sfx = temp.sfx;
-	fmap->sfy = temp.sfy;
-
-	// load the default kerning vector:
-	if (font->has_kerning)
-	{
-		Uchar l, r;
-		FT_Vector kernvec;
-		for (l = 0; l < 256; ++l)
+		for (map_index = 0; map_index < MAX_FONT_SIZES; ++map_index)
 		{
-			for (r = 0; r < 256; ++r)
+			if (!font->font_maps[map_index])
+				break;
+			// if a similar size has already been loaded, ignore this one
+			//abs(font->font_maps[map_index]->size - size) < 4
+			if (font->font_maps[map_index]->size == size)
+				return true;
+		}
+	
+		if (map_index >= MAX_FONT_SIZES)
+			return false;
+
+		memset(&temp, 0, sizeof(temp));
+		temp.size = size;
+		temp.glyphSize = CeilPowerOf2(size*2);
+		temp.sfx = (1.0/64.0)/(double)size;
+		temp.sfy = (1.0/64.0)/(double)size;
+		if (!Font_LoadMap(font, &temp, 0, &fmap))
+		{
+			Con_Printf("ERROR: can't load the first character map for %s\n"
+				   "This is fatal\n",
+				   font->name);
+			Font_UnloadFont(font);
+			return false;
+		}
+		font->font_maps[map_index] = temp.next;
+
+		fmap->sfx = temp.sfx;
+		fmap->sfy = temp.sfy;
+	}
+	if (!no_kerning)
+	{
+		// load the default kerning vector:
+		if (font->has_kerning)
+		{
+			Uchar l, r;
+			FT_Vector kernvec;
+			for (l = 0; l < 256; ++l)
 			{
-				FT_ULong ul, ur;
-				ul = qFT_Get_Char_Index(font->face, l);
-				ur = qFT_Get_Char_Index(font->face, r);
-				if (qFT_Get_Kerning(font->face, ul, ur, FT_KERNING_DEFAULT, &kernvec))
+				for (r = 0; r < 256; ++r)
 				{
-					fmap->kerning.kerning[l][r][0] = 0;
-					fmap->kerning.kerning[l][r][1] = 0;
-				}
-				else
-				{
-					fmap->kerning.kerning[l][r][0] = (kernvec.x >> 6) / fmap->size;
-					fmap->kerning.kerning[l][r][1] = (kernvec.y >> 6) / fmap->size;
+					FT_ULong ul, ur;
+					ul = qFT_Get_Char_Index(font->face, l);
+					ur = qFT_Get_Char_Index(font->face, r);
+					if (qFT_Get_Kerning(font->face, ul, ur, FT_KERNING_DEFAULT, &kernvec))
+					{
+						fmap->kerning.kerning[l][r][0] = 0;
+						fmap->kerning.kerning[l][r][1] = 0;
+					}
+					else
+					{
+						fmap->kerning.kerning[l][r][0] = (kernvec.x >> 6) / fmap->size;
+						fmap->kerning.kerning[l][r][1] = (kernvec.y >> 6) / fmap->size;
+					}
 				}
 			}
 		}
@@ -576,8 +579,16 @@ ft2_font_map_t *Font_MapForIndex(ft2_font_t *font, int index)
 
 static qboolean Font_SetSize(ft2_font_t *font, float w, float h)
 {
+	if (font->currenth == h &&
+	    ((!w && (!font->currentw || font->currentw == font->currenth)) || // check if w==h when w is not set
+	     font->currentw == w)) // same size has been requested
+	{
+		return true;
+	}
 	if (qFT_Set_Char_Size((FT_Face)font->face, w*64, h*64, 72, 72))
 		return false;
+	font->currentw = w;
+	font->currenth = h;
 	return true;
 }
 
@@ -679,12 +690,11 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 	int status;
 	int tp;
 
-	FT_Face face = font->face;
-
 	int pitch;
 	int gR, gC; // glyph position: row and column
 
 	ft2_font_map_t *map, *next;
+	ft2_font_t *usefont;
 
 	int bytesPerPixel = 4; // change the conversion loop too if you change this!
 
@@ -698,7 +708,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 	//if (status)
 	if (!Font_SetSize(font, mapstart->size, mapstart->size))
 	{
-		Con_Printf("ERROR: can't set pixel sizes for font %s\n", font->name);
+		Con_Printf("ERROR: can't set pixel sizes for font %s: %f\n", font->name, mapstart->size);
 		return false;
 	}
 
@@ -751,12 +761,15 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 	     ch < (FT_ULong)map->start + FONT_CHARS_PER_MAP;
 	     ++ch)
 	{
-		//FT_ULong glyphIndex;
+		FT_ULong glyphIndex;
 		int w, h, x, y;
 		FT_GlyphSlot glyph;
 		FT_Bitmap *bmp;
 		unsigned char *imagedata, *dst, *src;
 		glyph_slot_t *mapglyph;
+		FT_Face face;
+		
+		usefont = NULL;
 
 		if (developer.integer)
 			Con_Print("glyphinfo: ------------- GLYPH INFO -----------------\n");
@@ -769,14 +782,44 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		}
 
 		imagedata = data + gR * pitch * map->glyphSize + gC * map->glyphSize * bytesPerPixel;
-		//glyphIndex = qFT_Get_Char_Index(face, ch);
-		//status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER);
-		status = qFT_Load_Char(face, ch, FT_LOAD_RENDER);
-		if (status)
+		//status = qFT_Load_Char(face, ch, FT_LOAD_RENDER);
+		// we need the glyphIndex
+		glyphIndex = qFT_Get_Char_Index(face, ch);
+		if (glyphIndex == 0)
 		{
-			//Con_Printf("failed to load glyph %lu for %s\n", glyphIndex, font->name);
-			Con_Printf("failed to load glyph for char %lx from font %s\n", (unsigned long)ch, font->name);
-			continue;
+			// by convention, 0 is the "missing-glyph"-glyph
+			// try to load from a fallback font
+			for(usefont = font->next; usefont != NULL; usefont = usefont->next)
+			{
+				if (!Font_SetSize(usefont, mapstart->size, mapstart->size))
+					continue;
+				// try that glyph
+				face = usefont->face;
+				glyphIndex = qFT_Get_Char_Index(face, ch);
+				if (glyphIndex == 0)
+					continue;
+				status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER);
+				if (status)
+					continue;
+			}
+			if (!usefont)
+			{
+				//Con_Printf("failed to load fallback glyph for char %lx from font %s\n", (unsigned long)ch, font->name);
+				// now we let it use the "missing-glyph"-glyph
+			}
+		}
+
+		if (!usefont)
+		{
+			usefont = font;
+			face = font->face;
+			status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER);
+			if (status)
+			{
+				//Con_Printf("failed to load glyph %lu for %s\n", glyphIndex, font->name);
+				Con_Printf("failed to load glyph for char %lx from font %s\n", (unsigned long)ch, font->name);
+				continue;
+			}
 		}
 
 		/* obsolete when using FT_LOAD_RENDER
@@ -827,6 +870,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 			if (developer.integer)
 				Con_Printf("glyphinfo:   Pixel Mode: Unknown: %i\n", bmp->pixel_mode);
 			Mem_Free(data);
+			Con_Printf("ERROR: Unrecognized pixel mode for font %s size %f: %i\n", font->name, mapstart->size, bmp->pixel_mode);
 			return false;
 		}
 		for (y = 0; y < h; ++y)
@@ -906,7 +950,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 			mapglyph->txmax = mapglyph->txmin + (double)bmp->width / ( (double)(map->glyphSize * FONT_CHARS_PER_LINE) );
 			mapglyph->tymin = ( (double)(gR * map->glyphSize) ) / ( (double)(map->glyphSize * FONT_CHAR_LINES) );
 			mapglyph->tymax = mapglyph->tymin + (double)bmp->rows / ( (double)(map->glyphSize * FONT_CHAR_LINES) );
-			//mapglyph->advance_x = advance * font->size;
+			//mapglyph->advance_x = advance * usefont->size;
 			mapglyph->advance_x = advance;
 			mapglyph->advance_y = 0;
 
@@ -958,6 +1002,8 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		// otherwise we retry to load it every single frame where ft2 rendering is used
 		// this would be bad...
 		// only `data' must be freed
+		Con_Printf("ERROR: Failed to generate texture for font %s size %f map %lu\n",
+			   font->name, mapstart->size, mapidx);
 		return false;
 	}
 	if (outmap)

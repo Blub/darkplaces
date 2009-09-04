@@ -34,6 +34,9 @@ typedef struct ft2_font_s
 {
 	char            name[64];
 	qboolean        has_kerning;
+	// last requested size loaded using Font_SetSize
+	float		currentw;
+	float		currenth;
 
 	// TODO: clean this up and do not expose everything.
 	
