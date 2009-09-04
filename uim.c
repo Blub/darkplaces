@@ -153,11 +153,13 @@ typedef struct
 	mempool_t     *mempool;
 
 	char          *buffer;
+	size_t         len;
 	size_t         size;
-	int            pos;
+	size_t         pos;
 
 	char          *copybuffer;
-	int            copypos;
+	size_t         copylen;
+	size_t         copypos;
 	qUIM_SetCursor setcursor;
 } quim_state;
 
@@ -414,7 +416,7 @@ void UIM_Key(int key, Uchar unicode)
 }
 
 // api entry, must check for UIM availability
-qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, int pos, qUIM_SetCursor setcursor_cb)
+qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCursor setcursor_cb)
 {
 	if (!UIM_Available())
 		return false;
@@ -435,10 +437,11 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, int pos, qUIM_SetCursor s
 	quim.size = bufsize;
 	quim.pos = pos;
 	quim.setcursor = setcursor_cb;
+	quim.len = strlen(buffer);
 
 	memcpy(quim.copybuffer, quim.buffer, quim.size);
 	quim.copypos = quim.pos;
-
+	quim.copylen = quim.len;
 	return true;
 }
 
