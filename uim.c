@@ -461,7 +461,7 @@ qboolean UIM_KeyUp(int key, Uchar unicode)
 {
 	if (!UIM_Available())
 		return false;
-	return (quim_release_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod()) != 0);
+	return (quim_release_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod()) == 0);
 }
 
 // api entry, must check for UIM availability
@@ -469,7 +469,7 @@ qboolean UIM_KeyDown(int key, Uchar unicode)
 {
 	if (!UIM_Available())
 		return false;
-	return (quim_press_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod()) != 0);
+	return (quim_press_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod()) == 0);
 }
 
 // api entry, must check for UIM availability
@@ -482,9 +482,9 @@ qboolean UIM_Key(int key, Uchar unicode)
 	mod = UIM_GetKeyMod();
 	ukey = UIM_KeyToUKey(key, unicode);
 	//Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : ' ');
-	if (quim_press_key(quim.ctx, ukey, mod) != 0)
+	if (quim_press_key(quim.ctx, ukey, mod) == 0)
 		handled = true;
-	if (quim_release_key(quim.ctx, ukey, mod) != 0)
+	if (quim_release_key(quim.ctx, ukey, mod) == 0)
 		handled = true;
 	return handled;
 }
