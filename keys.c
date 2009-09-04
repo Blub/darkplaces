@@ -609,8 +609,9 @@ Key_Console (int key, int unicode)
 	{
 		if (key_linepos > 1)
 		{
-			strlcpy(key_line + key_linepos - 1, key_line + key_linepos, sizeof(key_line) + 1 - key_linepos);
-			key_linepos--;
+			int newpos = u8_byteofs(key_line, u8_charidx(key_line, key_linepos, NULL) - 1, NULL);
+			strlcpy(key_line + newpos, key_line + key_linepos, sizeof(key_line) + 1 - key_linepos);
+			key_linepos = newpos;
 		}
 		return;
 	}
