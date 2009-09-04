@@ -424,6 +424,7 @@ Key_Console (int key, int unicode)
 			if (i > 0)
 			{
 				// terencehill: insert the clipboard text between the characters of the line
+				/*
 				char *temp = (char *) Z_Malloc(MAX_INPUTLINE);
 				cbd[i]=0;
 				temp[0]=0;
@@ -434,6 +435,12 @@ Key_Console (int key, int unicode)
 				if (temp[0])
 					strlcat(key_line, temp, sizeof(key_line));
 				Z_Free(temp);
+				key_linepos += i;
+				*/
+				// blub: I'm changing this to use memmove() like the rest of the code does.
+				cbd[i] = 0;
+				memmove(key_line + key_linepos + i, key_line + key_linepos, sizeof(key_line) - key_linepos - i);
+				memcpy(key_line + key_linepos, cbd, i);
 				key_linepos += i;
 			}
 			Z_Free(cbd);
@@ -576,11 +583,7 @@ Key_Console (int key, int unicode)
 		else if(keydown[K_SHIFT]) // move cursor to the previous character ignoring colors
 		{
 			int		pos;
-			int             chidx;
-
-			chidx = u8_charidx(key_line, key_linepos, NULL);
-			pos = u8_byteofs(key_line, chidx - 1, NULL);
-			//pos = key_linepos-1;
+			pos = u8_prevbyte(key_line, key_linepos);
 			while (pos)
 				if(pos-1 > 0 && key_line[pos-1] == STRING_COLOR_TAG && isdigit(key_line[pos]))
 					pos-=2;
@@ -598,8 +601,7 @@ Key_Console (int key, int unicode)
 		}
 		else
 		{
-			key_linepos = u8_byteofs(key_line, u8_charidx(key_line, key_linepos, NULL) - 1, NULL);
-			//key_linepos--;
+			key_linepos = u8_prevbyte(key_line, key_linepos);
 		}
 		return;
 	}
@@ -609,8 +611,9 @@ Key_Console (int key, int unicode)
 	{
 		if (key_linepos > 1)
 		{
-			strlcpy(key_line + key_linepos - 1, key_line + key_linepos, sizeof(key_line) + 1 - key_linepos);
-			key_linepos--;
+			int newpos = u8_prevbyte(key_line, key_linepos);
+			strlcpy(key_line + newpos, key_line + key_linepos, sizeof(key_line) + 1 - key_linepos);
+			key_linepos = newpos;
 		}
 		return;
 	}
@@ -865,7 +868,7 @@ Key_Message (int key, int ascii)
 
 	if (key == K_BACKSPACE) {
 		if (chat_bufferlen) {
-			chat_bufferlen--;
+			chat_bufferlen = u8_prevbyte(chat_buffer, chat_bufferlen);
 			chat_buffer[chat_bufferlen] = 0;
 		}
 		return;

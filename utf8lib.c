@@ -33,7 +33,7 @@ static inline qboolean u8_validate(const char *_s)
 size_t u8_strlen(const char *_s)
 {
 	size_t len = 0;
-	unsigned char *s = (unsigned char*)_s;
+	const unsigned char *s = (const unsigned char*)_s;
 	while (*s)
 	{
 		// ascii char
@@ -67,7 +67,7 @@ size_t u8_strlen(const char *_s)
 size_t u8_bytelen(const char *_s, size_t n)
 {
 	size_t len = 0;
-	unsigned char *s = (unsigned char*)_s;
+	const unsigned char *s = (const unsigned char*)_s;
 	while (*s && n)
 	{
 		// ascii char
@@ -103,7 +103,7 @@ size_t u8_bytelen(const char *_s, size_t n)
 int u8_byteofs(const char *_s, size_t i, size_t *len)
 {
 	size_t ofs = 0;
-	unsigned char *s = (unsigned char*)_s;
+	const unsigned char *s = (const unsigned char*)_s;
 	while (i > 0 && s[ofs])
 	{
 		// ascii character
@@ -114,7 +114,7 @@ int u8_byteofs(const char *_s, size_t i, size_t *len)
 			continue;
 		}
 
-		// part of a wide character, weignore that one
+		// part of a wide character, we ignore that one
 		if (s[ofs] < 0xC0)
 		{
 			++ofs;
@@ -153,7 +153,8 @@ int u8_charidx(const char *_s, size_t i, size_t *len)
 {
 	size_t ofs = 0;
 	int idx = 0;
-	unsigned char *s = (unsigned char*)_s;
+	size_t start;
+	const unsigned char *s = (const unsigned char*)_s;
 	
 	while (ofs < i && s[ofs])
 	{
@@ -173,29 +174,72 @@ int u8_charidx(const char *_s, size_t i, size_t *len)
 		}
 
 		// start of a wide character
-		if (s[ofs] & 0xC0)
+		start = ofs;
+		if (!u8_validate((const char*)s+ofs))
 		{
-			size_t start = ofs;
-			if (!u8_validate((const char*)s))
-			{
-				// invalid byte
-				++ofs;
-				continue;
-			}
-			for (++ofs; s[ofs] >= 0x80 && s[ofs] <= 0xC0 && ofs < i; ++ofs);
-			if (s[ofs] >= 0x80 && s[ofs] < 0xC0)
-			{
-				// it ends within this character
-				if (len)
-					*len = ofs - start;
-				return idx;
-			}
-			++idx;
+			// invalid byte
+			++ofs;
 			continue;
 		}
+		for (++ofs; s[ofs] >= 0x80 && s[ofs] < 0xC0 && ofs < i; ++ofs);
+		if (s[ofs] >= 0x80 && s[ofs] < 0xC0)
+		{
+			// it ends within this character
+			if (len)
+				*len = ofs - start;
+			return idx;
+		}
+		++idx;
+		continue;
 	}
 	if (len) *len = 0;
 	return idx;
+}
+
+/** Get the byte offset of the previous byte.
+ * The result equals:
+ * prevchar_pos = u8_byteofs(text, u8_charidx(text, thischar_pos, NULL) - 1, NULL)
+ * @param _s      An utf-8 encoded string.
+ * @param i       The current byte offset.
+ * @return        The byte offset of the previous character
+ */
+size_t u8_prevbyte(const char *_s, size_t i)
+{
+	const unsigned char *s = (const unsigned char*)_s;
+	size_t lastofs = 0;
+	size_t ofs = 0;
+	while (ofs < i && s[ofs])
+	{
+		// ascii character
+		if (s[ofs] < 0x80)
+		{
+			lastofs = ofs++;
+			continue;
+		}
+
+		// part of a wide character, we ignore that one
+		if (s[ofs] < 0xC0)
+		{
+			++ofs;
+			continue;
+		}
+
+		// start of a wide character
+		if (!u8_validate((const char*)s+ofs))
+		{
+			// invalid byte
+			++ofs;
+			continue;
+		}
+		lastofs = ofs;
+		for (++ofs; s[ofs] >= 0x80 && s[ofs] < 0xC0 && ofs < i; ++ofs);
+		if (s[ofs] >= 0x80 && s[ofs] < 0xC0)
+		{
+			// it ends within this character
+			return lastofs;
+		}
+	}
+	return lastofs;
 }
 
 /** Fetch a character from an utf-8 encoded string.
