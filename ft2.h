@@ -33,8 +33,10 @@ typedef struct ft2_kerning_s
 typedef struct ft2_font_s
 {
 	char            name[64];
-
 	qboolean        has_kerning;
+	// last requested size loaded using Font_SetSize
+	float		currentw;
+	float		currenth;
 
 	// TODO: clean this up and do not expose everything.
 	
@@ -49,6 +51,9 @@ typedef struct ft2_font_s
 	// attachments
 	size_t            attachmentcount;
 	ft2_attachment_t *attachments;
+
+	// fallback mechanism
+	struct ft2_font_s *next;
 } ft2_font_t;
 
 void            Font_CloseLibrary(void);
