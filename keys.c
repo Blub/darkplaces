@@ -424,6 +424,7 @@ Key_Console (int key, int unicode)
 			if (i > 0)
 			{
 				// terencehill: insert the clipboard text between the characters of the line
+				/*
 				char *temp = (char *) Z_Malloc(MAX_INPUTLINE);
 				cbd[i]=0;
 				temp[0]=0;
@@ -434,6 +435,12 @@ Key_Console (int key, int unicode)
 				if (temp[0])
 					strlcat(key_line, temp, sizeof(key_line));
 				Z_Free(temp);
+				key_linepos += i;
+				*/
+				// blub: I'm changing this to use memmove() like the rest of the code does.
+				cbd[i] = 0;
+				memmove(key_line + key_linepos + i, key_line + key_linepos, sizeof(key_line) - key_linepos - i);
+				memcpy(key_line + key_linepos, cbd, i);
 				key_linepos += i;
 			}
 			Z_Free(cbd);
