@@ -37,6 +37,7 @@ uim_context   (*quim_create_context)(void *cookie,
 				     const char *engine,
 				     struct uim_code_converter *conv,
 				     void (*commit_cb)(void *ptr, const char *str));
+void          (*quim_reset_context)(uim_context);
 void          (*quim_release_context)(uim_context);
 int           (*quim_helper_init_client_fd)(void (*disconnect_cb)(void));
 void          (*quim_close_client_fd)(int);
@@ -71,6 +72,7 @@ static dllfunction_t uimfuncs[] =
 	{"uim_candidate_get_cand_str",	(void **) &quim_candidate_get_cand_str},
 	{"uim_get_default_im_name",	(void **) &quim_get_default_im_name},
 	{"uim_create_context",		(void **) &quim_create_context},
+	{"uim_reset_context",		(void **) &quim_reset_context},
 	{"uim_release_context",		(void **) &quim_release_context},
 	{"uim_helper_init_client_fd",	(void **) &quim_helper_init_client_fd},
 	{"uim_close_client_fd",		(void **) &quim_close_client_fd},
@@ -399,6 +401,9 @@ void UIM_EnterBuffer(char *buffer, size_t bufsize, int pos, qUIM_SetCursor setcu
 // api entry, must check for UIM availability
 void UIM_CancelBuffer(void)
 {
+	if (!UIM_Available())
+		return;
+	quim_reset_context(quim.ctx);
 	quim.buffer = NULL;
 	quim.setcursor = NULL;
 }
