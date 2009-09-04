@@ -6,7 +6,7 @@
 #include "keys.h"
 #include "uim_dp.h"
 
-#include <locale.h>
+//#include <locale.h>
 
 /*
 ================================================================================
@@ -325,7 +325,7 @@ static void UIM_Start(void)
 
 	UIM_InitConverter();
 
-	setlocale(LC_CTYPE, NULL);
+	//setlocale(LC_CTYPE, NULL);
 	if (quim_init() != 0)
 	{
 		Con_Print("Failed to initialize UIM support\n");
@@ -593,6 +593,12 @@ void UIM_CancelBuffer(void)
 	quim.setcursor = NULL;
 }
 
+// api entry, must check for UIM availability
+void UIM_SetCursor(int pos)
+{
+	UIM_EnterBuffer(quim.buffer, quim.buffer_size, pos, quim.setcursor);
+}
+
 static qboolean UIM_Insert(const char *str)
 {
 	size_t slen;
@@ -614,18 +620,6 @@ static qboolean UIM_Insert(const char *str)
 	quim.edit_pos += slen;
 	quim.edit_length += slen;
 	return true;
-}
-
-static void UIM_PropListUpdate(void *cookie, const char *str)
-{
-	++quim.actions;
-	if (quim.fd > 0)
-	{
-		char buffer[1024<<2];
-		//Con_Printf("UIM_PropListUpdate\n%s\n", str);
-		dpsnprintf(buffer, sizeof(buffer), "prop_list_update\ncharset=UTF-8\n%s", str);
-		quim_helper_send_message(quim.fd, buffer);
-	}
 }
 
 static void UIM_Commit(void *cookie, const char *str)
@@ -807,4 +801,16 @@ static void UIM_ConfigChanged(void *cookie)
 {
 	++quim.actions;
 	//Con_Print("UIM_ConfigChanged\n");
+}
+
+static void UIM_PropListUpdate(void *cookie, const char *str)
+{
+	++quim.actions;
+	if (quim.fd > 0)
+	{
+		char buffer[1024<<2];
+		//Con_Printf("UIM_PropListUpdate\n%s\n", str);
+		dpsnprintf(buffer, sizeof(buffer), "prop_list_update\ncharset=UTF-8\n%s", str);
+		quim_helper_send_message(quim.fd, buffer);
+	}
 }

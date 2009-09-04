@@ -49,6 +49,7 @@ void     UIM_Init(void);
 void     UIM_Shutdown(void);
 qboolean UIM_Available(void);
 qboolean UIM_Direct(void);
+void     UIM_SetCursor(int pos);
 qboolean UIM_Key(int key, Uchar unicode);
 qboolean UIM_KeyUp(int key, Uchar unicode);
 qboolean UIM_KeyDown(int key, Uchar unicode);

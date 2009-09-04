@@ -861,6 +861,7 @@ Key_Message (int key, int ascii)
 		key_dest = key_game;
 		chat_bufferlen = 0;
 		chat_buffer[0] = 0;
+		UIM_CancelBuffer();
 		return;
 	}
 
@@ -876,6 +877,7 @@ Key_Message (int key, int ascii)
 	if (key == K_BACKSPACE) {
 		if (chat_bufferlen) {
 			chat_bufferlen = u8_prevbyte(chat_buffer, chat_bufferlen);
+			UIM_SetCursor(chat_bufferlen);
 			chat_buffer[chat_bufferlen] = 0;
 		}
 		return;
@@ -883,6 +885,7 @@ Key_Message (int key, int ascii)
 
 	if(key == K_TAB) {
 		chat_bufferlen = Nicks_CompleteChatLine(chat_buffer, sizeof(chat_buffer), chat_bufferlen);
+		UIM_SetCursor(chat_bufferlen);
 		return;
 	}
 
@@ -893,6 +896,7 @@ Key_Message (int key, int ascii)
 		return;							// non printable
 
 	chat_bufferlen += u8_fromchar(ascii, chat_buffer+chat_bufferlen, sizeof(chat_buffer) - chat_bufferlen - 1);
+	UIM_SetCursor(chat_bufferlen);
 
 	//chat_buffer[chat_bufferlen++] = ascii;
 	//chat_buffer[chat_bufferlen] = 0;
