@@ -258,7 +258,7 @@ Uchar u8_getchar(const char *_s, const char **_end)
 	{
 		if (_end)
 			*_end = _s + 1;
-		return (U_int32)*s;
+		return (Uchar)*s;
 	}
 
 	if (*s < 0xC0)
