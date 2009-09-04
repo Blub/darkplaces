@@ -597,7 +597,10 @@ Key_Console (int key, int unicode)
 			key_linepos = pos + 1;
 		}
 		else
-			key_linepos--;
+		{
+			key_linepos = u8_byteofs(key_line, u8_charidx(key_line, key_linepos, NULL) - 1, NULL);
+			//key_linepos--;
+		}
 		return;
 	}
 
