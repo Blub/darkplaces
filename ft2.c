@@ -284,7 +284,6 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 {
 	int s, count, i;
 	ft2_font_t *ft2, *fbfont, *fb;
-	qboolean sizeloaded[MAX_FONT_SIZES];
 
 	ft2 = Font_Alloc();
 	if (!ft2)
@@ -297,25 +296,6 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 	{
 		dpfnt->ft2 = NULL;
 		Mem_Free(ft2);
-		return false;
-	}
-
-	memset(sizeloaded, 0, sizeof(sizeloaded));
-	count = 0;
-	for (s = 0; s < MAX_FONT_SIZES; ++s)
-	{
-		if (Font_LoadSize(ft2, dpfnt->req_sizes[s]))
-		{
-			sizeloaded[s] = true;
-			++count;
-		}
-	}
-	if (!count)
-	{
-		// loading failed for every requested size
-		Font_UnloadFont(ft2);
-		Mem_Free(ft2);
-		dpfnt->ft2 = NULL;
 		return false;
 	}
 
@@ -338,8 +318,6 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 		count = 0;
 		for (s = 0; s < MAX_FONT_SIZES; ++s)
 		{
-			if (!sizeloaded[s]) // do not load if the font doesn't work with it
-				continue;
 			if (Font_LoadSize(fb, dpfnt->req_sizes[s]))
 				++count;
 		}
@@ -353,6 +331,21 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 		// link it:
 		fbfont->next = fb;
 		fbfont = fb;
+	}
+
+	count = 0;
+	for (s = 0; s < MAX_FONT_SIZES; ++s)
+	{
+		if (Font_LoadSize(ft2, dpfnt->req_sizes[s]))
+			++count;
+	}
+	if (!count)
+	{
+		// loading failed for every requested size
+		Font_UnloadFont(ft2);
+		Mem_Free(ft2);
+		dpfnt->ft2 = NULL;
+		return false;
 	}
 	
 	//Con_Printf("%i sizes loaded\n", count);
