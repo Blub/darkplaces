@@ -16,6 +16,7 @@ cvar_t im_enabled = {CVAR_SAVE, "im_enabled", "0", "use UIM input"};
 cvar_t im_engine = {CVAR_SAVE, "im_engine", "anthy", "which input method to use if uim is supported and active"};
 cvar_t im_language = {CVAR_SAVE, "im_language", "ja", "which language should be used for the input editor (en for english, ja for japanese, etc.)"};
 
+cvar_t im_cursor = {CVAR_SAVE, "im_cursor", "_", "the cursor to append to what you type when not selecting candidates"};
 cvar_t im_cursor_start = {CVAR_SAVE, "im_cursor_start", "^3|", "how to mark the beginning of the input cursor"};
 cvar_t im_cursor_end = {CVAR_SAVE, "im_cursor_end", "^3|", "how to mark the end of the input cursor"};
 cvar_t im_selection_start = {CVAR_SAVE, "im_selection_start", "^xf80", "how to mark the beginning of the current selection (as in, what UIM would display underlined)"};
@@ -51,8 +52,6 @@ void          (*quim_set_preedit_cb)(uim_context,
 				     void (*clear_cb)(void*),
 				     void (*pushback_cb)(void*, int attr, const char *str),
 				     void (*update_cb)(void*));
-//void          (*quim_set_prop_list_update_cb)(uim_context,
-//					      void (*update_cb)(void*, const char *longstr));
 void          (*quim_set_candidate_selector_cb)(uim_context,
 						void (*activate_cb)(void*, int nr, int display_limit),
 						void (*select_cb)(void*, int index),
@@ -62,6 +61,7 @@ void          (*quim_prop_list_update)(uim_context);
 void          (*quim_press_key)(uim_context, int key, int mods);
 void          (*quim_release_key)(uim_context, int key, int mods);
 void          (*quim_set_prop_list_update_cb)(uim_context, void (*update_cb)(void*, const char *str));
+void          (*quim_set_configuration_changed_cb)(uim_context, void (*changed_cb)(void*));
 
 /*
 ================================================================================
@@ -91,6 +91,7 @@ static dllfunction_t uimfuncs[] =
 	{"uim_release_key",		(void **) &quim_release_key},
 	{"uim_iconv",			(void **) &quim_iconv},
 	{"uim_set_prop_list_update_cb", (void **) &quim_set_prop_list_update_cb},
+	{"uim_set_configuration_changed_cb", (void **) &quim_set_configuration_changed_cb},
 
 	{NULL, NULL}
 };
@@ -173,7 +174,7 @@ typedef struct
 	const char    *pc;
 	size_t         pc_len;
 
-	int            active;
+	qboolean       active;
 	int            active_count;
 	int            active_limit;
 
@@ -198,6 +199,7 @@ static void UIM_Activate(void*, int nr, int display_limit);
 static void UIM_Select(void*, int index);
 static void UIM_Shift(void*, int dir);
 static void UIM_Deactivate(void*);
+static void UIM_ConfigChanged(void*);
 
 static void UIM_Start(void);
 /*
@@ -215,6 +217,7 @@ void UIM_Init(void)
 	Cvar_RegisterVariable(&im_engine);
 	Cvar_RegisterVariable(&im_language);
 	Cvar_RegisterVariable(&im_enabled);
+	Cvar_RegisterVariable(&im_cursor);
 	Cvar_RegisterVariable(&im_cursor_start);
 	Cvar_RegisterVariable(&im_cursor_end);
 	Cvar_RegisterVariable(&im_selection_start);
@@ -285,12 +288,15 @@ static void UIM_Start(void)
 	quim_set_preedit_cb(quim.ctx, &UIM_Clear, &UIM_Push, &UIM_Update);
 	quim_set_candidate_selector_cb(quim.ctx, &UIM_Activate, &UIM_Select, &UIM_Shift, &UIM_Deactivate);
 	quim_set_prop_list_update_cb(quim.ctx, &UIM_PropListUpdate);
+	quim_set_configuration_changed_cb(quim.ctx, &UIM_ConfigChanged);
 	quim_prop_list_update(quim.ctx);
 }
 
 // api entry, must check for UIM availability *ahem*
 qboolean UIM_Available(void)
 {
+	if (!im_enabled.integer)
+		return false;
 	return (!!uim_dll && quim.ctx);
 }
 
@@ -414,7 +420,7 @@ static int UIM_KeyToUKey(int key, Uchar unicode)
 
 	default:
 		if (unicode < 0x7E)
-			return 0;
+			return unicode;
 		return 0;
 	}
 }
@@ -469,6 +475,7 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCurso
 	}
 	*/
 
+	quim.active = false;
 	quim.buffer = buffer;
 	quim.buffer_size = bufsize;
 	quim.buffer_pos = pos;
@@ -532,9 +539,14 @@ static qboolean UIM_Insert(const char *str)
 		Con_Print("UIM: Insertion failed: not enough space!\n");
 		return false;
 	}
+	Con_Printf("Inserting [%s]\n", str);
+	Con_Printf("Insertion point: %lu\n", (unsigned long)quim.edit_pos);
 	memmove(quim.buffer + quim.edit_pos + slen,
 		quim.buffer + quim.edit_pos,
 		quim.buffer_size - quim.edit_pos - slen);
+	memcpy(quim.buffer + quim.edit_pos, str, slen);
+	if (quim.edit_pos >= quim.length)
+		quim.buffer[quim.edit_pos + slen] = 0;
 	quim.edit_pos += slen;
 	quim.edit_length += slen;
 	return true;
@@ -550,7 +562,7 @@ static void UIM_PropListUpdate(void *cookie, const char *str)
 
 static void UIM_Commit(void *cookie, const char *str)
 {
-	Con_Print("UIM_Commit\n");
+	Con_Printf("UIM_Commit: %s\n", str);
 	if (!UIM_Insert(str))
 	{
 		Con_Print("UIM: Failed to commit buffer\n");
@@ -581,13 +593,8 @@ static void UIM_Clear(void *cookie)
 // we have BUFSTART and QUIM_CURSOR
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
-	Con_Print("UIM_Push\n");
-	if (attr & UPreeditAttr_UnderLine)
-	{
-		if (!UIM_Insert(im_selection_start.string))
-			return;
-	}
-	if (attr & UPreeditAttr_Cursor)
+	Con_Printf("UIM_Push: %s\n", str);
+	if (quim.active && (attr & UPreeditAttr_Cursor))
 	{
 		quim.cursor_pos = quim.edit_pos;
 		quim.cursor_length = 0;
@@ -598,25 +605,42 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 		quim.cursor_inpos = quim.edit_pos;
 		quim.cursor_length = strlen(im_cursor_start.string);
 	}
+	if (attr & UPreeditAttr_UnderLine)
+	{
+		if (!UIM_Insert(im_selection_start.string))
+			return;
+	}
 	if (str[0])
 	{
 		if (!UIM_Insert(str))
 			return;
 	}
-	if (attr & UPreeditAttr_Cursor)
-	{
-		size_t slen = strlen(str);
-		size_t cl = quim.cursor_length;
-		quim.cursor_length += slen;
-		quim.cursor_inlength += slen;
-		if (!UIM_Insert(im_cursor_end.string))
-			return;
-		quim.cursor_length += cl;
-	}
 	if (attr & UPreeditAttr_UnderLine)
 	{
 		if (!UIM_Insert(im_selection_end.string))
 			return;
+	}
+	if (attr & UPreeditAttr_Cursor)
+	{
+		if (quim.active)
+		{
+			size_t slen = strlen(str);
+			size_t cl = quim.cursor_length;
+			quim.cursor_length += slen;
+			quim.cursor_inlength += slen;
+			if (!UIM_Insert(im_cursor_end.string))
+				return;
+			quim.cursor_length += cl;
+		}
+		else
+		{
+			size_t epos = quim.edit_pos;
+			size_t elen = quim.edit_length;
+			if (!UIM_Insert(im_cursor.string))
+				return;
+			quim.edit_pos = epos;
+			quim.edit_length = elen;
+		}
 	}
 }
 
@@ -632,7 +656,7 @@ static void UIM_Update(void *cookie)
 static void UIM_Activate(void *cookie, int nr, int display_limit)
 {
 	Con_Print("UIM_Activate\n");
-	quim.active = 1;
+	quim.active = true;
 	quim.active_count = nr;
 	quim.active_limit = display_limit;
 }
@@ -688,5 +712,11 @@ static void UIM_Shift(void *cookie, int dir)
 
 static void UIM_Deactivate(void *cookie)
 {
+	quim.active = false;
 	Con_Print("^3UIM: make UIM_Deactivate move the cursor...\n");
+}
+
+static void UIM_ConfigChanged(void *cookie)
+{
+	Con_Print("UIM_ConfigChanged\n");
 }
