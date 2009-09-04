@@ -347,7 +347,7 @@ Interactive line editing and console scrollback
 ====================
 */
 static void
-Key_Console (int key, int ascii)
+Key_Console (int key, int unicode)
 {
 	// LordHavoc: copied most of this from Q2 to improve keyboard handling
 	switch (key)
@@ -573,10 +573,14 @@ Key_Console (int key, int ascii)
 				}
 			key_linepos = pos + 1;
 		}
-		else if(keydown[K_SHIFT]) // move cursor to the previous character ignoring colors
+		else if(keydown[K_SHIFT]) // move cursor to the previous character ignoring colors, but not ignoring utf8-encoding
 		{
 			int		pos;
-			pos = key_linepos-1;
+			int             chidx;
+
+			chidx = u8_charidx(key_line, key_linepos, NULL);
+			pos = u8_byteofs(key_line, chidx - 1, NULL);
+			//pos = key_linepos-1;
 			while (pos)
 				if(pos-1 > 0 && key_line[pos-1] == STRING_COLOR_TAG && isdigit(key_line[pos]))
 					pos-=2;
@@ -614,7 +618,7 @@ Key_Console (int key, int ascii)
 		size_t linelen;
 		linelen = strlen(key_line);
 		if (key_linepos < (int)linelen)
-			memmove(key_line + key_linepos, key_line + key_linepos + 1, linelen - key_linepos);
+			memmove(key_line + key_linepos, key_line + key_linepos + u8_bytelen(key_line + key_linepos, 1), linelen - key_linepos);
 		return;
 	}
 
@@ -795,22 +799,31 @@ Key_Console (int key, int ascii)
 	}
 
 	// non printable
-	if (ascii < 32)
+	if (unicode < 32)
 		return;
 
 	if (key_linepos < MAX_INPUTLINE-1)
 	{
+		char buf[16];
 		int len;
+		int blen;
+		blen = u8_fromchar(unicode, buf, sizeof(buf));
+		if (!blen)
+			return;
 		len = (int)strlen(&key_line[key_linepos]);
 		// check insert mode, or always insert if at end of line
 		if (key_insert || len == 0)
 		{
 			// can't use strcpy to move string to right
 			len++;
-			memmove(&key_line[key_linepos + 1], &key_line[key_linepos], len);
+			//memmove(&key_line[key_linepos + u8_bytelen(key_line + key_linepos, 1)], &key_line[key_linepos], len);
+			memmove(&key_line[key_linepos + blen], &key_line[key_linepos], len);
 		}
-		key_line[key_linepos] = ascii;
-		key_linepos++;
+		memcpy(key_line + key_linepos, buf, blen);
+		key_linepos += blen;
+		//key_linepos += u8_fromchar(unicode, key_line + key_linepos, sizeof(key_line) - key_linepos - 1);
+		//key_line[key_linepos] = ascii;
+		//key_linepos++;
 	}
 }
 
