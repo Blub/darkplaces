@@ -188,6 +188,10 @@ typedef struct
 	*/
 
 	qUIM_SetCursor setcursor;
+
+	// this is the only way K_RETURN actually sends a chat message
+	// when using stuff like anthy
+	int            actions;
 } quim_state;
 
 static quim_state quim;
@@ -461,7 +465,8 @@ qboolean UIM_KeyUp(int key, Uchar unicode)
 {
 	if (!UIM_Available())
 		return false;
-	return (quim_release_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod()) == 0);
+	quim.actions = 0;
+	return (quim_release_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod()) == 0) && !!quim.actions;
 }
 
 // api entry, must check for UIM availability
@@ -469,7 +474,8 @@ qboolean UIM_KeyDown(int key, Uchar unicode)
 {
 	if (!UIM_Available())
 		return false;
-	return (quim_press_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod()) == 0);
+	quim.actions = 0;
+	return (quim_press_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod()) == 0) && !!quim.actions;
 }
 
 // api entry, must check for UIM availability
@@ -479,6 +485,7 @@ qboolean UIM_Key(int key, Uchar unicode)
 	int mod, ukey;
 	if (!UIM_Available())
 		return false;
+	quim.actions = 0;
 	mod = UIM_GetKeyMod();
 	ukey = UIM_KeyToUKey(key, unicode);
 	//Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : ' ');
@@ -486,7 +493,7 @@ qboolean UIM_Key(int key, Uchar unicode)
 		handled = true;
 	if (quim_release_key(quim.ctx, ukey, mod) == 0)
 		handled = true;
-	return handled;
+	return handled && !!quim.actions;
 }
 
 // api entry, must check for UIM availability
@@ -500,6 +507,7 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCurso
 	if (!buffer)
 		return false;
 
+	quim.actions = 0;
 	quim.pushcount = 0;
 	quim.active = false;
 	quim.buffer = buffer;
@@ -589,6 +597,7 @@ static qboolean UIM_Insert(const char *str)
 
 static void UIM_Commit(void *cookie, const char *str)
 {
+	++quim.actions;
 	//Con_Printf("UIM_Commit: %s\n", str);
 	UIM_Clear(cookie);
 	if (!UIM_Insert(str))
@@ -606,6 +615,7 @@ static void UIM_Commit(void *cookie, const char *str)
 
 static void UIM_HelperDisconnected(void)
 {
+	++quim.actions;
 	Con_Print("UIM Helper disconnected\n");
 	if (quim.fd > 0)
 		UIM_Shutdown();
@@ -613,6 +623,7 @@ static void UIM_HelperDisconnected(void)
 
 static void UIM_Clear(void *cookie)
 {
+	++quim.actions;
 	//Con_Print("UIM_Clear\n");
 	memmove(quim.buffer + quim.buffer_pos,
 		quim.buffer + quim.edit_pos,
@@ -629,6 +640,7 @@ static void UIM_Clear(void *cookie)
 // we have BUFSTART and QUIM_CURSOR
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
+	++quim.actions;
 	Con_Printf("UIM_Push: (%i) %s\n", attr, str);
 	if ((attr & (UPreeditAttr_Cursor | UPreeditAttr_Reverse)) == (UPreeditAttr_Cursor | UPreeditAttr_Reverse))
 	{
@@ -686,6 +698,7 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 
 static void UIM_Update(void *cookie)
 {
+	++quim.actions;
 	UIM_Insert(quim.pc);
 	//Con_Print("UIM_Update\n");
 	// well, of course
@@ -696,6 +709,7 @@ static void UIM_Update(void *cookie)
 
 static void UIM_Activate(void *cookie, int nr, int display_limit)
 {
+	++quim.actions;
 	//Con_Print("UIM_Activate\n");
 	quim.active = true;
 	quim.active_count = nr;
@@ -707,6 +721,7 @@ static void UIM_Select(void *cookie, int index)
 	uim_candidate cd;
 	const char *str;
 	size_t slen;
+	++quim.actions;
 
 	//Con_Print("UIM_Select\n");
 	cd = quim_get_candidate(quim.ctx, index, quim.active_count);
@@ -748,22 +763,26 @@ static void UIM_Select(void *cookie, int index)
 
 static void UIM_Shift(void *cookie, int dir)
 {
+	++quim.actions;
 	Con_Print("^1ERROR: ^7UIM_Shift: Not implemented\n");
 }
 
 static void UIM_Deactivate(void *cookie)
 {
+	++quim.actions;
 	quim.active = false;
 	//Con_Print("^3UIM: make UIM_Deactivate move the cursor...\n");
 }
 
 static void UIM_ConfigChanged(void *cookie)
 {
+	++quim.actions;
 	//Con_Print("UIM_ConfigChanged\n");
 }
 
 static void UIM_PropListUpdate(void *cookie, const char *str)
 {
+	++quim.actions;
 	if (quim.fd > 0)
 	{
 		char buffer[1024<<2];
