@@ -18,12 +18,13 @@ cvar_t im_enabled = {CVAR_SAVE, "im_enabled", "0", "use UIM input"};
 cvar_t im_engine = {CVAR_SAVE, "im_engine", "anthy", "which input method to use if uim is supported and active"};
 cvar_t im_language = {CVAR_SAVE, "im_language", "ja", "which language should be used for the input editor (en for english, ja for japanese, etc.)"};
 
-cvar_t im_cursor = {CVAR_SAVE, "im_cursor", "", "the cursor to append to what you type when not selecting candidates - you don't want this for the chatbox"};
+cvar_t im_cursor = {CVAR_SAVE, "im_cursor", "_", "the cursor to append to what you type when not selecting candidates - you don't want this for the chatbox"};
 cvar_t im_cursor_start = {CVAR_SAVE, "im_cursor_start", "^3[^x888", "how to mark the beginning of the input cursor"};
 cvar_t im_cursor_end = {CVAR_SAVE, "im_cursor_end", "^3]", "how to mark the end of the input cursor"};
 cvar_t im_selection_start = {CVAR_SAVE, "im_selection_start", "^xf80", "how to mark the beginning of the current selection (as in, what UIM would display underlined)"};
 cvar_t im_selection_end = {CVAR_SAVE, "im_selection_end", "", "how to mark the end of the current selection (as in, what UIM would display underlined)"};
 cvar_t im_separator = {CVAR_SAVE, "im_separator", "|", "separator to use..."};
+
 /*
 ================================================================================
 Library imports. Taken from the uim headers.
@@ -204,6 +205,7 @@ static void UIM_Select(void*, int index);
 static void UIM_Shift(void*, int dir);
 static void UIM_Deactivate(void*);
 static void UIM_ConfigChanged(void*);
+static void UIM_Restart_f(void);
 
 /*
 ====================
@@ -228,55 +230,20 @@ void UIM_Init(void)
 	Cvar_RegisterVariable(&im_selection_start);
 	Cvar_RegisterVariable(&im_selection_end);
 	Cvar_RegisterVariable(&im_separator);
+	Cmd_AddCommand ("im_restart", UIM_Restart_f, "restart the input editor");
 
 	//quim.mempool = Mem_AllocPool("UIM", 0, NULL);
 	UIM_Start();
 }
+
+static void UIM_Restart_f(void)
+{
+	UIM_Shutdown();
+	UIM_Start();
+}
+
 static struct uim_code_converter *dp_converter;
-/*
-struct uim_code_converter {
-	int  (*is_convertible)(const char *tocode, const char *fromcode);
-	void *(*create)(const char *tocode, const char *fromcode);
-	char *(*convert)(void *obj, const char *str);
-	void (*release)(void *obj);
-};
 
-static struct uim_code_converter dp_uim_conv;
-
-static int conv_IsConvertible(const char *tocode, const char *fromcode)
-{
-	Con_Printf("IsConvertible(\"%s\", \"%s\")\n", tocode, fromcode);
-	return (*quim_iconv)->is_convertible(tocode, fromcode);
-}
-
-static void *conv_Create(const char *tocode, const char *fromcode)
-{
-	Con_Printf("conv_Create: %s -> %s\n", fromcode, tocode);
-	return (*quim_iconv)->create(tocode, fromcode);
-}
-
-static char *conv_Convert(void *obj, const char *str)
-{
-	char *c = (*quim_iconv)->convert(obj, str);
-	size_t l1 = strlen(str);
-	size_t l2 = strlen(c);
-	size_t i;
-	Con_Print("Convert: ");
-	for (i = 0; i < l1; ++i)
-		Con_Printf("%02x ", (unsigned int)(unsigned char)str[i]);
-	Con_Printf("\nResult: ");
-	for (i = 0; i < l2; ++i)
-		Con_Printf("%02x ", (unsigned int)(unsigned char)c[i]);
-	Con_Print("\n");
-	Con_Printf("Convert: %s   \nResult: %s    \n", str, c);
-	return c;
-}
-
-static void conv_Release(void *obj)
-{
-	(*quim_iconv)->release(obj);
-}
-*/
 static void UIM_InitConverter(void)
 {
 	/*
@@ -668,7 +635,7 @@ static void UIM_Clear(void *cookie)
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
 	++quim.actions;
-	//Con_Printf("UIM_Push: (%i) %s\n", attr, str);
+	Con_Printf("UIM_Push: (%i) %s\n", attr, str);
 	if ((attr & (UPreeditAttr_Cursor | UPreeditAttr_Reverse)) == (UPreeditAttr_Cursor | UPreeditAttr_Reverse))
 	{
 		quim.cursor_pos = quim.edit_pos;
@@ -709,12 +676,16 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 		}
 		else
 		{
+			/*
 			size_t epos = quim.edit_pos;
 			size_t elen = quim.edit_length;
+			*/
 			if (!UIM_Insert(im_cursor.string))
 				return;
+			/*
 			quim.edit_pos = epos;
 			quim.edit_length = elen;
+			*/
 		}
 	}
 }

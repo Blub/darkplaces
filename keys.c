@@ -895,6 +895,9 @@ Key_Message (int key, int ascii)
 	if (!ascii)
 		return;							// non printable
 
+	if (keydown[K_CTRL] || keydown[K_ALT]) // no evil trickery, yeah?
+		return;
+
 	chat_bufferlen += u8_fromchar(ascii, chat_buffer+chat_bufferlen, sizeof(chat_buffer) - chat_bufferlen - 1);
 	UIM_SetCursor(chat_bufferlen);
 
