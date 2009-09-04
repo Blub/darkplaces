@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 // for u8_encodech
 #include "ft2.h"
+#include "uim_dp.h"
 
 float con_cursorspeed = 4;
 
@@ -604,6 +605,11 @@ void Con_ClearNotify (void)
 		CON_LINES(i).mask |= CON_MASK_HIDENOTIFY;
 }
 
+void Con_MessageMode_SetCursor(size_t pos)
+{
+	chat_bufferlen = pos;
+	//chat_bufferlen = strlen(chat_buffer);
+}
 
 /*
 ================
@@ -616,6 +622,8 @@ void Con_MessageMode_f (void)
 	chat_mode = 0; // "say"
 	chat_bufferlen = 0;
 	chat_buffer[0] = 0;
+
+	UIM_EnterBuffer(chat_buffer, sizeof(chat_buffer), 0, &Con_MessageMode_SetCursor);
 }
 
 
