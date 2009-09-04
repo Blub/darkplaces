@@ -83,6 +83,7 @@ DRAWFLAG_MIPMAP = 0x100 // ONLY R_BeginPolygon()
 };
 
 #define MAX_FONT_SIZES 8
+#define MAX_FONT_FALLBACKS 3
 typedef struct dp_font_s
 {
 	rtexture_t *tex;
@@ -94,6 +95,8 @@ typedef struct dp_font_s
 
 	int req_face; // requested face index, usually 0
 	float req_sizes[MAX_FONT_SIZES]; // sizes to render the font with, 0 still defaults to 16 (backward compatibility when loadfont doesn't get a size parameter) and -1 = disabled
+	char fallback[MAX_FONT_FALLBACKS][MAX_QPATH];
+	int fallback_faces[MAX_FONT_FALLBACKS];
 	struct ft2_font_s *ft2;
 }
 dp_font_t;

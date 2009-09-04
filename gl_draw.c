@@ -626,18 +626,7 @@ static void LoadFont(qboolean override, const char *name, dp_font_t *fnt)
 	if(fnt->req_face != -1)
 	{
 		if(!Font_LoadFont(fnt->texpath, fnt))
-		{
 			Con_Printf("Failed to load font-file for '%s', it will not support as many characters.\n", fnt->texpath);
-			//Mem_Free(fnt->ft2);
-			//fnt->ft2 = NULL;
-		}
-		/*
-		fnt->ft2 = Font_Alloc();
-		if(fnt->ft2)
-		{
-			//if(!Font_LoadFont(fnt->texpath, fnt->req_size, fnt->req_face, fnt->ft2))
-		}
-		*/
 	}
 
 	fnt->tex = Draw_CachePic_Flags(fnt->texpath, CACHEPICFLAG_QUIET | CACHEPICFLAG_NOCOMPRESSION)->tex;
@@ -735,11 +724,14 @@ static void LoadFont_f(void)
 {
 	dp_font_t *f;
 	int i;
+	const char *filelist, *c, *cm;
+	char mainfont[MAX_QPATH];
+
 	if(Cmd_Argc() < 2)
 	{
 		Con_Printf("Available font commands:\n");
 		for(i = 0; i < MAX_FONTS; ++i)
-			Con_Printf("  loadfont %s gfx/tgafile [face] [size1 [size2 [... [size8]]]]\n", dp_fonts[i].title);
+			Con_Printf("  loadfont %s gfx/tgafile[:face][,gfx/fallback1[:face][,...]] [size1 [size2 [... [size8]]]]\n", dp_fonts[i].title);
 		return;
 	}
 	f = FindFont(Cmd_Argv(1));
@@ -748,6 +740,60 @@ static void LoadFont_f(void)
 		Con_Printf("font function not found\n");
 		return;
 	}
+
+	if(Cmd_Argc() < 3)
+		filelist = "gfx/conchars";
+	else
+		filelist = Cmd_Argv(2);
+
+
+	// first font is handled "normally"
+	c = strchr(filelist, ':');
+	cm = strchr(filelist, ',');
+	if(c && (!cm || c < cm))
+		f->req_face = atoi(c+1);
+	else
+	{
+		f->req_face = 0;
+		c = cm;
+	}
+
+	if(!c || (c - filelist) > MAX_QPATH)
+		strlcpy(mainfont, filelist, sizeof(mainfont));
+	else
+	{
+		memcpy(mainfont, filelist, c - filelist);
+		mainfont[c - filelist] = 0;
+	}
+
+	for(i = 0; i < MAX_FONT_FALLBACKS; ++i)
+	{
+		c = strchr(filelist, ',');
+		if(!c)
+			break;
+		filelist = c + 1;
+		if(!*filelist)
+			break;
+		c = strchr(filelist, ':');
+		cm = strchr(filelist, ',');
+		if(c && (!cm || c < cm))
+			f->fallback_faces[i] = atoi(c+1);
+		else
+		{
+			f->fallback_faces[i] = 0; // f->req_face; could make it stick to the default-font's face index
+			c = cm;
+		}
+		if(!c || (c-filelist) > MAX_QPATH)
+		{
+			strlcpy(f->fallback[i], filelist, sizeof(mainfont));
+		}
+		else
+		{
+			memcpy(f->fallback[i], filelist, c - filelist);
+			f->fallback[i][c - filelist] = 0;
+		}
+	}
+
 	// for now: by default load only one size: the default size
 	f->req_sizes[0] = 0;
 	for(i = 1; i < MAX_FONT_SIZES; ++i)
@@ -755,14 +801,11 @@ static void LoadFont_f(void)
 
 	// for some reason this argc is 3 even when using 2 arguments here, maybe nexuiz screws up
 	if(Cmd_Argc() >= 3)
-		f->req_face = atoi(Cmd_Argv(3));
-
-	if(Cmd_Argc() >= 4)
 	{
-		for(i = 0; i < Cmd_Argc()-4; ++i)
-			f->req_sizes[i] = atof(Cmd_Argv(i+4));
+		for(i = 0; i < Cmd_Argc()-3; ++i)
+			f->req_sizes[i] = atof(Cmd_Argv(i+3));
 	}
-	LoadFont(true, (Cmd_Argc() < 3) ? "gfx/conchars" : Cmd_Argv(2), f);
+	LoadFont(true, mainfont, f);
 }
 
 /*

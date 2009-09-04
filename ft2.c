@@ -299,6 +299,22 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 		return false;
 	}
 
+	// attempt to load fallback fonts:
+	/*
+	for (s = 0; s < MAX_FONT_FALLBACKS; ++s)
+	{
+		ft2_font_t *fb;
+		if (!dpfnt->fallback[s][0])
+			break;
+		if (! (fb = Font_Alloc()) )
+		{
+			Con_Printf("Failed to allocate font for fallback %i of font %s\n", s, name);
+			break;
+		}
+		//if (!Font_LoadFile(dpfnt->fallbacks[s], dpfnt->
+	}
+	*/
+
 	count = 0;
 	for (s = 0; s < MAX_FONT_SIZES; ++s)
 	{
@@ -417,10 +433,10 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size)
 	int map_index;
 	ft2_font_map_t *fmap, temp;
 
-	if (size < 2) // bogus sizes are not allowed - and they screw up our allocations
-		return false;
 	if (!size)
 		size = 16;
+	if (size < 2) // bogus sizes are not allowed - and they screw up our allocations
+		return false;
 
 	for (map_index = 0; map_index < MAX_FONT_SIZES; ++map_index)
 	{
