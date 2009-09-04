@@ -45,13 +45,13 @@ typedef enum
 typedef struct uim_context_   *uim_context;
 typedef struct uim_candidate_ *uim_candidate;
 
-void UIM_Init(void);
-void UIM_Shutdown(void);
+void     UIM_Init(void);
+void     UIM_Shutdown(void);
 qboolean UIM_Available(void);
 qboolean UIM_Direct(void);
-void UIM_Key(int key, Uchar unicode);
-void UIM_KeyUp(int key, Uchar unicode);
-void UIM_KeyDown(int key, Uchar unicode);
+qboolean UIM_Key(int key, Uchar unicode);
+qboolean UIM_KeyUp(int key, Uchar unicode);
+qboolean UIM_KeyDown(int key, Uchar unicode);
 
 // exiting functions have a qUIM_ prefix
 typedef void (*qUIM_SetCursor)(size_t pos);

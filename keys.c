@@ -845,20 +845,12 @@ extern int Nicks_CompleteChatLine(char *buffer, size_t size, unsigned int pos);
 static void
 Key_Message (int key, int ascii)
 {
-	if (key == K_ESCAPE) {
-		UIM_CancelBuffer();
-		key_dest = key_game;
-		chat_bufferlen = 0;
-		chat_buffer[0] = 0;
-		return;
-	}
-	
 	if (!UIM_Direct())
 	{
-		UIM_Key(key, ascii);
-		return;
+		if (UIM_Key(key, ascii))
+		    return;
 	}
-	
+
 	if (key == K_ENTER || ascii == 10 || ascii == 13)
 	{
 		if(chat_mode < 0)
@@ -873,6 +865,13 @@ Key_Message (int key, int ascii)
 	}
 
 	// TODO add support for arrow keys and simple editing
+	if (key == K_ESCAPE) {
+		UIM_CancelBuffer();
+		key_dest = key_game;
+		chat_bufferlen = 0;
+		chat_buffer[0] = 0;
+		return;
+	}
 
 	if (key == K_BACKSPACE) {
 		if (chat_bufferlen) {
