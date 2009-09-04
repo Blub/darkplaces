@@ -662,7 +662,7 @@ static void UIM_Clear(void *cookie)
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
 	Con_Printf("UIM_Push: (%i) %s\n", attr, str);
-	if (attr & (UPreeditAttr_Cursor | UPreeditAttr_Reverse) == (UPreeditAttr_Cursor | UPreeditAttr_Reverse))
+	if ((attr & (UPreeditAttr_Cursor | UPreeditAttr_Reverse)) == (UPreeditAttr_Cursor | UPreeditAttr_Reverse))
 	{
 		quim.cursor_pos = quim.edit_pos;
 		quim.cursor_length = 0;
@@ -714,6 +714,7 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 
 static void UIM_Update(void *cookie)
 {
+	UIM_Insert(quim.pc);
 	Con_Print("UIM_Update\n");
 	// well, of course
 	// we could allocate a buffer in which we work
