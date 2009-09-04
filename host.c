@@ -1077,7 +1077,6 @@ static void Host_Init (void)
 		S_Init();
 		CDAudio_Init();
 		Key_Init();
-		UIM_Init();
 		V_Init();
 		CL_Init();
 	}
@@ -1099,6 +1098,12 @@ static void Host_Init (void)
 	{
 		Cbuf_AddText("exec default.cfg\nexec config.cfg\nexec autoexec.cfg\nstuffcmds\n");
 		Cbuf_Execute();
+	}
+
+	if (cls.state != ca_dedicated)
+	{
+		// this uses saved cvars
+		UIM_Init();
 	}
 
 	// put up the loading image so the user doesn't stare at a black screen...
