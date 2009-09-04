@@ -153,14 +153,25 @@ typedef struct
 	//mempool_t     *mempool;
 
 	char          *buffer;
-	size_t         len;
-	size_t         size;
-	size_t         pos;
-	size_t         editlen;
+	size_t         buffer_pos;
+	size_t         buffer_size;
+	size_t         length;
+	size_t         edit_start;
+	size_t         edit_pos;
+	size_t         edit_length;
+	size_t         tail_length;
+	size_t         cursor_pos;
+	size_t         cursor_length;
+	size_t         cursor_inpos;
+	size_t         cursor_inlength;
 
 	// where can we find the previous color code?
 	const char    *pc;
 	size_t         pc_len;
+
+	int            active;
+	int            active_count;
+	int            active_limit;
 
 	/*
 	char          *copybuffer;
@@ -279,7 +290,7 @@ qboolean UIM_Available(void)
 // api entry, must check for UIM availability
 qboolean UIM_Direct(void)
 {
-	if (!uim_dll || !quim.buffer || !quim.ctx || quim.fd <= 0 || !quim.size)
+	if (!uim_dll || !quim.buffer || !quim.ctx || quim.fd <= 0 || !quim.buffer_size)
 		return true;
 	// FIXME: direct!
 	return false;
@@ -450,11 +461,15 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCurso
 	*/
 
 	quim.buffer = buffer;
-	quim.size = bufsize;
-	quim.pos = pos;
+	quim.buffer_size = bufsize;
+	quim.buffer_pos = pos;
+	quim.edit_start = pos;
+	quim.edit_pos = pos;
+	quim.edit_length = 0;
+	quim.length = strlen(buffer);
+	quim.tail_length = quim.length - quim.edit_start;
+	
 	quim.setcursor = setcursor_cb;
-	quim.len = strlen(buffer);
-	quim.editlen = 0;
 
 	defcolor[0] = STRING_COLOR_TAG;
 	defcolor[1] = '7';
@@ -488,12 +503,6 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCurso
 			--pos;
 		}
 	}
-
-	/*
-	memcpy(quim.copybuffer, quim.buffer, quim.size);
-	quim.copypos = quim.pos;
-	quim.copylen = quim.len;
-	*/
 	return true;
 }
 
@@ -510,16 +519,15 @@ void UIM_CancelBuffer(void)
 static qboolean UIM_Insert(const char *str)
 {
 	size_t slen = strlen(str);
-	if (quim.pos + slen >= quim.size - 1) {
+	if (quim.edit_pos + slen + quim.tail_length >= quim.buffer_size - 1) {
 		Con_Print("UIM: Insertion failed: not enough space!\n");
 		return false;
 	}
-	memmove(quim.buffer + quim.pos + slen,
-		quim.buffer + quim.pos + quim.editlen,
-		quim.size - quim.pos - quim.editlen);
-	memcpy(quim.buffer + quim.pos, str, slen);
-	quim.pos += slen;
-	quim.editlen += slen;
+	memmove(quim.buffer + quim.edit_pos + slen,
+		quim.buffer + quim.edit_pos,
+		quim.buffer_size - quim.edit_pos - slen);
+	quim.edit_pos += slen;
+	quim.edit_length += slen;
 	return true;
 }
 static void UIM_Commit(void *cookie, const char *str)
@@ -529,8 +537,11 @@ static void UIM_Commit(void *cookie, const char *str)
 		Con_Print("UIM: Failed to commit buffer\n");
 		return;
 	}
+	quim.buffer_pos = quim.edit_pos;
+	quim.edit_start = quim.edit_pos;
+	quim.edit_length = 0;
 	if (quim.setcursor)
-		quim.setcursor(quim.pos);
+		quim.setcursor(quim.buffer_pos);
 }
 
 static void UIM_HelperDisconnected(void)
@@ -540,10 +551,9 @@ static void UIM_HelperDisconnected(void)
 
 static void UIM_Clear(void *cookie)
 {
-	memmove(quim.buffer + quim.pos,
-		quim.buffer + quim.pos + quim.editlen,
-		quim.size - quim.pos - quim.editlen);
-	quim.pos -= quim.editlen;
+	memmove(quim.buffer + quim.buffer_pos,
+		quim.buffer + quim.edit_pos,
+		quim.buffer_size - quim.edit_pos);
 }
 
 // we have BUFSTART and QUIM_CURSOR
@@ -556,15 +566,29 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 	}
 	if (attr & UPreeditAttr_Cursor)
 	{
+		quim.cursor_pos = quim.edit_pos;
+		quim.cursor_length = 0;
+		quim.cursor_inpos = quim.edit_pos;
+		quim.cursor_inlength = 0;
 		if (!UIM_Insert(im_cursor_start.string))
 			return;
+		quim.cursor_inpos = quim.edit_pos;
+		quim.cursor_length = strlen(im_cursor_start.string);
 	}
-	if (!UIM_Insert(str))
-		return;
+	if (str[0])
+	{
+		if (!UIM_Insert(str))
+			return;
+	}
 	if (attr & UPreeditAttr_Cursor)
 	{
+		size_t slen = strlen(str);
+		size_t cl = quim.cursor_length;
+		quim.cursor_length += slen;
+		quim.cursor_inlength += slen;
 		if (!UIM_Insert(im_cursor_end.string))
 			return;
+		quim.cursor_length += cl;
 	}
 	if (attr & UPreeditAttr_UnderLine)
 	{
@@ -575,20 +599,68 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 
 static void UIM_Update(void *cookie)
 {
+	// well, of course
+	// we could allocate a buffer in which we work
+	// and only update on "update"
+	// but who cares, seriously?
 }
 
 static void UIM_Activate(void *cookie, int nr, int display_limit)
 {
+	quim.active = 1;
+	quim.active_count = nr;
+	quim.active_limit = display_limit;
 }
 
 static void UIM_Select(void *cookie, int index)
 {
+	uim_candidate cd;
+	const char *str;
+	size_t slen;
+
+	cd = quim_get_candidate(quim.ctx, index, quim.active_count);
+	str = quim_candidate_get_cand_str(cd);
+	if (str)
+		slen = strlen(str);
+
+	// check if we even fit into that buffer
+	if (!str ||
+	    quim.edit_pos + quim.tail_length + slen - quim.cursor_inlength >= quim.buffer_size - 1)
+	{
+		// erase the part in the cursor:
+		memmove(quim.buffer + quim.cursor_inpos,
+			quim.buffer + quim.cursor_inpos + quim.cursor_inlength,
+			quim.buffer_size - quim.cursor_inpos - quim.cursor_inlength);
+		quim.cursor_length -= quim.cursor_inlength;
+		quim.cursor_inpos -= quim.cursor_inlength;
+		quim.edit_length -= quim.cursor_inlength;
+		quim.cursor_inlength = 0;
+		if (str)
+			Con_Print("Failed to select entry: buffer too short\n");
+		return;
+	}
+
+	// we can insert this stuff
+	// move the cursor-end + tail
+	memmove(quim.buffer + quim.cursor_inpos + quim.cursor_inlength,
+		quim.buffer + quim.cursor_pos + quim.cursor_length,
+		quim.buffer_size - quim.cursor_pos - quim.cursor_length);
+	
+	memcpy(quim.buffer + quim.cursor_inpos, str, slen);
+
+	quim.edit_length = quim.edit_length + slen - quim.cursor_inlength;
+	quim.cursor_length = quim.cursor_length + slen - quim.cursor_inlength;
+	quim.cursor_inlength = slen;
+
+	quim_candidate_free(cd);
 }
 
 static void UIM_Shift(void *cookie, int dir)
 {
+	Con_Print("^1ERROR: ^7UIM_Shift: Not implemented\n");
 }
 
 static void UIM_Deactivate(void *cookie)
 {
+	Con_Print("^3UIM: make UIM_Deactivate move the cursor...\n");
 }
