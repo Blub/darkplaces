@@ -622,7 +622,7 @@ static void UIM_PropListUpdate(void *cookie, const char *str)
 	if (quim.fd > 0)
 	{
 		char buffer[1024<<2];
-		Con_Printf("UIM_PropListUpdate\n%s\n", str);
+		//Con_Printf("UIM_PropListUpdate\n%s\n", str);
 		dpsnprintf(buffer, sizeof(buffer), "prop_list_update\ncharset=UTF-8\n%s", str);
 		quim_helper_send_message(quim.fd, buffer);
 	}
@@ -631,7 +631,7 @@ static void UIM_PropListUpdate(void *cookie, const char *str)
 static void UIM_Commit(void *cookie, const char *str)
 {
 	++quim.actions;
-	Con_Printf("UIM_Commit: %s\n", str);
+	//Con_Printf("UIM_Commit: %s\n", str);
 	UIM_Clear(cookie);
 	if (!UIM_Insert(str))
 	{
@@ -649,7 +649,7 @@ static void UIM_Commit(void *cookie, const char *str)
 static void UIM_HelperDisconnected(void)
 {
 	++quim.actions;
-	Con_Print("UIM_HelperDisconnected\n");
+	Con_Print("UIM Helper disconnected\n");
 	if (quim.fd > 0)
 		UIM_Shutdown();
 }
@@ -657,7 +657,7 @@ static void UIM_HelperDisconnected(void)
 static void UIM_Clear(void *cookie)
 {
 	++quim.actions;
-	Con_Print("UIM_Clear\n");
+	//Con_Print("UIM_Clear\n");
 	memmove(quim.buffer + quim.buffer_pos,
 		quim.buffer + quim.edit_pos,
 		quim.buffer_size - quim.edit_pos);
@@ -674,7 +674,7 @@ static void UIM_Clear(void *cookie)
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
 	++quim.actions;
-	Con_Printf("UIM_Push: (%i) %s\n", attr, str);
+	//Con_Printf("UIM_Push: (%i) %s\n", attr, str);
 	if ((attr & (UPreeditAttr_Cursor | UPreeditAttr_Reverse)) == (UPreeditAttr_Cursor | UPreeditAttr_Reverse))
 	{
 		quim.cursor_pos = quim.edit_pos;
@@ -729,7 +729,7 @@ static void UIM_Update(void *cookie)
 {
 	++quim.actions;
 	UIM_Insert(quim.pc);
-	Con_Print("UIM_Update\n");
+	//Con_Print("UIM_Update\n");
 	// well, of course
 	// we could allocate a buffer in which we work
 	// and only update on "update"
@@ -739,7 +739,7 @@ static void UIM_Update(void *cookie)
 static void UIM_Activate(void *cookie, int nr, int display_limit)
 {
 	++quim.actions;
-	Con_Print("UIM_Activate\n");
+	//Con_Print("UIM_Activate\n");
 	quim.active = true;
 	quim.active_count = nr;
 	quim.active_limit = display_limit;
@@ -752,7 +752,7 @@ static void UIM_Select(void *cookie, int index)
 	size_t slen;
 
 	++quim.actions;
-	Con_Print("UIM_Select\n");
+	//Con_Print("UIM_Select\n");
 	cd = quim_get_candidate(quim.ctx, index, quim.active_count);
 	str = quim_candidate_get_cand_str(cd);
 	if (str)
@@ -800,11 +800,11 @@ static void UIM_Deactivate(void *cookie)
 {
 	++quim.actions;
 	quim.active = false;
-	Con_Print("^3UIM: make UIM_Deactivate move the cursor...\n");
+	//Con_Print("^3UIM: make UIM_Deactivate move the cursor...\n");
 }
 
 static void UIM_ConfigChanged(void *cookie)
 {
 	++quim.actions;
-	Con_Print("UIM_ConfigChanged\n");
+	//Con_Print("UIM_ConfigChanged\n");
 }
