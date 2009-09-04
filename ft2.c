@@ -349,7 +349,7 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 		dpfnt->ft2 = NULL;
 		return false;
 	}
-	
+
 	//Con_Printf("%i sizes loaded\n", count);
 	dpfnt->ft2 = ft2;
 	return true;
@@ -466,7 +466,7 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean no_texture,
 			if (font->font_maps[map_index]->size == size)
 				return true;
 		}
-	
+
 		if (map_index >= MAX_FONT_SIZES)
 			return false;
 
@@ -531,7 +531,7 @@ int Font_IndexForSize(ft2_font_t *font, float fsize)
 	ft2_font_map_t **maps = font->font_maps;
 
 	fsize = fsize * vid.height / vid_conheight.value;
-	
+
 	if (fsize < 0)
 		size = 16;
 	else
@@ -541,7 +541,7 @@ int Font_IndexForSize(ft2_font_t *font, float fsize)
 		if (fsize - (float)size >= 0.49)
 			++size;
 	}
-	
+
 	for (m = 0; m < MAX_FONT_SIZES; ++m)
 	{
 		if (!maps[m])
@@ -768,8 +768,6 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		unsigned char *imagedata, *dst, *src;
 		glyph_slot_t *mapglyph;
 		FT_Face face;
-		
-		usefont = NULL;
 
 		if (developer.integer)
 			Con_Print("glyphinfo: ------------- GLYPH INFO -----------------\n");
@@ -785,6 +783,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		//status = qFT_Load_Char(face, ch, FT_LOAD_RENDER);
 		// we need the glyphIndex
 		face = font->face;
+		usefont = NULL;
 		glyphIndex = qFT_Get_Char_Index(face, ch);
 		if (glyphIndex == 0)
 		{
