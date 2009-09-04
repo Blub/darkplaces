@@ -534,7 +534,10 @@ void UIM_CancelBuffer(void)
 
 static qboolean UIM_Insert(const char *str)
 {
-	size_t slen = strlen(str);
+	size_t slen;
+	if (!*str)
+		return true;
+	slen = strlen(str);
 	if (quim.edit_pos + slen + quim.tail_length >= quim.buffer_size - 1) {
 		Con_Print("UIM: Insertion failed: not enough space!\n");
 		return false;
