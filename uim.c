@@ -3,6 +3,7 @@
  */
 #include "quakedef.h"
 
+#include "keys.h"
 #include "uim_dp.h"
 
 /*
@@ -221,6 +222,55 @@ static void UIM_Start(void)
 	quim_prop_list_update(quim.ctx);
 }
 
+// api entry, must check for UIM availability *ahem*
+qboolean UIM_Available(void)
+{
+	return (!!uim_dll && quim.ctx);
+}
+
+// api entry, must check for UIM availability
+qboolean UIM_Direct(void)
+{
+	if (!uim_dll)
+		return true;
+	// FIXME: direct!
+	return false;
+}
+
+static int UIM_GetKeyMod(void)
+{
+	int mod = 0;
+	if (Key_IsPressed(K_SHIFT)) mod |= UMod_Shift;
+	if (Key_IsPressed(K_ALT))   mod |= UMod_Alt;
+	if (Key_IsPressed(K_CTRL))  mod |= UMod_Control;
+	return mod;
+}
+
+// api entry, must check for UIM availability
+void UIM_KeyUp(int key, Uchar unicode)
+{
+	if (!UIM_Available())
+		return;
+	quim_release_key(quim.ctx, unicode, UIM_GetKeyMod());
+}
+
+// api entry, must check for UIM availability
+void UIM_KeyDown(int key, Uchar unicode)
+{
+	if (!UIM_Available())
+		return;
+	quim_press_key(quim.ctx, unicode, UIM_GetKeyMod());
+}
+
+// api entry, must check for UIM availability
+void UIM_Key(int key, Uchar unicode)
+{
+	if (!UIM_Available())
+		return;
+	UIM_KeyUp(key, unicode);
+	UIM_KeyDown(key, unicode);
+}
+
 static void UIM_Commit(void *cookie, const char *str)
 {
 }
@@ -256,4 +306,3 @@ static void UIM_Shift(void *cookie, int dir)
 static void UIM_Deactivate(void *cookie)
 {
 }
-

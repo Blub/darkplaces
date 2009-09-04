@@ -216,6 +216,7 @@ void Key_Init_Cvars(void);
 void Key_Event(int key, int ascii, qboolean down);
 void Key_ClearStates (void);
 void Key_SetBinding (int keynum, int bindmap, const char *binding);
+qboolean Key_IsPressed (int key);
 
 #endif // __KEYS_H
 

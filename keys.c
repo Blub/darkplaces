@@ -1492,3 +1492,18 @@ Key_ClearStates (void)
 {
 	memset(keydown, 0, sizeof(keydown));
 }
+
+/*
+==================
+Key_IsPressed
+==================
+*/
+qboolean Key_IsPressed (int key)
+{
+	if (key < 0 || key >= (int)sizeof(keydown))
+		return false;
+	// handle repeats differently?
+	if (keydown[key])
+		return true;
+	return false;
+}
