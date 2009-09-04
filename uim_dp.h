@@ -43,6 +43,9 @@ typedef enum
 typedef struct uim_context_   *uim_context;
 typedef struct uim_candidate_ *uim_candidate;
 
+void UIM_Init(void);
+void UIM_Key(int key, int unicode);
+
 // from the original uim.h:
 enum UKey {
   UKey_0 = 48,
