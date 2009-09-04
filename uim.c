@@ -231,11 +231,12 @@ void UIM_Shutdown(void)
 {
 	if (UIM_Available())
 	{
+		int fd = quim.fd;
+		quim.fd = 0;
 		UIM_CancelBuffer();
 		quim_release_context(quim.ctx);
-		quim_helper_close_client_fd(quim.fd);
+		quim_helper_close_client_fd(fd);
 		quim.ctx = NULL;
-		quim.fd = 0;
 	}
 	//if (quim.mempool)
 	//	Mem_FreePool(&quim.mempool);
@@ -546,7 +547,8 @@ static void UIM_Commit(void *cookie, const char *str)
 
 static void UIM_HelperDisconnected(void)
 {
-	UIM_Shutdown();
+	if (quim.fd > 0)
+		UIM_Shutdown();
 }
 
 static void UIM_Clear(void *cookie)
