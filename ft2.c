@@ -784,6 +784,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		imagedata = data + gR * pitch * map->glyphSize + gC * map->glyphSize * bytesPerPixel;
 		//status = qFT_Load_Char(face, ch, FT_LOAD_RENDER);
 		// we need the glyphIndex
+		face = font->face;
 		glyphIndex = qFT_Get_Char_Index(face, ch);
 		if (glyphIndex == 0)
 		{
