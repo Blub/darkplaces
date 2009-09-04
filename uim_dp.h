@@ -292,16 +292,6 @@ enum UKey {
   UKey_Num_Lock,
   UKey_Scroll_Lock,
 
-#if 1
-  /* Deprecated. Please replace with UKey_Shift and so on. */
-  UKey_Shift_key = UKey_Shift,
-  UKey_Control_key = UKey_Control,
-  UKey_Alt_key = UKey_Alt,
-  UKey_Meta_key = UKey_Meta,
-  UKey_Super_key = UKey_Super,
-  UKey_Hyper_key = UKey_Hyper,
-#endif
-
   UKey_Other = 0x10000
 };
 

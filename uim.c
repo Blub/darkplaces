@@ -246,12 +246,119 @@ static int UIM_GetKeyMod(void)
 	return mod;
 }
 
+static int UIM_KeyToUKey(int key, Uchar unicode)
+{
+	int ofs = 0;
+	switch (key)
+	{
+	case K_TAB:
+		return UKey_Tab;
+	case K_ENTER:
+		return UKey_Return;
+	case K_ESCAPE:
+		return UKey_Escape;
+	case K_SPACE:
+		return ' ';
+
+	case K_BACKSPACE:
+		return UKey_Backspace;
+	case K_UPARROW:
+		return UKey_Up;
+	case K_DOWNARROW:
+		return UKey_Down;
+	case K_LEFTARROW:
+		return UKey_Left;
+	case K_RIGHTARROW:
+		return UKey_Right;
+
+	case K_ALT:
+		return UKey_Alt;
+	case K_CTRL:
+		return UKey_Control;
+	case K_SHIFT:
+		return UKey_Shift;
+
+	case K_F1: ++ofs;
+	case K_F2: ++ofs;
+	case K_F3: ++ofs;
+	case K_F4: ++ofs;
+	case K_F5: ++ofs;
+	case K_F6: ++ofs;
+	case K_F7: ++ofs;
+	case K_F8: ++ofs;
+	case K_F9: ++ofs;
+	case K_F10: ++ofs;
+	case K_F11: ++ofs;
+	case K_F12: ++ofs;
+		return UKey_F1 + ofs;
+
+	case K_INS:
+		return UKey_Insert;
+	case K_DEL:
+	case K_KP_DEL:
+		return UKey_Delete;
+	case K_PGUP:
+		//case K_KP_PGUP:
+		return UKey_Next;
+	case K_PGDN:
+		//case K_KP_PGDN:
+		return UKey_Prior;
+	case K_HOME:
+		return UKey_Home;
+	case K_END:
+		return UKey_End;
+
+	case K_NUMLOCK:
+		return UKey_Num_Lock;
+	case K_CAPSLOCK:
+		return UKey_Caps_Lock;
+	case K_SCROLLOCK:
+		return UKey_Scroll_Lock;
+
+	case '0':
+	case K_KP_0:
+		return '0';
+	case '1':
+	case K_KP_1:
+		return '1';
+	case '2':
+	case K_KP_2:
+		return '2';
+	case '3':
+	case K_KP_3:
+		return '3';
+	case '4':
+	case K_KP_4:
+		return '4';
+	case '5':
+	case K_KP_5:
+		return '5';
+	case '6':
+	case K_KP_6:
+		return '6';
+	case '7':
+	case K_KP_7:
+		return '7';
+	case '8':
+	case K_KP_8:
+		return '8';
+	case '9':
+	case K_KP_9:
+		return '9';
+
+	default:
+		if (unicode < 0x7E)
+			return 0;
+		return 0;
+	}
+}
+
 // api entry, must check for UIM availability
 void UIM_KeyUp(int key, Uchar unicode)
 {
 	if (!UIM_Available())
 		return;
-	quim_release_key(quim.ctx, unicode, UIM_GetKeyMod());
+	quim_release_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod());
 }
 
 // api entry, must check for UIM availability
@@ -259,16 +366,18 @@ void UIM_KeyDown(int key, Uchar unicode)
 {
 	if (!UIM_Available())
 		return;
-	quim_press_key(quim.ctx, unicode, UIM_GetKeyMod());
+	quim_press_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod());
 }
 
 // api entry, must check for UIM availability
 void UIM_Key(int key, Uchar unicode)
 {
+	int mod;
 	if (!UIM_Available())
 		return;
-	UIM_KeyUp(key, unicode);
-	UIM_KeyDown(key, unicode);
+	mod = UIM_GetKeyMod();
+	quim_press_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod());
+	quim_release_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod());
 }
 
 static void UIM_Commit(void *cookie, const char *str)
