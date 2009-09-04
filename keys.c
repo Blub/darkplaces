@@ -573,7 +573,7 @@ Key_Console (int key, int unicode)
 				}
 			key_linepos = pos + 1;
 		}
-		else if(keydown[K_SHIFT]) // move cursor to the previous character ignoring colors, but not ignoring utf8-encoding
+		else if(keydown[K_SHIFT]) // move cursor to the previous character ignoring colors
 		{
 			int		pos;
 			int             chidx;
@@ -675,7 +675,7 @@ Key_Console (int key, int unicode)
 			// skip the char
 			if (key_line[pos] == STRING_COLOR_TAG && key_line[pos+1] == STRING_COLOR_TAG) // consider ^^ as a character
 				pos++;
-			pos++;
+			pos += u8_bytelen(key_line + pos, 1);
 			
 			// now go beyond all next consecutive color tags, if any
 			if(pos < len)
@@ -691,7 +691,7 @@ Key_Console (int key, int unicode)
 			key_linepos = pos;
 		}
 		else
-			key_linepos++;
+			key_linepos += u8_bytelen(key_line + key_linepos, 1);
 		return;
 	}
 

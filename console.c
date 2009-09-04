@@ -1342,7 +1342,6 @@ void Con_DrawInput (void)
 	int		y;
 	int		i;
 	char editlinecopy[MAX_INPUTLINE+1], *text;
-	char tempbuf[MAX_INPUTLINE+1];
 	float x;
 
 	if (!key_consoleactive)
@@ -1367,10 +1366,8 @@ void Con_DrawInput (void)
 	{
 		if (y + 3 < (int)sizeof(editlinecopy)-1)
 		{
-			// get the character after the current key linepos:
-			int ofs = u8_bytelen(text + key_linepos+1, 1);
-			// copy the remainder
-			memcpy(tempbuf, text + key_linepos+ofs, sizeof(tempbuf) - key_linepos - ofs);
+			int ofs = u8_bytelen(text + key_linepos, 1);
+			memmove(text + key_linepos + 3, text + key_linepos + ofs, sizeof(editlinecopy) - key_linepos - 3);
 			if (key_insert)
 			{
 				text[key_linepos] = '\xee';
@@ -1381,7 +1378,6 @@ void Con_DrawInput (void)
 				text[key_linepos+1] = '\x82';
 				text[key_linepos+2] = '\x82';
 			}
-			memcpy(text + key_linepos + 3, tempbuf, sizeof(tempbuf) - key_linepos - ofs);
 		} else {
 			//text[key_linepos] = 11 + 130 * key_insert;	// either solid or triangle facing right
 			text[key_linepos] = '-' + ('+' - '-') * key_insert;
