@@ -785,12 +785,12 @@ static void LoadFont_f(void)
 		}
 		if(!c || (c-filelist) > MAX_QPATH)
 		{
-			strlcpy(f->fallback[i], filelist, sizeof(mainfont));
+			strlcpy(f->fallbacks[i], filelist, sizeof(mainfont));
 		}
 		else
 		{
-			memcpy(f->fallback[i], filelist, c - filelist);
-			f->fallback[i][c - filelist] = 0;
+			memcpy(f->fallbacks[i], filelist, c - filelist);
+			f->fallbacks[i][c - filelist] = 0;
 		}
 	}
 

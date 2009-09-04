@@ -282,8 +282,9 @@ static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font);
 static qboolean Font_LoadSize(ft2_font_t *font, float size);
 qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 {
-	int s, count;
-	ft2_font_t *ft2;
+	int s, count, i;
+	ft2_font_t *ft2, *fbfont, *fb;
+	qboolean sizeloaded[MAX_FONT_SIZES];
 
 	ft2 = Font_Alloc();
 	if (!ft2)
@@ -299,27 +300,15 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 		return false;
 	}
 
-	// attempt to load fallback fonts:
-	/*
-	for (s = 0; s < MAX_FONT_FALLBACKS; ++s)
-	{
-		ft2_font_t *fb;
-		if (!dpfnt->fallback[s][0])
-			break;
-		if (! (fb = Font_Alloc()) )
-		{
-			Con_Printf("Failed to allocate font for fallback %i of font %s\n", s, name);
-			break;
-		}
-		//if (!Font_LoadFile(dpfnt->fallbacks[s], dpfnt->
-	}
-	*/
-
+	memset(sizeloaded, 0, sizeof(sizeloaded));
 	count = 0;
 	for (s = 0; s < MAX_FONT_SIZES; ++s)
 	{
 		if (Font_LoadSize(ft2, dpfnt->req_sizes[s]))
+		{
+			sizeloaded[s] = true;
 			++count;
+		}
 	}
 	if (!count)
 	{
@@ -329,6 +318,43 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 		dpfnt->ft2 = NULL;
 		return false;
 	}
+
+	// attempt to load fallback fonts:
+	fbfont = ft2;
+	for (i = 0; i < MAX_FONT_FALLBACKS; ++i)
+	{
+		if (!dpfnt->fallbacks[i][0])
+			break;
+		if (! (fb = Font_Alloc()) )
+		{
+			Con_Printf("Failed to allocate font for fallback %i of font %s\n", i, name);
+			break;
+		}
+		if (!Font_LoadFile(dpfnt->fallbacks[i], dpfnt->fallback_faces[i], fb))
+		{
+			Mem_Free(fb);
+			break;
+		}
+		count = 0;
+		for (s = 0; s < MAX_FONT_SIZES; ++s)
+		{
+			if (!sizeloaded[s]) // do not load if the font doesn't work with it
+				continue;
+			if (Font_LoadSize(fb, dpfnt->req_sizes[s]))
+				++count;
+		}
+		if (!count)
+		{
+			Font_UnloadFont(fb);
+			Mem_Free(fb);
+			break;
+		}
+		// at least one size of the fallback font loaded successfully
+		// link it:
+		fbfont->next = fb;
+		fbfont = fb;
+	}
+	
 	//Con_Printf("%i sizes loaded\n", count);
 	dpfnt->ft2 = ft2;
 	return true;
