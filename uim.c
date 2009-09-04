@@ -6,6 +6,8 @@
 #include "keys.h"
 #include "uim_dp.h"
 
+#include <locale.h>
+
 /*
 ================================================================================
 CVars introduced with the UIM extension
@@ -27,7 +29,6 @@ cvar_t im_separator = {CVAR_SAVE, "im_separator", "|", "separator to use..."};
 Library imports. Taken from the uim headers.
 ================================================================================
 */
-
 struct uim_code_converter **quim_iconv;
 
 int           (*quim_init)(void);
@@ -201,7 +202,6 @@ static void UIM_Shift(void*, int dir);
 static void UIM_Deactivate(void*);
 static void UIM_ConfigChanged(void*);
 
-static void UIM_Start(void);
 /*
 ====================
 UIM_Init
@@ -209,6 +209,8 @@ UIM_Init
 Load UIM support and register commands / cvars
 ====================
 */
+static void UIM_Start(void);
+static void UIM_InitConverter(void);
 void UIM_Init(void)
 {
 	// register the cvars in any case so they're at least saved,
@@ -226,6 +228,62 @@ void UIM_Init(void)
 
 	//quim.mempool = Mem_AllocPool("UIM", 0, NULL);
 	UIM_Start();
+}
+static struct uim_code_converter *dp_converter;
+/*
+struct uim_code_converter {
+	int  (*is_convertible)(const char *tocode, const char *fromcode);
+	void *(*create)(const char *tocode, const char *fromcode);
+	char *(*convert)(void *obj, const char *str);
+	void (*release)(void *obj);
+};
+
+static struct uim_code_converter dp_uim_conv;
+
+static int conv_IsConvertible(const char *tocode, const char *fromcode)
+{
+	Con_Printf("IsConvertible(\"%s\", \"%s\")\n", tocode, fromcode);
+	return (*quim_iconv)->is_convertible(tocode, fromcode);
+}
+
+static void *conv_Create(const char *tocode, const char *fromcode)
+{
+	Con_Printf("conv_Create: %s -> %s\n", fromcode, tocode);
+	return (*quim_iconv)->create(tocode, fromcode);
+}
+
+static char *conv_Convert(void *obj, const char *str)
+{
+	char *c = (*quim_iconv)->convert(obj, str);
+	size_t l1 = strlen(str);
+	size_t l2 = strlen(c);
+	size_t i;
+	Con_Print("Convert: ");
+	for (i = 0; i < l1; ++i)
+		Con_Printf("%02x ", (unsigned int)(unsigned char)str[i]);
+	Con_Printf("\nResult: ");
+	for (i = 0; i < l2; ++i)
+		Con_Printf("%02x ", (unsigned int)(unsigned char)c[i]);
+	Con_Print("\n");
+	Con_Printf("Convert: %s   \nResult: %s    \n", str, c);
+	return c;
+}
+
+static void conv_Release(void *obj)
+{
+	(*quim_iconv)->release(obj);
+}
+*/
+static void UIM_InitConverter(void)
+{
+	/*
+	dp_converter = &dp_uim_conv;
+	dp_uim_conv.is_convertible = &conv_IsConvertible;
+	dp_uim_conv.create = &conv_Create;
+	dp_uim_conv.convert = &conv_Convert;
+	dp_uim_conv.release = &conv_Release;
+	*/
+	dp_converter = *quim_iconv;
 }
 
 /*
@@ -262,13 +320,16 @@ static void UIM_Start(void)
 	if (!UIM_OpenLibrary())
 		return;
 
+	UIM_InitConverter();
+
+	setlocale(LC_CTYPE, NULL);
 	if (quim_init() != 0)
 	{
 		Con_Print("Failed to initialize UIM support\n");
 		return;
 	}
 
-	quim.ctx = quim_create_context(NULL, "UTF-8", im_language.string, im_engine.string, *quim_iconv, &UIM_Commit);
+	quim.ctx = quim_create_context(NULL, "UTF-8", im_language.string, im_engine.string, dp_converter, &UIM_Commit);
 	if (quim.ctx == NULL)
 	{
 		Con_Print("Failed to create UIM context\n");
@@ -542,8 +603,8 @@ static qboolean UIM_Insert(const char *str)
 		Con_Print("UIM: Insertion failed: not enough space!\n");
 		return false;
 	}
-	Con_Printf("Inserting [%s]\n", str);
-	Con_Printf("Insertion point: %lu\n", (unsigned long)quim.edit_pos);
+	//Con_Printf("Inserting [%s]\n", str);
+	//Con_Printf("Insertion point: %lu\n", (unsigned long)quim.edit_pos);
 	memmove(quim.buffer + quim.edit_pos + slen,
 		quim.buffer + quim.edit_pos,
 		quim.buffer_size - quim.edit_pos - slen);
@@ -557,15 +618,19 @@ static qboolean UIM_Insert(const char *str)
 
 static void UIM_PropListUpdate(void *cookie, const char *str)
 {
-	char buffer[1024<<2];
-	Con_Print("UIM_PropListUpdate\n");
-	dpsnprintf(buffer, sizeof(buffer), "prop_list_update\ncharset=UTF-8\n%s", str);
-	quim_helper_send_message(quim.fd, buffer);
+	if (quim.fd > 0)
+	{
+		char buffer[1024<<2];
+		Con_Printf("UIM_PropListUpdate\n%s\n", str);
+		dpsnprintf(buffer, sizeof(buffer), "prop_list_update\ncharset=UTF-8\n%s", str);
+		quim_helper_send_message(quim.fd, buffer);
+	}
 }
 
 static void UIM_Commit(void *cookie, const char *str)
 {
 	Con_Printf("UIM_Commit: %s\n", str);
+	UIM_Clear(cookie);
 	if (!UIM_Insert(str))
 	{
 		Con_Print("UIM: Failed to commit buffer\n");
