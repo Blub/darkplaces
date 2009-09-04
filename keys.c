@@ -23,6 +23,7 @@
 #include "quakedef.h"
 #include "cl_video.h"
 #include "utf8lib.h"
+#include "uim_dp.h"
 
 cvar_t con_closeontoggleconsole = {CVAR_SAVE, "con_closeontoggleconsole","1", "allows toggleconsole binds to close the console as well"};
 
@@ -844,6 +845,20 @@ extern int Nicks_CompleteChatLine(char *buffer, size_t size, unsigned int pos);
 static void
 Key_Message (int key, int ascii)
 {
+	if (key == K_ESCAPE) {
+		UIM_CancelBuffer();
+		key_dest = key_game;
+		chat_bufferlen = 0;
+		chat_buffer[0] = 0;
+		return;
+	}
+	
+	if (!UIM_Direct())
+	{
+		UIM_Key(key, ascii);
+		return;
+	}
+	
 	if (key == K_ENTER || ascii == 10 || ascii == 13)
 	{
 		if(chat_mode < 0)
@@ -858,13 +873,6 @@ Key_Message (int key, int ascii)
 	}
 
 	// TODO add support for arrow keys and simple editing
-
-	if (key == K_ESCAPE) {
-		key_dest = key_game;
-		chat_bufferlen = 0;
-		chat_buffer[0] = 0;
-		return;
-	}
 
 	if (key == K_BACKSPACE) {
 		if (chat_bufferlen) {

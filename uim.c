@@ -46,6 +46,7 @@ void          (*quim_reset_context)(uim_context);
 void          (*quim_release_context)(uim_context);
 int           (*quim_helper_init_client_fd)(void (*disconnect_cb)(void));
 void          (*quim_helper_close_client_fd)(int);
+void          (*quim_helper_send_message)(int, const char*);
 void          (*quim_set_preedit_cb)(uim_context,
 				     void (*clear_cb)(void*),
 				     void (*pushback_cb)(void*, int attr, const char *str),
@@ -60,6 +61,7 @@ void          (*quim_set_candidate_selector_cb)(uim_context,
 void          (*quim_prop_list_update)(uim_context);
 void          (*quim_press_key)(uim_context, int key, int mods);
 void          (*quim_release_key)(uim_context, int key, int mods);
+void          (*quim_set_prop_list_update_cb)(uim_context, void (*update_cb)(void*, const char *str));
 
 /*
 ================================================================================
@@ -81,12 +83,14 @@ static dllfunction_t uimfuncs[] =
 	{"uim_release_context",		(void **) &quim_release_context},
 	{"uim_helper_init_client_fd",	(void **) &quim_helper_init_client_fd},
 	{"uim_helper_close_client_fd",	(void **) &quim_helper_close_client_fd},
+	{"uim_helper_send_message",	(void **) &quim_helper_send_message},
 	{"uim_set_preedit_cb",		(void **) &quim_set_preedit_cb},
 	{"uim_set_candidate_selector_cb",		(void **) &quim_set_candidate_selector_cb},
 	{"uim_prop_list_update",	(void **) &quim_prop_list_update},
 	{"uim_press_key",		(void **) &quim_press_key},
 	{"uim_release_key",		(void **) &quim_release_key},
 	{"uim_iconv",			(void **) &quim_iconv},
+	{"uim_set_prop_list_update_cb", (void **) &quim_set_prop_list_update_cb},
 
 	{NULL, NULL}
 };
@@ -184,6 +188,7 @@ typedef struct
 
 static quim_state quim;
 
+static void UIM_PropListUpdate(void*, const char *str);
 static void UIM_Commit(void*, const char *str);
 static void UIM_HelperDisconnected(void);
 static void UIM_Clear(void*);
@@ -279,6 +284,7 @@ static void UIM_Start(void)
 
 	quim_set_preedit_cb(quim.ctx, &UIM_Clear, &UIM_Push, &UIM_Update);
 	quim_set_candidate_selector_cb(quim.ctx, &UIM_Activate, &UIM_Select, &UIM_Shift, &UIM_Deactivate);
+	quim_set_prop_list_update_cb(quim.ctx, &UIM_PropListUpdate);
 	quim_prop_list_update(quim.ctx);
 }
 
@@ -432,12 +438,14 @@ void UIM_KeyDown(int key, Uchar unicode)
 // api entry, must check for UIM availability
 void UIM_Key(int key, Uchar unicode)
 {
-	int mod;
+	int mod, ukey;
 	if (!UIM_Available())
 		return;
 	mod = UIM_GetKeyMod();
-	quim_press_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod());
-	quim_release_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod());
+	ukey = UIM_KeyToUKey(key, unicode);
+	Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : ' ');
+	quim_press_key(quim.ctx, ukey, mod);
+	quim_release_key(quim.ctx, ukey, mod);
 }
 
 // api entry, must check for UIM availability
@@ -531,8 +539,18 @@ static qboolean UIM_Insert(const char *str)
 	quim.edit_length += slen;
 	return true;
 }
+
+static void UIM_PropListUpdate(void *cookie, const char *str)
+{
+	char buffer[1024<<2];
+	Con_Print("UIM_PropListUpdate\n");
+	dpsnprintf(buffer, sizeof(buffer), "prop_list_update\ncharset=UTF-8\n%s", str);
+	quim_helper_send_message(quim.fd, buffer);
+}
+
 static void UIM_Commit(void *cookie, const char *str)
 {
+	Con_Print("UIM_Commit\n");
 	if (!UIM_Insert(str))
 	{
 		Con_Print("UIM: Failed to commit buffer\n");
@@ -547,12 +565,14 @@ static void UIM_Commit(void *cookie, const char *str)
 
 static void UIM_HelperDisconnected(void)
 {
+	Con_Print("UIM_HelperDisconnected\n");
 	if (quim.fd > 0)
 		UIM_Shutdown();
 }
 
 static void UIM_Clear(void *cookie)
 {
+	Con_Print("UIM_Clear\n");
 	memmove(quim.buffer + quim.buffer_pos,
 		quim.buffer + quim.edit_pos,
 		quim.buffer_size - quim.edit_pos);
@@ -561,6 +581,7 @@ static void UIM_Clear(void *cookie)
 // we have BUFSTART and QUIM_CURSOR
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
+	Con_Print("UIM_Push\n");
 	if (attr & UPreeditAttr_UnderLine)
 	{
 		if (!UIM_Insert(im_selection_start.string))
@@ -601,6 +622,7 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 
 static void UIM_Update(void *cookie)
 {
+	Con_Print("UIM_Update\n");
 	// well, of course
 	// we could allocate a buffer in which we work
 	// and only update on "update"
@@ -609,6 +631,7 @@ static void UIM_Update(void *cookie)
 
 static void UIM_Activate(void *cookie, int nr, int display_limit)
 {
+	Con_Print("UIM_Activate\n");
 	quim.active = 1;
 	quim.active_count = nr;
 	quim.active_limit = display_limit;
@@ -620,6 +643,7 @@ static void UIM_Select(void *cookie, int index)
 	const char *str;
 	size_t slen;
 
+	Con_Print("UIM_Select\n");
 	cd = quim_get_candidate(quim.ctx, index, quim.active_count);
 	str = quim_candidate_get_cand_str(cd);
 	if (str)
