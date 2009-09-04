@@ -16,6 +16,11 @@ cvar_t im_enabled = {CVAR_SAVE, "im_enabled", "0", "use UIM input"};
 cvar_t im_engine = {CVAR_SAVE, "im_engine", "anthy", "which input method to use if uim is supported and active"};
 cvar_t im_language = {CVAR_SAVE, "im_language", "ja", "which language should be used for the input editor (en for english, ja for japanese, etc.)"};
 
+cvar_t im_cursor_start = {CVAR_SAVE, "im_cursor_start", "^3|", "how to mark the beginning of the input cursor"};
+cvar_t im_cursor_end = {CVAR_SAVE, "im_cursor_end", "^3|", "how to mark the end of the input cursor"};
+cvar_t im_selection_start = {CVAR_SAVE, "im_selection_start", "^xf80", "how to mark the beginning of the current selection (as in, what UIM would display underlined)"};
+cvar_t im_selection_end = {CVAR_SAVE, "im_selection_end", "", "how to mark the end of the current selection (as in, what UIM would display underlined)"};
+cvar_t im_separator = {CVAR_SAVE, "im_separator", "|", "separator to use..."};
 /*
 ================================================================================
 Library imports. Taken from the uim headers.
@@ -153,6 +158,10 @@ typedef struct
 	size_t         pos;
 	size_t         editlen;
 
+	// where can we find the previous color code?
+	const char    *pc;
+	size_t         pc_len;
+
 	/*
 	char          *copybuffer;
 	size_t         copylen;
@@ -190,6 +199,11 @@ void UIM_Init(void)
 	Cvar_RegisterVariable(&im_engine);
 	Cvar_RegisterVariable(&im_language);
 	Cvar_RegisterVariable(&im_enabled);
+	Cvar_RegisterVariable(&im_cursor_start);
+	Cvar_RegisterVariable(&im_cursor_end);
+	Cvar_RegisterVariable(&im_selection_start);
+	Cvar_RegisterVariable(&im_selection_end);
+	Cvar_RegisterVariable(&im_separator);
 
 	//quim.mempool = Mem_AllocPool("UIM", 0, NULL);
 	UIM_Start();
@@ -417,6 +431,7 @@ void UIM_Key(int key, Uchar unicode)
 // api entry, must check for UIM availability
 qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCursor setcursor_cb)
 {
+	static char defcolor[3];
 	if (!UIM_Available())
 		return false;
 	if (quim.buffer)
@@ -441,6 +456,39 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCurso
 	quim.len = strlen(buffer);
 	quim.editlen = 0;
 
+	defcolor[0] = STRING_COLOR_TAG;
+	defcolor[1] = '7';
+	defcolor[2] = 0;
+	quim.pc = defcolor;
+	quim.pc_len = 2;
+
+	// search for the previous color code
+	if (pos > 2)
+	{
+		--pos;
+		while (pos)
+		{
+			if (pos > 1 && buffer[pos-1] == STRING_COLOR_TAG && isdigit(buffer[pos]))
+			{
+				quim.pc = &buffer[pos-1];
+				quim.pc_len = 2;
+				break;
+			}
+			else if (pos > 4 &&
+				 buffer[pos-4] == STRING_COLOR_TAG &&
+				 buffer[pos-3] == STRING_COLOR_RGB_TAG_CHAR &&
+				 isxdigit(buffer[pos-2]) &&
+				 isxdigit(buffer[pos-1]) &&
+				 isxdigit(buffer[pos]))
+			{
+				quim.pc = &buffer[pos-4];
+				quim.pc_len = 5;
+				break;
+			}
+			--pos;
+		}
+	}
+
 	/*
 	memcpy(quim.copybuffer, quim.buffer, quim.size);
 	quim.copypos = quim.pos;
@@ -459,30 +507,28 @@ void UIM_CancelBuffer(void)
 	quim.setcursor = NULL;
 }
 
-/*
-static void UIM_ClearBuffer()
-{
-	memmove(quim.buffer + quim.pos,
-		quim.buffer + quim.pos + quim.editlen,
-		quim.size - quim.pos - quim.editlen);
-}
-*/
-
-/** Commit a string to the actual buffer.
- * This appends at the current insert-position
- */
-static void UIM_Commit(void *cookie, const char *str)
+static qboolean UIM_Insert(const char *str)
 {
 	size_t slen = strlen(str);
 	if (quim.pos + slen >= quim.size - 1) {
-		Con_Print("UIM: Failed to commit buffer: not enough space!\n");
-		return;
+		Con_Print("UIM: Insertion failed: not enough space!\n");
+		return false;
 	}
 	memmove(quim.buffer + quim.pos + slen,
 		quim.buffer + quim.pos + quim.editlen,
 		quim.size - quim.pos - quim.editlen);
 	memcpy(quim.buffer + quim.pos, str, slen);
 	quim.pos += slen;
+	quim.editlen += slen;
+	return true;
+}
+static void UIM_Commit(void *cookie, const char *str)
+{
+	if (!UIM_Insert(str))
+	{
+		Con_Print("UIM: Failed to commit buffer\n");
+		return;
+	}
 	if (quim.setcursor)
 		quim.setcursor(quim.pos);
 }
@@ -497,10 +543,22 @@ static void UIM_Clear(void *cookie)
 	memmove(quim.buffer + quim.pos,
 		quim.buffer + quim.pos + quim.editlen,
 		quim.size - quim.pos - quim.editlen);
+	quim.pos -= quim.editlen;
 }
 
+// we have BUFSTART and QUIM_CURSOR
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
+	if (attr & UPreeditAttr_UnderLine)
+	{
+		if (!UIM_Insert(im_selection_start.string))
+			return;
+	}
+	if (attr & UPreeditAttr_UnderLine)
+	{
+		if (!UIM_Insert(im_selection_end.string))
+			return;
+	}
 }
 
 static void UIM_Update(void *cookie)
