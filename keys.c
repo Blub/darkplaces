@@ -576,11 +576,7 @@ Key_Console (int key, int unicode)
 		else if(keydown[K_SHIFT]) // move cursor to the previous character ignoring colors
 		{
 			int		pos;
-			int             chidx;
-
-			chidx = u8_charidx(key_line, key_linepos, NULL);
-			pos = u8_byteofs(key_line, chidx - 1, NULL);
-			//pos = key_linepos-1;
+			pos = u8_prevbyte(key_line, key_linepos);
 			while (pos)
 				if(pos-1 > 0 && key_line[pos-1] == STRING_COLOR_TAG && isdigit(key_line[pos]))
 					pos-=2;
@@ -598,8 +594,7 @@ Key_Console (int key, int unicode)
 		}
 		else
 		{
-			key_linepos = u8_byteofs(key_line, u8_charidx(key_line, key_linepos, NULL) - 1, NULL);
-			//key_linepos--;
+			key_linepos = u8_prevbyte(key_line, key_linepos);
 		}
 		return;
 	}
@@ -609,7 +604,7 @@ Key_Console (int key, int unicode)
 	{
 		if (key_linepos > 1)
 		{
-			int newpos = u8_byteofs(key_line, u8_charidx(key_line, key_linepos, NULL) - 1, NULL);
+			int newpos = u8_prevbyte(key_line, key_linepos);
 			strlcpy(key_line + newpos, key_line + key_linepos, sizeof(key_line) + 1 - key_linepos);
 			key_linepos = newpos;
 		}
@@ -866,8 +861,7 @@ Key_Message (int key, int ascii)
 
 	if (key == K_BACKSPACE) {
 		if (chat_bufferlen) {
-			chat_bufferlen = u8_byteofs(chat_buffer, u8_strlen(chat_buffer)-1, NULL);
-			//chat_bufferlen--;
+			chat_bufferlen = u8_prevbyte(chat_buffer, chat_bufferlen);
 			chat_buffer[chat_bufferlen] = 0;
 		}
 		return;
