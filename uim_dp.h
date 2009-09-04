@@ -56,7 +56,7 @@ void UIM_KeyDown(int key, Uchar unicode);
 // exiting functions have a qUIM_ prefix
 typedef void (*qUIM_SetCursor)(int pos);
 
-void UIM_EnterBuffer(char *buffer, size_t bufsize, int pos, qUIM_SetCursor setcursor_cb);
+qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, int pos, qUIM_SetCursor setcursor_cb);
 void UIM_CancelBuffer(void);
 
 // from the original uim.h:

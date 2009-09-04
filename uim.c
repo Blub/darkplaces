@@ -414,14 +414,32 @@ void UIM_Key(int key, Uchar unicode)
 }
 
 // api entry, must check for UIM availability
-void UIM_EnterBuffer(char *buffer, size_t bufsize, int pos, qUIM_SetCursor setcursor_cb)
+qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, int pos, qUIM_SetCursor setcursor_cb)
 {
 	if (!UIM_Available())
-		return;
+		return false;
+	if (quim.buffer)
+		UIM_CancelBuffer();
+	if (!buffer)
+		return false;
+
+	quim.copybuffer = Mem_Alloc(quim.mempool, bufsize);
+	if (!quim.copybuffer)
+	{
+		Con_Printf("ERROR: UIM_EnterBuffer: Mem_Alloc of size %lu failed.\n",
+			   (unsigned long)bufsize);
+		return false;
+	}
+
 	quim.buffer = buffer;
 	quim.size = bufsize;
 	quim.pos = pos;
 	quim.setcursor = setcursor_cb;
+
+	memcpy(quim.copybuffer, quim.buffer, quim.size);
+	quim.copypos = quim.pos;
+
+	return true;
 }
 
 // api entry, must check for UIM availability
