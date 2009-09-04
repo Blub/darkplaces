@@ -52,6 +52,9 @@ void UIM_Key(int key, Uchar unicode);
 void UIM_KeyUp(int key, Uchar unicode);
 void UIM_KeyDown(int key, Uchar unicode);
 
+void UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos);
+void UIM_CancelBuffer(qboolean commit);
+
 // from the original uim.h:
 enum UKey {
   UKey_0 = 48,

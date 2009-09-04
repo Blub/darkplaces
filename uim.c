@@ -380,6 +380,16 @@ void UIM_Key(int key, Uchar unicode)
 	quim_release_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod());
 }
 
+// api entry, must check for UIM availability
+void UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos)
+{
+}
+
+// api entry, must check for UIM availability
+void UIM_CancelBuffer(qboolean commit)
+{
+}
+
 static void UIM_Commit(void *cookie, const char *str)
 {
 }
