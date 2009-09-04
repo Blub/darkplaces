@@ -481,7 +481,7 @@ qboolean UIM_Key(int key, Uchar unicode)
 		return false;
 	mod = UIM_GetKeyMod();
 	ukey = UIM_KeyToUKey(key, unicode);
-	Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : ' ');
+	//Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : ' ');
 	if (quim_press_key(quim.ctx, ukey, mod) != 0)
 		handled = true;
 	if (quim_release_key(quim.ctx, ukey, mod) != 0)
@@ -767,7 +767,7 @@ static void UIM_PropListUpdate(void *cookie, const char *str)
 	if (quim.fd > 0)
 	{
 		char buffer[1024<<2];
-		Con_Printf("UIM_PropListUpdate\n%s\n", str);
+		//Con_Printf("UIM_PropListUpdate\n%s\n", str);
 		dpsnprintf(buffer, sizeof(buffer), "prop_list_update\ncharset=UTF-8\n%s", str);
 		quim_helper_send_message(quim.fd, buffer);
 	}
