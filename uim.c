@@ -554,6 +554,18 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 		if (!UIM_Insert(im_selection_start.string))
 			return;
 	}
+	if (attr & UPreeditAttr_Cursor)
+	{
+		if (!UIM_Insert(im_cursor_start.string))
+			return;
+	}
+	if (!UIM_Insert(str))
+		return;
+	if (attr & UPreeditAttr_Cursor)
+	{
+		if (!UIM_Insert(im_cursor_end.string))
+			return;
+	}
 	if (attr & UPreeditAttr_UnderLine)
 	{
 		if (!UIM_Insert(im_selection_end.string))
