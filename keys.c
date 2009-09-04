@@ -865,7 +865,8 @@ Key_Message (int key, int ascii)
 
 	if (key == K_BACKSPACE) {
 		if (chat_bufferlen) {
-			chat_bufferlen--;
+			chat_bufferlen = u8_byteofs(chat_buffer, u8_strlen(chat_buffer)-1, NULL);
+			//chat_bufferlen--;
 			chat_buffer[chat_bufferlen] = 0;
 		}
 		return;
