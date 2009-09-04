@@ -801,11 +801,14 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 				status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER);
 				if (status)
 					continue;
+				break;
 			}
 			if (!usefont)
 			{
 				//Con_Printf("failed to load fallback glyph for char %lx from font %s\n", (unsigned long)ch, font->name);
 				// now we let it use the "missing-glyph"-glyph
+				face = font->face;
+				glyphIndex = 0;
 			}
 		}
 
