@@ -14,7 +14,7 @@ CVars introduced with the UIM extension
 ================================================================================
 */
 
-cvar_t im_enabled = {CVAR_SAVE, "im_enabled", "0", "use UIM input"};
+cvar_t im_enabled = {CVAR_SAVE, "im_enabled", "1", "use UIM input"};
 cvar_t im_engine = {CVAR_SAVE, "im_engine", "anthy", "which input method to use if uim is supported and active"};
 cvar_t im_language = {CVAR_SAVE, "im_language", "ja", "which language should be used for the input editor (en for english, ja for japanese, etc.)"};
 
@@ -231,13 +231,13 @@ void UIM_Init(void)
 	Cmd_AddCommand ("im_restart", UIM_Restart_f, "restart the input editor");
 
 	//quim.mempool = Mem_AllocPool("UIM", 0, NULL);
-	UIM_Start();
+	//UIM_Start();
 }
 
 static void UIM_Restart_f(void)
 {
-	//UIM_Shutdown();
-	//UIM_Start();
+	UIM_Shutdown();
+	UIM_Start();
 }
 
 static struct uim_code_converter *dp_converter;
@@ -311,6 +311,7 @@ void UIM_Start(void)
 	quim.fd = quim_helper_init_client_fd(&UIM_HelperDisconnected);
 	if (quim.fd < 2) // well, in and out aren't exactly ... good
 	{
+		Con_Print("Failed to initialize UIM helper client fd\n");
 		UIM_Shutdown();
 		return;
 	}
@@ -480,7 +481,7 @@ qboolean UIM_Key(int key, Uchar unicode)
 		return false;
 	mod = UIM_GetKeyMod();
 	ukey = UIM_KeyToUKey(key, unicode);
-	//Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : ' ');
+	Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : ' ');
 	if (quim_press_key(quim.ctx, ukey, mod) != 0)
 		handled = true;
 	if (quim_release_key(quim.ctx, ukey, mod) != 0)
@@ -766,7 +767,7 @@ static void UIM_PropListUpdate(void *cookie, const char *str)
 	if (quim.fd > 0)
 	{
 		char buffer[1024<<2];
-		//Con_Printf("UIM_PropListUpdate\n%s\n", str);
+		Con_Printf("UIM_PropListUpdate\n%s\n", str);
 		dpsnprintf(buffer, sizeof(buffer), "prop_list_update\ncharset=UTF-8\n%s", str);
 		quim_helper_send_message(quim.fd, buffer);
 	}

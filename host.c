@@ -1105,7 +1105,7 @@ static void Host_Init (void)
 	if (cls.state != ca_dedicated)
 	{
 		// this uses saved cvars
-		//UIM_Start();
+		UIM_Start();
 	}
 
 	// put up the loading image so the user doesn't stare at a black screen...
