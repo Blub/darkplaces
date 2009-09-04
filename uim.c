@@ -60,8 +60,8 @@ void          (*quim_set_candidate_selector_cb)(uim_context,
 						void (*shift_page_cb)(void*, int direction),
 						void (*deactivate_cb)(void*));
 void          (*quim_prop_list_update)(uim_context);
-void          (*quim_press_key)(uim_context, int key, int mods);
-void          (*quim_release_key)(uim_context, int key, int mods);
+int           (*quim_press_key)(uim_context, int key, int mods);
+int           (*quim_release_key)(uim_context, int key, int mods);
 void          (*quim_set_prop_list_update_cb)(uim_context, void (*update_cb)(void*, const char *str));
 void          (*quim_set_configuration_changed_cb)(uim_context, void (*changed_cb)(void*));
 
@@ -159,8 +159,6 @@ typedef struct
 	int            fd;
 	//mempool_t     *mempool;
 
-	int            actions;
-
 	char          *buffer;
 	size_t         buffer_pos;
 	size_t         buffer_size;
@@ -215,7 +213,7 @@ Load UIM support and register commands / cvars
 ====================
 */
 void UIM_Start(void);
-static void UIM_InitConverter(void);
+static qboolean UIM_InitConverter(void);
 void UIM_Init(void)
 {
 	// register the cvars in any case so they're at least saved,
@@ -244,7 +242,7 @@ static void UIM_Restart_f(void)
 
 static struct uim_code_converter *dp_converter;
 
-static void UIM_InitConverter(void)
+static qboolean UIM_InitConverter(void)
 {
 	/*
 	dp_converter = &dp_uim_conv;
@@ -254,6 +252,7 @@ static void UIM_InitConverter(void)
 	dp_uim_conv.release = &conv_Release;
 	*/
 	dp_converter = *quim_iconv;
+	return true;
 }
 
 /*
@@ -290,12 +289,14 @@ void UIM_Start(void)
 	if (!UIM_OpenLibrary())
 		return;
 
-	UIM_InitConverter();
+	if (!UIM_InitConverter())
+		return;
 
 	//setlocale(LC_CTYPE, NULL);
 	if (quim_init() != 0)
 	{
 		Con_Print("Failed to initialize UIM support\n");
+		UIM_Shutdown();
 		return;
 	}
 
@@ -303,16 +304,14 @@ void UIM_Start(void)
 	if (quim.ctx == NULL)
 	{
 		Con_Print("Failed to create UIM context\n");
-		UIM_CloseLibrary();
+		UIM_Shutdown();
 		return;
 	}
 
 	quim.fd = quim_helper_init_client_fd(&UIM_HelperDisconnected);
-	if (quim.fd < 0)
+	if (quim.fd < 2) // well, in and out aren't exactly ... good
 	{
-		quim_release_context(quim.ctx);
-		quim.ctx = NULL;
-		UIM_CloseLibrary();
+		UIM_Shutdown();
 		return;
 	}
 
@@ -461,9 +460,7 @@ qboolean UIM_KeyUp(int key, Uchar unicode)
 {
 	if (!UIM_Available())
 		return false;
-	quim.actions = 0;
-	quim_release_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod());
-	return !!quim.actions;
+	return (quim_release_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod()) != 0);
 }
 
 // api entry, must check for UIM availability
@@ -471,24 +468,24 @@ qboolean UIM_KeyDown(int key, Uchar unicode)
 {
 	if (!UIM_Available())
 		return false;
-	quim.actions = 0;
-	quim_press_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod());
-	return !!quim.actions;
+	return (quim_press_key(quim.ctx, UIM_KeyToUKey(key, unicode), UIM_GetKeyMod()) != 0);
 }
 
 // api entry, must check for UIM availability
 qboolean UIM_Key(int key, Uchar unicode)
 {
+	qboolean handled = false;
 	int mod, ukey;
 	if (!UIM_Available())
 		return false;
-	quim.actions = 0;
 	mod = UIM_GetKeyMod();
 	ukey = UIM_KeyToUKey(key, unicode);
 	//Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : ' ');
-	quim_press_key(quim.ctx, ukey, mod);
-	quim_release_key(quim.ctx, ukey, mod);
-	return !!quim.actions;
+	if (quim_press_key(quim.ctx, ukey, mod) != 0)
+		handled = true;
+	if (quim_release_key(quim.ctx, ukey, mod) != 0)
+		handled = true;
+	return handled;
 }
 
 // api entry, must check for UIM availability
@@ -591,7 +588,6 @@ static qboolean UIM_Insert(const char *str)
 
 static void UIM_Commit(void *cookie, const char *str)
 {
-	++quim.actions;
 	//Con_Printf("UIM_Commit: %s\n", str);
 	UIM_Clear(cookie);
 	if (!UIM_Insert(str))
@@ -609,7 +605,6 @@ static void UIM_Commit(void *cookie, const char *str)
 
 static void UIM_HelperDisconnected(void)
 {
-	++quim.actions;
 	Con_Print("UIM Helper disconnected\n");
 	if (quim.fd > 0)
 		UIM_Shutdown();
@@ -617,7 +612,6 @@ static void UIM_HelperDisconnected(void)
 
 static void UIM_Clear(void *cookie)
 {
-	++quim.actions;
 	//Con_Print("UIM_Clear\n");
 	memmove(quim.buffer + quim.buffer_pos,
 		quim.buffer + quim.edit_pos,
@@ -634,7 +628,6 @@ static void UIM_Clear(void *cookie)
 // we have BUFSTART and QUIM_CURSOR
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
-	++quim.actions;
 	Con_Printf("UIM_Push: (%i) %s\n", attr, str);
 	if ((attr & (UPreeditAttr_Cursor | UPreeditAttr_Reverse)) == (UPreeditAttr_Cursor | UPreeditAttr_Reverse))
 	{
@@ -692,7 +685,6 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 
 static void UIM_Update(void *cookie)
 {
-	++quim.actions;
 	UIM_Insert(quim.pc);
 	//Con_Print("UIM_Update\n");
 	// well, of course
@@ -703,7 +695,6 @@ static void UIM_Update(void *cookie)
 
 static void UIM_Activate(void *cookie, int nr, int display_limit)
 {
-	++quim.actions;
 	//Con_Print("UIM_Activate\n");
 	quim.active = true;
 	quim.active_count = nr;
@@ -716,7 +707,6 @@ static void UIM_Select(void *cookie, int index)
 	const char *str;
 	size_t slen;
 
-	++quim.actions;
 	//Con_Print("UIM_Select\n");
 	cd = quim_get_candidate(quim.ctx, index, quim.active_count);
 	str = quim_candidate_get_cand_str(cd);
@@ -757,26 +747,22 @@ static void UIM_Select(void *cookie, int index)
 
 static void UIM_Shift(void *cookie, int dir)
 {
-	++quim.actions;
 	Con_Print("^1ERROR: ^7UIM_Shift: Not implemented\n");
 }
 
 static void UIM_Deactivate(void *cookie)
 {
-	++quim.actions;
 	quim.active = false;
 	//Con_Print("^3UIM: make UIM_Deactivate move the cursor...\n");
 }
 
 static void UIM_ConfigChanged(void *cookie)
 {
-	++quim.actions;
 	//Con_Print("UIM_ConfigChanged\n");
 }
 
 static void UIM_PropListUpdate(void *cookie, const char *str)
 {
-	++quim.actions;
 	if (quim.fd > 0)
 	{
 		char buffer[1024<<2];
