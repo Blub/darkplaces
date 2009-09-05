@@ -1372,24 +1372,22 @@ void Con_DrawInput (void)
 	// add the cursor frame
 	if ((int)(realtime*con_cursorspeed) & 1)		// cursor is visible
 	{
-		if (y + 3 < (int)sizeof(editlinecopy)-1)
+		if (utf8_disabled.integer)
+			text[key_linepos] = 11 + 130 * key_insert;	// either solid or triangle facing right
+		else if (y + 3 < (int)sizeof(editlinecopy)-1)
 		{
 			int ofs = u8_bytelen(text + key_linepos, 1);
-			memmove(text + key_linepos + 3, text + key_linepos + ofs, sizeof(editlinecopy) - key_linepos - 3);
-			if (key_insert)
+			size_t len;
+			const char *curbuf;
+			curbuf = u8_encodech(0xE000 + 11 + 130 * key_insert, &len);
+
+			if (curbuf)
 			{
-				text[key_linepos] = '\xee';
-				text[key_linepos+1] = '\x80';
-				text[key_linepos+2] = '\x8b';
-			} else {
-				text[key_linepos] = '\xee';
-				text[key_linepos+1] = '\x82';
-				text[key_linepos+2] = '\x82';
+				memmove(text + key_linepos + len, text + key_linepos + ofs, sizeof(editlinecopy) - key_linepos - len);
+				memcpy(text + key_linepos, curbuf, len);
 			}
-		} else {
-			//text[key_linepos] = 11 + 130 * key_insert;	// either solid or triangle facing right
+		} else
 			text[key_linepos] = '-' + ('+' - '-') * key_insert;
-		}
 	}
 
 //	text[key_linepos + 1] = 0;
@@ -1622,16 +1620,18 @@ void Con_DrawNotify (void)
 
 	if (key_dest == key_message)
 	{
-		static char *cursor[2] = { "\xee\x80\x8a", "\xee\x80\x8b" }; // { off, on }
+		//static char *cursor[2] = { "\xee\x80\x8a", "\xee\x80\x8b" }; // { off, on }
 		int colorindex = -1;
+		const char *cursor;
+		cursor = u8_encodech(0xE00A + ((int)(realtime * con_cursorspeed)&1), NULL);
 
 		// LordHavoc: speedup, and other improvements
 		if (chat_mode < 0)
-			dpsnprintf(temptext, sizeof(temptext), "]%s%s", chat_buffer, cursor[(int)(realtime*con_cursorspeed)&1]);
+			dpsnprintf(temptext, sizeof(temptext), "]%s%s", chat_buffer, cursor);
 		else if(chat_mode)
-			dpsnprintf(temptext, sizeof(temptext), "say_team:%s%s", chat_buffer, cursor[(int)(realtime*con_cursorspeed)&1]);
+			dpsnprintf(temptext, sizeof(temptext), "say_team:%s%s", chat_buffer, cursor);
 		else
-			dpsnprintf(temptext, sizeof(temptext), "say:%s%s", chat_buffer, cursor[(int)(realtime*con_cursorspeed)&1]);
+			dpsnprintf(temptext, sizeof(temptext), "say:%s%s", chat_buffer, cursor);
 
 		// FIXME word wrap
 		inputsize = (numChatlines ? con_chatsize : con_notifysize).value;

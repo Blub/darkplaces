@@ -3,6 +3,20 @@
 
 /*
 ================================================================================
+Initialization of UTF-8 support and new cvars.
+================================================================================
+*/
+// TODO: should this default to 1? To enforce compatibilty
+//       TODO: If changed to 1, add 'utf8_disabled 0' to defaultNexuiz.cfg
+cvar_t    utf8_disabled = {CVAR_SAVE, "utf8_disabled", "0", "Disable UTF-8 support."};
+
+void   u8_Init(void)
+{
+	Cvar_RegisterVariable(&utf8_disabled);
+}
+
+/*
+================================================================================
 UTF-8 encoding and decoding functions follow.
 ================================================================================
 */
@@ -34,6 +48,10 @@ size_t u8_strlen(const char *_s)
 {
 	size_t len = 0;
 	const unsigned char *s = (const unsigned char*)_s;
+
+	if (utf8_disabled.integer)
+		return strlen(_s);
+
 	while (*s)
 	{
 		// ascii char
@@ -68,6 +86,10 @@ size_t u8_bytelen(const char *_s, size_t n)
 {
 	size_t len = 0;
 	const unsigned char *s = (const unsigned char*)_s;
+
+	if (utf8_disabled.integer)
+		return n;
+
 	while (*s && n)
 	{
 		// ascii char
@@ -104,6 +126,13 @@ int u8_byteofs(const char *_s, size_t i, size_t *len)
 {
 	size_t ofs = 0;
 	const unsigned char *s = (const unsigned char*)_s;
+
+	if (utf8_disabled.integer)
+	{
+		if (len) *len = 0;
+		return i;
+	}
+
 	while (i > 0 && s[ofs])
 	{
 		// ascii character
@@ -155,7 +184,13 @@ int u8_charidx(const char *_s, size_t i, size_t *len)
 	int idx = 0;
 	size_t start;
 	const unsigned char *s = (const unsigned char*)_s;
-	
+
+	if (utf8_disabled.integer)
+	{
+		if (len) *len = 0;
+		return i;
+	}
+
 	while (ofs < i && s[ofs])
 	{
 		// ascii character
@@ -208,6 +243,14 @@ size_t u8_prevbyte(const char *_s, size_t i)
 	const unsigned char *s = (const unsigned char*)_s;
 	size_t lastofs = 0;
 	size_t ofs = 0;
+
+	if (utf8_disabled.integer)
+	{
+		if (i > 0)
+			return i-1;
+		return 0;
+	}
+
 	while (ofs < i && s[ofs])
 	{
 		// ascii character
@@ -253,6 +296,13 @@ Uchar u8_getchar(const char *_s, const char **_end)
 	Uchar u;
 	unsigned char mask;
 	unsigned char v;
+
+	if (utf8_disabled.integer)
+	{
+		if (_end)
+			*_end = _s + 1;
+		return 0xE000 + (Uchar)*s;
+	}
 
 	if (*s < 0x80)
 	{
@@ -327,7 +377,10 @@ int u8_fromchar(Uchar w, char *to, size_t maxlen)
 	if (!w)
 		return -5;
 
-	if (w < 0x80)
+	if (w >= 0xE000 && utf8_disabled.integer)
+		w -= 0xE000;
+
+	if (w < 0x80 || utf8_disabled.integer)
 	{
 		to[0] = (char)w;
 		if (maxlen < 2)
@@ -394,13 +447,19 @@ int u8_fromchar(Uchar w, char *to, size_t maxlen)
 
 /** uses u8_fromchar on a static buffer
  * @param ch        The unicode character to convert to encode
+ * @param l         The number of bytes without the terminating null.
  * @return          A statically allocated buffer containing the character's utf8 representation, or NULL if it fails.
  */
-char *u8_encodech(Uchar ch)
+char *u8_encodech(Uchar ch, size_t *l)
 {
 	static char buf[16];
-	if (u8_fromchar(ch, buf, sizeof(buf)) > 0)
+	size_t len;
+	len = u8_fromchar(ch, buf, sizeof(buf));
+	if (len > 0)
+	{
+		if (l) *l = len;
 		return buf;
+	}
 	return NULL;
 }
 
@@ -467,10 +526,17 @@ all characters until the zero terminator.
 ============
 */
 size_t
+COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid);
+size_t
 u8_COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid)
 {
-	const char *end = size_s ? (s + size_s) : NULL;
+	const char *end;
 	size_t len = 0;
+
+	if (utf8_disabled.integer)
+		return COM_StringLengthNoColors(s, size_s, valid);
+
+	end = size_s ? (s + size_s) : NULL;
 
 	for(;;)
 	{
@@ -516,7 +582,7 @@ u8_COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid)
 				++len;
 				break;
 		}
-		
+
 		// start of a wide character
 		if (*s & 0xC0)
 		{
