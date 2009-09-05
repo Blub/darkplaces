@@ -20,6 +20,15 @@ typedef int32_t U_int32;
 // Uchar, a wide character
 typedef U_int32 Uchar;
 
+// Initialize UTF8, this registers cvars which allows for UTF8 to be disabled
+// completely.
+// When UTF8 is disabled, every u8_ function will work exactly as you'd expect
+// a non-utf8 version to work: u8_strlen() will wrap to strlen()
+// u8_byteofs() and u8_charidx() will simply return whatever is passed as index parameter
+// u8_getchar() will will just return the next byte, u8_fromchar will write one byte, ...
+extern cvar_t    utf8_disabled;
+void   u8_Init(void);
+
 size_t u8_strlen(const char*);
 int    u8_byteofs(const char*, size_t, size_t*);
 int    u8_charidx(const char*, size_t, size_t*);
@@ -31,6 +40,6 @@ size_t u8_wcstombs(char*, const Uchar*, size_t);
 size_t u8_COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid);
 
 // returns a static buffer, use this for inlining
-char  *u8_encodech(Uchar ch);
+char  *u8_encodech(Uchar ch, size_t*);
 
 #endif // UTF8LIB_H__

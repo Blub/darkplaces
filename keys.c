@@ -583,6 +583,7 @@ Key_Console (int key, int unicode)
 		else if(keydown[K_SHIFT]) // move cursor to the previous character ignoring colors
 		{
 			int		pos;
+			size_t          inchar;
 			pos = u8_prevbyte(key_line, key_linepos);
 			while (pos)
 				if(pos-1 > 0 && key_line[pos-1] == STRING_COLOR_TAG && isdigit(key_line[pos]))
@@ -597,7 +598,9 @@ Key_Console (int key, int unicode)
 					pos--;
 					break;
 				}
-			key_linepos = pos + 1;
+			// we need to move to the beginning of the character when in a wide character:
+			u8_charidx(key_line, pos + 1, &inchar);
+			key_linepos = pos + 1 - inchar;
 		}
 		else
 		{
