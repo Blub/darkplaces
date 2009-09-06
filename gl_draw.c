@@ -720,10 +720,37 @@ static dp_font_t *FindFont(const char *title)
 	return NULL;
 }
 
+static inline float snap_to_pixel_x(float x, float roundUpAt)
+{
+	float pixelpos = x * vid.width / vid_conwidth.value;
+	int snap = (int) pixelpos;
+	if (pixelpos - snap >= roundUpAt) ++snap;
+	return ((float)snap * vid_conwidth.value / vid.width);
+	/*
+	x = (int)(x * vid.width / vid_conwidth.value);
+	x = (x * vid_conwidth.value / vid.width);
+	return x;
+	*/
+}
+
+static inline float snap_to_pixel_y(float y, float roundUpAt)
+{
+	float pixelpos = y * vid.height / vid_conheight.value;
+	int snap = (int) pixelpos;
+	if (pixelpos - snap > roundUpAt) ++snap;
+	return ((float)snap * vid_conheight.value / vid.height);
+	/*
+	y = (int)(y * vid.height / vid_conheight.value);
+	y = (y * vid_conheight.value / vid.height);
+	return y;
+	*/
+}
+
 static void LoadFont_f(void)
 {
 	dp_font_t *f;
-	int i;
+	int i, si;
+	float sz, sn;
 	const char *filelist, *c, *cm;
 	char mainfont[MAX_QPATH];
 
@@ -803,7 +830,26 @@ static void LoadFont_f(void)
 	if(Cmd_Argc() >= 3)
 	{
 		for(i = 0; i < Cmd_Argc()-3; ++i)
-			f->req_sizes[i] = atof(Cmd_Argv(i+3));
+		{
+			sz = atof(Cmd_Argv(i+3));
+			if (IS_NAN(sz)) // do not use crap sizes
+				continue;
+			// now try to scale to our actual size:
+			if (vid.width > 0)
+				sn = snap_to_pixel_y(sz, 0.5);
+			else
+			{
+				sn = sz * vid_height.value / vid_conheight.value;
+				si = (int)sn;
+				if ( sn - (float)si >= 0.5 )
+					++si;
+				sn = si * vid_conheight.value / vid_height.value;
+			}
+			if (!IS_NAN(sn))
+				f->req_sizes[i] = sn;
+			else
+				f->req_sizes[i] = sz;
+		}
 	}
 	LoadFont(true, mainfont, f);
 }
@@ -1083,32 +1129,6 @@ static void DrawQ_GetTextColor(float color[4], int colorindex, float r, float g,
 	}
 }
 
-static inline float snap_to_pixel_x(float x)
-{
-	float pixelpos = x * vid.width / vid_conwidth.value;
-	int snap = (int) pixelpos;
-	if (pixelpos - snap > 0.3) ++snap;
-	return ((float)snap * vid_conwidth.value / vid.width);
-	/*
-	x = (int)(x * vid.width / vid_conwidth.value);
-	x = (x * vid_conwidth.value / vid.width);
-	return x;
-	*/
-}
-
-static inline float snap_to_pixel_y(float y)
-{
-	float pixelpos = y * vid.height / vid_conheight.value;
-	int snap = (int) pixelpos;
-	if (pixelpos - snap > 0.5) ++snap;
-	return ((float)snap * vid_conheight.value / vid.height);
-	/*
-	y = (int)(y * vid.height / vid_conheight.value);
-	y = (y * vid_conheight.value / vid.height);
-	return y;
-	*/
-}
-
 float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w, float h, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
 {
 	int colorindex = STRING_COLOR_DEFAULT;
@@ -1139,7 +1159,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	// find the most fitting size:
 	if (ft2 != NULL)
 	{
-		map_index = Font_IndexForSize(ft2, h);
+		map_index = Font_IndexForSize(ft2, h, &w, &h);
 		fontmap = Font_MapForIndex(ft2, map_index);
 	}
 
@@ -1158,7 +1178,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	for (i = 0;i < *maxlen && *text;)
 	{
 		if (snap)
-			x = snap_to_pixel_x(x);
+			x = snap_to_pixel_x(x, 0.3);
 		if (*text == ' ' && !fontmap)
 		{
 			if(x + fnt->width_of[(int) ' '] * w > maxwidth)
@@ -1300,7 +1320,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	if (ft2 != NULL)
 	{
-		map_index = Font_IndexForSize(ft2, h);
+		map_index = Font_IndexForSize(ft2, h, &w, &h);
 		fontmap = Font_MapForIndex(ft2, map_index);
 	}
 
@@ -1327,7 +1347,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	batchcount = 0;
 
 	//ftbase_x = snap_to_pixel_x(ftbase_x);
-	ftbase_y = snap_to_pixel_y(ftbase_y);
+	ftbase_y = snap_to_pixel_y(ftbase_y, 0.3);
 
 	for (shadow = r_textshadow.value != 0 && basealpha > 0;shadow >= 0;shadow--)
 	{
@@ -1349,8 +1369,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 		}
 		for (i = 0;i < maxlen && *text;)
 		{
-			x = snap_to_pixel_x(x);
-			y = snap_to_pixel_y(y);
+			x = snap_to_pixel_x(x, 0.3);
+			y = snap_to_pixel_y(y, 0.3);
 			if (*text == ' ' && !fontmap)
 			{
 				x += fnt->width_of[(int) ' '] * w;

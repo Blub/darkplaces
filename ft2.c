@@ -450,6 +450,9 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean no_texture,
 	int map_index;
 	ft2_font_map_t *fmap, temp;
 
+	if (IS_NAN(size))
+		size = 0;
+
 	if (!size)
 		size = 16;
 	if (size < 2) // bogus sizes are not allowed - and they screw up our allocations
@@ -520,7 +523,7 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean no_texture,
 	return true;
 }
 
-int Font_IndexForSize(ft2_font_t *font, float fsize)
+int Font_IndexForSize(ft2_font_t *font, float _fsize, float *outw, float *outh)
 {
 	int match = -1;
 	int value = 1000000;
@@ -528,9 +531,10 @@ int Font_IndexForSize(ft2_font_t *font, float fsize)
 	int matchsize = -10000;
 	int m;
 	int size;
+	float fsize;
 	ft2_font_map_t **maps = font->font_maps;
 
-	fsize = fsize * vid.height / vid_conheight.value;
+	fsize = _fsize * vid.height / vid_conheight.value;
 
 	if (fsize < 0)
 		size = 16;
@@ -554,18 +558,13 @@ int Font_IndexForSize(ft2_font_t *font, float fsize)
 			match = m;
 			matchsize = maps[m]->size;
 			if (value == 0) // there is no better match
-			{
-				/*
-				if (fsize != -1 && (fsize < 4.591 || fsize > 4.5914))
-					Con_Printf(" %f -> %i [%i]\n", fsize, match, matchsize);
-				*/
-				return match;
-			}
+				break;
 		}
 	}
 	/*
-	if (fsize != -1 && (fsize < 4.591 || fsize > 4.5914))
-		Con_Printf(" %f -> %i [%i]\n", fsize, match, matchsize);
+	// keep the aspect
+	if (outh) *outh = maps[match]->size * vid_conheight.value / vid.height;
+	if (outw) *outw = maps[match]->size * vid_conheight.value / vid.height * *outw / _fsize;
 	*/
 	return match;
 }
@@ -585,7 +584,10 @@ static qboolean Font_SetSize(ft2_font_t *font, float w, float h)
 	{
 		return true;
 	}
-	if (qFT_Set_Char_Size((FT_Face)font->face, w*64, h*64, 72, 72))
+	// sorry, but freetype doesn't seem to care about other sizes
+	w = (int)w;
+	h = (int)h;
+	if (qFT_Set_Char_Size((FT_Face)font->face, (FT_F26Dot6)(w*64), (FT_F26Dot6)(h*64), 72, 72))
 		return false;
 	font->currentw = w;
 	font->currenth = h;
@@ -635,7 +637,7 @@ qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, float w, float h
 
 qboolean Font_GetKerningForSize(ft2_font_t *font, float w, float h, Uchar left, Uchar right, float *outx, float *outy)
 {
-	return Font_GetKerningForMap(font, Font_IndexForSize(font, h), w, h, left, right, outx, outy);
+	return Font_GetKerningForMap(font, Font_IndexForSize(font, h, NULL, NULL), w, h, left, right, outx, outy);
 }
 
 static void UnloadMapRec(ft2_font_map_t *map)
