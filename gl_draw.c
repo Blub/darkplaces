@@ -1087,7 +1087,7 @@ static inline float snap_to_pixel_x(float x)
 {
 	float pixelpos = x * vid.width / vid_conwidth.value;
 	int snap = (int) pixelpos;
-	if (pixelpos - snap > 0.5) ++snap;
+	if (pixelpos - snap > 0.3) ++snap;
 	return ((float)snap * vid_conwidth.value / vid.width);
 	/*
 	x = (int)(x * vid.width / vid_conwidth.value);
@@ -1126,13 +1126,12 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	// float ftbase_x;
 	const char *text_start = text;
 
-	if (developer.integer == 63)
-		ft2 = NULL;
 	if (!h) {
 		w = h = 1;
 	}
 	w *= fnt->scale;
 	h *= fnt->scale;
+
 	// find the most fitting size:
 	if (ft2 != NULL)
 	{
@@ -1154,20 +1153,12 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 
 	for (i = 0;i < *maxlen && *text;)
 	{
-		/*
-		  if (!developer.integer)
-		  {
-		*/
 		x = snap_to_pixel_x(x);
-		//y = snap_to_pixel_y(y);
-		/*
-		  }
-		*/
 		if (*text == ' ' && !fontmap)
 		{
-			if(x + fnt->width_of[(int) ' '] > maxwidth)
+			if(x + fnt->width_of[(int) ' '] * w > maxwidth)
 				break; // oops, can't draw this
-			x += fnt->width_of[(int) ' '];
+			x += fnt->width_of[(int) ' '] * w;
 			++text;
 			++i;
 			continue;
@@ -1234,7 +1225,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 				continue;
 			map = ft2_oldstyle_map;
 			prevch = 0;
-			if(x + fnt->width_of[ch] > maxwidth)
+			if(x + fnt->width_of[ch] * w > maxwidth)
 				break; // oops, can't draw this
 			x += fnt->width_of[ch] * w;
 		} else {
@@ -1251,7 +1242,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 			}
 			mapch = ch - map->start;
 			if (prevch && Font_GetKerningForMap(ft2, map_index, w, h, prevch, ch, &kx, NULL))
-				x += kx;
+				x += kx * w;
 			x += map->glyphs[mapch].advance_x * w;
 			prevmap = map;
 			prevch = ch;
@@ -1263,7 +1254,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	if (outcolor)
 		*outcolor = colorindex;
 
-	return x * fnt->scale;
+	return x;
 }
 
 float DrawQ_String_Font(float startx, float starty, const char *text, size_t maxlen, float w, float h, float basered, float basegreen, float baseblue, float basealpha, int flags, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt)
@@ -1284,7 +1275,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	ft2_font_map_t *prevmap = NULL; // the previous map
 	ft2_font_map_t *map = NULL;     // the currently used map
 	ft2_font_map_t *fontmap = NULL; // the font map for the size
-	float ftbase_x, ftbase_y;
+	float ftbase_y;
 	const char *text_start = text;
 	float kx, ky;
 	ft2_font_t *ft2 = fnt->ft2;
@@ -1292,9 +1283,6 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	int tw, th;
 	tw = R_TextureWidth(fnt->tex);
 	th = R_TextureHeight(fnt->tex);
-
-	if (developer.integer == 63)
-		ft2 = NULL;
 
 	starty -= (fnt->scale - 1) * h * 0.5; // center
 	w *= fnt->scale;
@@ -1307,7 +1295,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	}
 
 	// draw the font at its baseline when using freetype
-	ftbase_x = 0;
+	//ftbase_x = 0;
 	ftbase_y = h * (5.0/6.0);
 
 	if (maxlen < 1)
@@ -1328,14 +1316,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	av = vertex3f;
 	batchcount = 0;
 
-	ftbase_x = snap_to_pixel_x(ftbase_x);
-	ftbase_y = snap_to_pixel_x(ftbase_y);
-
-	//w = snap_to_pixel_x(w);
-	//h = snap_to_pixel_y(h);
-	x = snap_to_pixel_x(x);
-	startx = snap_to_pixel_x(startx);
-	starty = snap_to_pixel_x(starty);
+	//ftbase_x = snap_to_pixel_x(ftbase_x);
+	ftbase_y = snap_to_pixel_y(ftbase_y);
 
 	for (shadow = r_textshadow.value != 0 && basealpha > 0;shadow >= 0;shadow--)
 	{
@@ -1352,20 +1334,13 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 		y = starty;
 		if (shadow)
 		{
-			x += r_textshadow.value;
-			y += r_textshadow.value;
+			x += r_textshadow.value * vid.width / vid_conwidth.value;
+			y += r_textshadow.value * vid.height / vid_conheight.value;
 		}
 		for (i = 0;i < maxlen && *text;)
 		{
-			/*
-			if (!developer.integer)
-			{
-			*/
 			x = snap_to_pixel_x(x);
 			y = snap_to_pixel_y(y);
-			/*
-			}
-			*/
 			if (*text == ' ' && !fontmap)
 			{
 				x += fnt->width_of[(int) ' '] * w;
@@ -1529,30 +1504,15 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 					R_SetupGenericShader(true);
 				}
 
-				/*
-				if (developer.integer && ch > 255)
-				{
-					char buf[16];
-					if (u8_fromchar(ch, buf, sizeof(buf)) > 0)
-					{
-						fprintf(stderr, "char %x: %s\n", (int)ch, buf);
-					}
-				}
-				*/
-
 				mapch = ch - map->start;
 				thisw = map->glyphs[mapch].advance_x;
 
-				x += ftbase_x;
+				//x += ftbase_x;
 				y += ftbase_y;
 				if (prevch && Font_GetKerningForMap(ft2, map_index, w, h, prevch, ch, &kx, &ky))
 				{
-					kx *= w;
-					ky *= h;
-					//x += snap_to_pixel_x(kx);
-					//y += snap_to_pixel_x(ky);
-					x += kx;
-					y += ky;
+					x += kx * w;
+					y += ky * h;
 				}
 				else
 					kx = ky = 0;
@@ -1568,10 +1528,9 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				av[ 3] = x + w * map->glyphs[mapch].vxmax; av[ 4] = y + h * map->glyphs[mapch].vymin; av[ 5] = 10;
 				av[ 6] = x + w * map->glyphs[mapch].vxmax; av[ 7] = y + h * map->glyphs[mapch].vymax; av[ 8] = 10;
 				av[ 9] = x + w * map->glyphs[mapch].vxmin; av[10] = y + h * map->glyphs[mapch].vymax; av[11] = 10;
-				x -= ftbase_x;
+				//x -= ftbase_x;
 				y -= ftbase_y;
 
-				//x += snap_to_pixel_x(thisw * w);
 				x += thisw * w;
 				ac += 16;
 				at += 8;
@@ -1617,9 +1576,19 @@ float DrawQ_TextWidth_Font(const char *text, size_t maxlen, qboolean ignorecolor
 	return DrawQ_TextWidth_Font_UntilWidth(text, &maxlen, ignorecolorcodes, fnt, 1000000000);
 }
 
+float DrawQ_TextWidth_Font_Size(const char *text, float w, float h, size_t maxlen, qboolean ignorecolorcodes, const dp_font_t *fnt)
+{
+	return DrawQ_TextWidth_Font_UntilWidth_Size(text, w, h, &maxlen, ignorecolorcodes, fnt, 1000000000);
+}
+
 float DrawQ_TextWidth_Font_UntilWidth(const char *text, size_t *maxlen, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxWidth)
 {
 	return DrawQ_TextWidth_Font_UntilWidth_TrackColors(text, maxlen, NULL, ignorecolorcodes, fnt, maxWidth);
+}
+
+float DrawQ_TextWidth_Font_UntilWidth_Size(const char *text, float w, float h, size_t *maxlen, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxWidth)
+{
+	return DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(text, w, h, maxlen, NULL, ignorecolorcodes, fnt, maxWidth);
 }
 
 float DrawQ_TextWidth_Font_UntilWidth_TrackColors(const char *text, size_t *maxlen, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt, float maxwidth)
