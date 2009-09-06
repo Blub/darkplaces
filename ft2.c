@@ -561,11 +561,17 @@ int Font_IndexForSize(ft2_font_t *font, float _fsize, float *outw, float *outh)
 				break;
 		}
 	}
-	/*
-	// keep the aspect
-	if (outh) *outh = maps[match]->size * vid_conheight.value / vid.height;
-	if (outw) *outw = maps[match]->size * vid_conheight.value / vid.height * *outw / _fsize;
-	*/
+	if (value <= 1)
+	{
+		if (outw && outh)
+		{
+			if (!*outh) *outh = *outw;
+			if (!*outw) *outw = *outh;
+		}
+		// keep the aspect
+		if (outh) *outh = maps[match]->size * vid_conheight.value / vid.height;
+		if (outw) *outw = maps[match]->size * vid_conwidth.value / vid.width * *outw / _fsize;
+	}
 	return match;
 }
 

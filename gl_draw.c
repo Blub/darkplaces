@@ -1159,7 +1159,10 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	// find the most fitting size:
 	if (ft2 != NULL)
 	{
-		map_index = Font_IndexForSize(ft2, h, &w, &h);
+		if (w != 1)
+			map_index = Font_IndexForSize(ft2, h, &w, &h);
+		else
+			map_index = Font_IndexForSize(ft2, h, NULL, NULL);
 		fontmap = Font_MapForIndex(ft2, map_index);
 	}
 
@@ -1320,7 +1323,10 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	if (ft2 != NULL)
 	{
-		map_index = Font_IndexForSize(ft2, h, &w, &h);
+		if (w != 1)
+			map_index = Font_IndexForSize(ft2, h, &w, &h);
+		else
+			map_index = Font_IndexForSize(ft2, h, NULL, NULL);
 		fontmap = Font_MapForIndex(ft2, map_index);
 	}
 
