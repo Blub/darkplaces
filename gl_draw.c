@@ -1174,7 +1174,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	else
 		colorindex = *outcolor;
 
-	maxwidth /= fnt->scale;
+	//maxwidth /= fnt->scale;
 
 	// ftbase_x = snap_to_pixel_x(0);
 
@@ -1307,6 +1307,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	const char *text_start = text;
 	float kx, ky;
 	ft2_font_t *ft2 = fnt->ft2;
+	qboolean snap = true;
 
 	int tw, th;
 	tw = R_TextureWidth(fnt->tex);
@@ -1315,6 +1316,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	if (!h) h = w;
 	if (!h) {
 		h = w = 1;
+		snap = false;
 	}
 
 	starty -= (fnt->scale - 1) * h * 0.5; // center
@@ -1332,7 +1334,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	// draw the font at its baseline when using freetype
 	//ftbase_x = 0;
-	ftbase_y = h * (5.0/6.0);
+	ftbase_y = h * (4.5/6.0);
 
 	if (maxlen < 1)
 		maxlen = 1<<30;
@@ -1375,8 +1377,11 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 		}
 		for (i = 0;i < maxlen && *text;)
 		{
-			x = snap_to_pixel_x(x, 0.3);
-			y = snap_to_pixel_y(y, 0.3);
+			if (snap)
+			{
+				x = snap_to_pixel_x(x, 0.3);
+				y = snap_to_pixel_y(y, 0.3);
+			}
 			if (*text == ' ' && !fontmap)
 			{
 				x += fnt->width_of[(int) ' '] * w;
