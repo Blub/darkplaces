@@ -3176,9 +3176,7 @@ void VM_stringwidth(void)
 
 	if(prog->argc == 3)
 	{
-		static float defsize[] = {0, 0};
 		szv = PRVM_G_VECTOR(OFS_PARM2);
-		//mult = szv[0];
 		mult = 1;
 	}
 	else
