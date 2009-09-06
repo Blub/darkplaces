@@ -1233,24 +1233,28 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 
 static inline float snap_to_pixel_x(float x)
 {
-	if (developer.integer == 2)
-		return (int)x;
-	if (developer.integer)
-		return x;
+	float pixelpos = x * vid.width / vid_conwidth.value;
+	int snap = (int) pixelpos;
+	if (pixelpos - snap > 0.5) ++snap;
+	return ((float)snap * vid_conwidth.value / vid.width);
+	/*
 	x = (int)(x * vid.width / vid_conwidth.value);
 	x = (x * vid_conwidth.value / vid.width);
 	return x;
+	*/
 }
 
 static inline float snap_to_pixel_y(float y)
 {
-	if (developer.integer == 2)
-		return (int)y;
-	if (developer.integer)
-		return y;
+	float pixelpos = y * vid.height / vid_conheight.value;
+	int snap = (int) pixelpos;
+	if (pixelpos - snap > 0.5) ++snap;
+	return ((float)snap * vid_conheight.value / vid.height);
+	/*
 	y = (int)(y * vid.height / vid_conheight.value);
 	y = (y * vid_conheight.value / vid.height);
 	return y;
+	*/
 }
 
 float DrawQ_String_Font(float startx, float starty, const char *text, size_t maxlen, float w, float h, float basered, float basegreen, float baseblue, float basealpha, int flags, int *outcolor, qboolean ignorecolorcodes, const dp_font_t *fnt)
@@ -1339,11 +1343,20 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 		y = starty;
 		if (shadow)
 		{
-			x += r_textshadow.value * vid.width / vid_conwidth.value;
-			y += r_textshadow.value * vid.width / vid_conwidth.value;
+			x += r_textshadow.value;
+			y += r_textshadow.value;
 		}
 		for (i = 0;i < maxlen && *text;)
 		{
+			/*
+			if (!developer.integer)
+			{
+			*/
+			x = snap_to_pixel_x(x);
+			y = snap_to_pixel_y(y);
+			/*
+			}
+			*/
 			if (*text == ' ' && !fontmap)
 			{
 				x += fnt->width_of[(int) ' '] * w;
