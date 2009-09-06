@@ -1125,10 +1125,14 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	ft2_font_t *ft2 = fnt->ft2;
 	// float ftbase_x;
 	const char *text_start = text;
+	qboolean snap = true;
 
+	if (!h) h = w;
 	if (!h) {
 		w = h = 1;
+		snap = false;
 	}
+	// do this in the end
 	w *= fnt->scale;
 	h *= fnt->scale;
 
@@ -1153,7 +1157,8 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 
 	for (i = 0;i < *maxlen && *text;)
 	{
-		x = snap_to_pixel_x(x);
+		if (snap)
+			x = snap_to_pixel_x(x);
 		if (*text == ' ' && !fontmap)
 		{
 			if(x + fnt->width_of[(int) ' '] * w > maxwidth)
@@ -1283,6 +1288,11 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	int tw, th;
 	tw = R_TextureWidth(fnt->tex);
 	th = R_TextureHeight(fnt->tex);
+
+	if (!h) h = w;
+	if (!h) {
+		h = w = 1;
+	}
 
 	starty -= (fnt->scale - 1) * h * 0.5; // center
 	w *= fnt->scale;
