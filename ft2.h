@@ -37,6 +37,8 @@ typedef struct ft2_font_s
 	// last requested size loaded using Font_SetSize
 	float		currentw;
 	float		currenth;
+	float           ascend;
+	float           descend;
 
 	// TODO: clean this up and do not expose everything.
 	
