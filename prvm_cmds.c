@@ -3174,39 +3174,12 @@ void VM_stringwidth(void)
 	float x[200];
 	VM_SAFEPARMCOUNTRANGE(2,3,VM_drawstring);
 
-	/*
-	string = PRVM_G_STRING(OFS_PARM0);
-	colors = (int)PRVM_G_FLOAT(OFS_PARM1);
-
-	if (prog->argc == 3)
-	{
-		sizevec = PRVM_G_VECTOR(OFS_PARM2);
-		// support 0 parameter for either w or h
-		if (sizevec[0] > 5 || sizevec[1] > 5)
-			Con_Printf(": %f %f\n", sizevec[0], sizevec[1]);
-		if (!sizevec[0]) sizevec[0] = sizevec[1];
-		if (!sizevec[1]) sizevec[1] = sizevec[0];
-		//PRVM_G_FLOAT(OFS_RETURN) = DrawQ_TextWidth_Font_Size(string, sizevec[0], sizevec[1], 0, !colors, getdrawfont());
-		PRVM_G_FLOAT(OFS_RETURN) = DrawQ_TextWidth_Font(string, 0, !colors, getdrawfont()) * sizevec[0];
-	}
-	else
-	{
-		static qboolean dbg_info = false;
-		if (!dbg_info)
-		{
-			dbg_info = true;
-			Con_Print("VM_stringwidth(): Your code uses a deprecated version of stringwidth()\n");
-		}
-		PRVM_G_FLOAT(OFS_RETURN) = DrawQ_TextWidth_Font(string, 0, !colors, getdrawfont());
-	}
-	*/
-
 	if(prog->argc == 3)
 	{
 		static float defsize[] = {0, 0};
-		szv = defsize;
 		szv = PRVM_G_VECTOR(OFS_PARM2);
-		mult = szv[0];
+		//mult = szv[0];
+		mult = 1;
 	}
 	else
 	{
@@ -3219,9 +3192,7 @@ void VM_stringwidth(void)
 	string = PRVM_G_STRING(OFS_PARM0);
 	colors = (int)PRVM_G_FLOAT(OFS_PARM1);
 
-	PRVM_G_FLOAT(OFS_RETURN) = DrawQ_TextWidth_Font(string, 0, !colors, getdrawfont()) * mult; // 1x1 characters, don't actually draw
-	Con_Printf(": %f\n", PRVM_G_FLOAT(OFS_RETURN));
-	
+	PRVM_G_FLOAT(OFS_RETURN) = DrawQ_TextWidth_Font_Size(string, szv[0], szv[1], 0, !colors, getdrawfont()) * mult; // 1x1 characters, don't actually draw
 /*
 	if(prog->argc == 3)
 	{
