@@ -1377,11 +1377,13 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 		}
 		for (i = 0;i < maxlen && *text;)
 		{
+			/*
 			if (snap)
 			{
 				x = snap_to_pixel_x(x, 0.3);
 				y = snap_to_pixel_y(y, 0.3);
 			}
+			*/
 			if (*text == ' ' && !fontmap)
 			{
 				x += fnt->width_of[(int) ' '] * w;

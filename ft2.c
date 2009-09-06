@@ -15,6 +15,7 @@ CVars introduced with the freetype extension
 
 cvar_t r_font_disable_freetype = {CVAR_SAVE, "r_font_disable_freetype", "0", "disable freetype support for fonts entirely"};
 cvar_t r_font_use_alpha_textures = {CVAR_SAVE, "r_font_use_alpha_textures", "0", "use alpha-textures for font rendering, this should safe memory"};
+cvar_t r_font_size_snapping = {CVAR_SAVE, "r_font_size_snapping", "0", "stick to good looking font sizes whenever possible - bad when the mod doesn't support it!"};
 
 /*
 ================================================================================
@@ -243,6 +244,7 @@ void Font_Init(void)
 {
 	Cvar_RegisterVariable(&r_font_disable_freetype);
 	Cvar_RegisterVariable(&r_font_use_alpha_textures);
+	Cvar_RegisterVariable(&r_font_size_snapping);
 }
 
 /*
@@ -561,7 +563,7 @@ int Font_IndexForSize(ft2_font_t *font, float _fsize, float *outw, float *outh)
 				break;
 		}
 	}
-	if (value <= 1)
+	if (r_font_size_snapping.integer && value <= 1)
 	{
 		if (outw && outh)
 		{
