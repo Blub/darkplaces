@@ -1174,7 +1174,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	else
 		colorindex = *outcolor;
 
-	//maxwidth /= fnt->scale;
+	//maxwidth /= fnt->scale; // w and h are multiplied by it already
 
 	// ftbase_x = snap_to_pixel_x(0);
 
