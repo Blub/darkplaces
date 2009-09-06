@@ -1144,7 +1144,6 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	ft2_font_map_t *prevmap = NULL;
 	ft2_font_t *ft2 = fnt->ft2;
 	// float ftbase_x;
-	const char *text_start = text;
 	qboolean snap = true;
 
 	if (!h) h = w;
@@ -1159,7 +1158,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	// find the most fitting size:
 	if (ft2 != NULL)
 	{
-		if (w != 1)
+		if (snap)
 			map_index = Font_IndexForSize(ft2, h, &w, &h);
 		else
 			map_index = Font_IndexForSize(ft2, h, NULL, NULL);
@@ -1174,8 +1173,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	else
 		colorindex = *outcolor;
 
-	//maxwidth /= fnt->scale; // w and h are multiplied by it already
-
+	// maxwidth /= fnt->scale; // w and h are multiplied by it already
 	// ftbase_x = snap_to_pixel_x(0);
 
 	for (i = 0;i < *maxlen && *text;)
@@ -1243,7 +1241,8 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 			text--;
 		}
 		ch = u8_getchar(text, &text);
-		i = text - text_start;
+		//i = text - text_start;
+		++i;
 
 		if (!fontmap || (ch >= 0xE000 && ch <= 0xE0FF))
 		{
@@ -1325,7 +1324,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 	if (ft2 != NULL)
 	{
-		if (w != 1)
+		if (snap)
 			map_index = Font_IndexForSize(ft2, h, &w, &h);
 		else
 			map_index = Font_IndexForSize(ft2, h, NULL, NULL);
@@ -1446,7 +1445,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				text--;
 			}
 			ch = u8_getchar(text, &text);
-			i = text - text_start;
+			//i = text - text_start;
+			++i;
 			// using a value of -1 for the oldstyle map because NULL means uninitialized...
 			// this way we don't need to rebind fnt->tex for every old-style character
 			// E000..E0FF: emulate old-font characters (to still have smileys and such available)
