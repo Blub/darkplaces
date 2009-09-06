@@ -480,6 +480,7 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean no_texture,
 		temp.glyphSize = CeilPowerOf2(size*2);
 		temp.sfx = (1.0/64.0)/(double)size;
 		temp.sfy = (1.0/64.0)/(double)size;
+		temp.intSize = -1; // negative value: LoadMap must search now :)
 		if (!Font_LoadMap(font, &temp, 0, &fmap))
 		{
 			Con_Printf("ERROR: can't load the first character map for %s\n"
@@ -716,11 +717,40 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 
 	//status = qFT_Set_Pixel_Sizes((FT_Face)font->face, /*size*/0, mapstart->size);
 	//if (status)
-	if (!Font_SetSize(font, mapstart->size, mapstart->size))
+	if (mapstart->intSize < 0)
 	{
-		Con_Printf("ERROR: can't set pixel sizes for font %s: %f\n", font->name, mapstart->size);
+		mapstart->intSize = mapstart->size;
+		while (1)
+		{
+			if (!Font_SetSize(font, mapstart->intSize, mapstart->intSize))
+			{
+				Con_Printf("ERROR: can't set size for font %s: %f ((%f))\n", font->name, mapstart->size, mapstart->intSize);
+				return false;
+			}
+			if ((((FT_Face)font->face)->size->metrics.height>>6) <= mapstart->size)
+				break;
+			if (mapstart->intSize < 2)
+			{
+				Con_Printf("ERROR: no appropriate size found for font %s: %f\n", font->name, mapstart->size);
+				return false;
+			}
+			--mapstart->intSize;
+		}
+		Con_Printf("Using size: %f for requested size %f\n", mapstart->intSize, mapstart->size);
+	}
+
+	if (!Font_SetSize(font, mapstart->intSize, mapstart->intSize))
+	{
+		Con_Printf("ERROR: can't set sizes for font %s: %f\n", font->name, mapstart->size);
 		return false;
 	}
+	/*
+	Con_Printf(" GLYPH STUFF: (%f) : - %f, + %f, < %f\n",
+		   mapstart->size,
+		   (float)((FT_Face)font->face)->size->metrics.ascender * (1.0/64.0),
+		   (float)((FT_Face)font->face)->size->metrics.descender * (1.0/64.0),
+		   (float)((FT_Face)font->face)->size->metrics.height * (1.0/64.0));
+	*/
 
 	map = Mem_Alloc(font_mempool, sizeof(ft2_font_map_t));
 	if (!map)
@@ -801,7 +831,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 			// try to load from a fallback font
 			for(usefont = font->next; usefont != NULL; usefont = usefont->next)
 			{
-				if (!Font_SetSize(usefont, mapstart->size, mapstart->size))
+				if (!Font_SetSize(usefont, mapstart->intSize, mapstart->intSize))
 					continue;
 				// try that glyph
 				face = usefont->face;

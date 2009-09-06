@@ -28,6 +28,9 @@ struct ft2_font_map_s
 	Uchar                  start;
 	struct ft2_font_map_s *next;
 	float                  size;
+	// the actual size used in the freetype code
+	// by convention, the requested size is the height of the font's bounding box.
+	float                  intSize;
 	int                    glyphSize;
 
 	rtexture_t            *texture;
