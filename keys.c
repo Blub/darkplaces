@@ -1467,12 +1467,8 @@ Key_Event (int key, int ascii, qboolean down)
 	if (keydest == key_message && key >= K_F1 && key <= K_F12)
 	{
 		if (down)
-		{
-			if (Key_Message(key, ascii))
-				return;
-		}
-		else
-			return;
+			Key_Message(key, ascii);
+		return;
 	}
 	if (keydest != key_menu_grabbed)
 	if (key >= K_F1 && key <= K_F12)
