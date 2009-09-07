@@ -480,7 +480,7 @@ qboolean UIM_Key(int key, Uchar unicode)
 	quim.actions = 0;
 	mod = UIM_GetKeyMod();
 	ukey = UIM_KeyToUKey(key, unicode);
-	//Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : '.');
+	Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : '.');
 	if (quim_press_key(quim.ctx, ukey, mod) == 0)
 		handled = true;
 	if (quim_release_key(quim.ctx, ukey, mod) == 0)
@@ -580,7 +580,7 @@ static qboolean UIM_Insert2(const char *str, size_t _slen)
 	//Con_Printf("Insertion point: %lu\n", (unsigned long)quim.edit_pos);
 	memmove(quim.buffer + quim.edit_pos + slen,
 		quim.buffer + quim.edit_pos,
-		quim.buffer_size - quim.edit_pos - slen);
+		quim.buffer_size - quim.edit_pos - slen + 1);
 	memcpy(quim.buffer + quim.edit_pos, str, slen);
 	if (quim.edit_pos >= quim.length)
 		quim.buffer[quim.edit_pos + slen] = 0;
@@ -626,7 +626,7 @@ static void UIM_Clear(void *cookie)
 	//Con_Print("UIM_Clear\n");
 	memmove(quim.buffer + quim.buffer_pos,
 		quim.buffer + quim.edit_pos,
-		quim.buffer_size - quim.edit_pos);
+		quim.buffer_size - quim.edit_pos + 1);
 	quim.edit_pos = quim.buffer_pos;
 	quim.edit_length = 0;
 	quim.cursor_pos = quim.edit_pos;
@@ -739,7 +739,7 @@ static void UIM_Select(void *cookie, int index)
 		// erase the part in the cursor:
 		memmove(quim.buffer + quim.cursor_inpos,
 			quim.buffer + quim.cursor_inpos + quim.cursor_inlength,
-			quim.buffer_size - quim.cursor_inpos - quim.cursor_inlength);
+			quim.buffer_size - quim.cursor_inpos - quim.cursor_inlength + 1);
 		quim.cursor_length -= quim.cursor_inlength;
 		quim.cursor_inpos -= quim.cursor_inlength;
 		quim.edit_length -= quim.cursor_inlength;
@@ -753,7 +753,7 @@ static void UIM_Select(void *cookie, int index)
 	// move the cursor-end + tail
 	memmove(quim.buffer + quim.cursor_inpos + quim.cursor_inlength,
 		quim.buffer + quim.cursor_pos + quim.cursor_length,
-		quim.buffer_size - quim.cursor_pos - quim.cursor_length);
+		quim.buffer_size - quim.cursor_pos - quim.cursor_length + 1);
 	
 	memcpy(quim.buffer + quim.cursor_inpos, str, slen);
 
