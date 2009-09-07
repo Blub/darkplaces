@@ -1251,6 +1251,8 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 		}
 		ch = u8_getchar(text, &text);
 		//i = text - text_start;
+		if (!ch)
+			break;
 		++i;
 
 		if (!fontmap || (ch >= 0xE000 && ch <= 0xE0FF))
@@ -1453,6 +1455,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			}
 			ch = u8_getchar(text, &text);
 			//i = text - text_start;
+			if (!ch)
+				break;
 			++i;
 			// using a value of -1 for the oldstyle map because NULL means uninitialized...
 			// this way we don't need to rebind fnt->tex for every old-style character

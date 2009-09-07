@@ -707,6 +707,7 @@ int COM_Wordwrap(const char *string, size_t length, float continuationWidth, flo
 	int result = 0;
 	size_t wordLen;
 	size_t dummy;
+	size_t wordChars;
 
 	dummy = 0;
 	wordWidth(passthroughCW, NULL, &dummy, -1);
@@ -749,8 +750,9 @@ int COM_Wordwrap(const char *string, size_t length, float continuationWidth, flo
 					}
 				}
 				out_inner:
-				spaceUsedForWord = wordWidth(passthroughCW, cursor, &wordLen, maxWidth - continuationWidth); // this may have reduced wordLen when it won't fit - but this is GOOD. TODO fix words that do fit in a non-continuation line
-				if(wordLen < 1)
+				wordChars = strnlen(cursor, wordLen);
+				spaceUsedForWord = wordWidth(passthroughCW, cursor, &wordChars, maxWidth - continuationWidth); // this may have reduced wordLen when it won't fit - but this is GOOD. TODO fix words that do fit in a non-continuation line
+				if(wordChars < 1)
 				{
 					wordLen = 1;
 					spaceUsedForWord = maxWidth + 1; // too high, forces it in a line of itself
