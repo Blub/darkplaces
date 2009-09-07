@@ -424,34 +424,24 @@ static int UIM_KeyToUKey(int key, Uchar unicode)
 	case K_SCROLLOCK:
 		return UKey_Scroll_Lock;
 
-	case '0':
 	case K_KP_0:
 		return '0';
-	case '1':
 	case K_KP_1:
 		return '1';
-	case '2':
 	case K_KP_2:
 		return '2';
-	case '3':
 	case K_KP_3:
 		return '3';
-	case '4':
 	case K_KP_4:
 		return '4';
-	case '5':
 	case K_KP_5:
 		return '5';
-	case '6':
 	case K_KP_6:
 		return '6';
-	case '7':
 	case K_KP_7:
 		return '7';
-	case '8':
 	case K_KP_8:
 		return '8';
-	case '9':
 	case K_KP_9:
 		return '9';
 
@@ -490,7 +480,7 @@ qboolean UIM_Key(int key, Uchar unicode)
 	quim.actions = 0;
 	mod = UIM_GetKeyMod();
 	ukey = UIM_KeyToUKey(key, unicode);
-	//Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : ' ');
+	Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : '.');
 	if (quim_press_key(quim.ctx, ukey, mod) == 0)
 		handled = true;
 	if (quim_release_key(quim.ctx, ukey, mod) == 0)
