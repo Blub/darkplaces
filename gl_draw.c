@@ -1185,6 +1185,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	// maxwidth /= fnt->scale; // w and h are multiplied by it already
 	// ftbase_x = snap_to_pixel_x(0);
 
+	// NOTE: if you use i++ here, remove +1 from the maxlen line below the loop
 	for (i = 0;i < *maxlen && *text;)
 	{
 		if (snap)
@@ -1285,7 +1286,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 		}
 	}
 
-	*maxlen = i;
+	*maxlen = i+1;
 
 	if (outcolor)
 		*outcolor = colorindex;
