@@ -30,6 +30,7 @@ extern cvar_t    utf8_disabled;
 void   u8_Init(void);
 
 size_t u8_strlen(const char*);
+size_t u8_strnlen(const char*, size_t);
 int    u8_byteofs(const char*, size_t, size_t*);
 int    u8_charidx(const char*, size_t, size_t*);
 size_t u8_bytelen(const char*, size_t);

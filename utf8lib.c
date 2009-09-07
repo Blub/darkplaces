@@ -77,6 +77,49 @@ size_t u8_strlen(const char *_s)
 	return len;
 }
 
+/** Get the number of characters in a part of an UTF-8 string.
+ * @param _s    An utf-8 encoded null-terminated string.
+ * @param n     The maximum number of bytes.
+ * @return      The number of unicode characters in the string.
+ */
+size_t u8_strnlen(const char *_s, size_t n)
+{
+	size_t len = 0;
+	const unsigned char *s = (const unsigned char*)_s;
+
+	if (utf8_disabled.integer)
+	{
+		len = strlen(_s);
+		return (len < n) ? len : n;
+	}
+
+	while (*s && n)
+	{
+		// ascii char
+		if (*s < 0x80)
+		{
+			++len;
+			++s;
+			--n;
+			continue;
+		}
+
+		// part of a wide character, we ignore that one
+		if (*s < 0xC0) // 10111111
+		{
+			++s;
+			--n;
+			continue;
+		}
+
+		// start of a wide character
+		if (u8_validate((const char*)s))
+			++len;
+		for (++s, --n; n && *s >= 0x80 && *s <= 0xC0; ++s, --n);
+	}
+	return len;
+}
+
 /** Get the number of bytes used in a string to represent an amount of characters.
  * @param _s    An utf-8 encoded null-terminated string.
  * @param n     The number of characters we want to know the byte-size for.
