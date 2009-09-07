@@ -480,7 +480,7 @@ qboolean UIM_Key(int key, Uchar unicode)
 	quim.actions = 0;
 	mod = UIM_GetKeyMod();
 	ukey = UIM_KeyToUKey(key, unicode);
-	Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : '.');
+	//Con_Printf("uim handling key: %i (mod: %i) char: %c\n", ukey, mod, (ukey >= 32 && ukey < 0x7F) ? ukey : '.');
 	if (quim_press_key(quim.ctx, ukey, mod) == 0)
 		handled = true;
 	if (quim_release_key(quim.ctx, ukey, mod) == 0)

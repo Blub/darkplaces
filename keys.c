@@ -348,12 +348,13 @@ Key_ClearEditLine (int edit_line)
 Interactive line editing and console scrollback
 ====================
 */
+/*
 static void Key_Console_SetCursor(size_t pos)
 {
 	key_linepos = pos;
 	//Con_Printf("Position: %lu\n", pos);
 }
-
+*/
 static void
 Key_Console (int key, int unicode)
 {
@@ -880,14 +881,16 @@ unsigned int	chat_bufferlen = 0;
 
 extern int Nicks_CompleteChatLine(char *buffer, size_t size, unsigned int pos);
 
-static void
+static qboolean
 Key_Message (int key, int ascii)
 {
 	if (!UIM_Direct())
 	{
 		if (UIM_Key(key, ascii))
-		    return;
+			return true;
 	}
+	if (key >= K_F1 && key <= K_F12)
+		return false;
 
 	if (key == K_ENTER || ascii == 10 || ascii == 13)
 	{
@@ -900,7 +903,7 @@ Key_Message (int key, int ascii)
 		chat_bufferlen = 0;
 		chat_buffer[0] = 0;
 		UIM_CancelBuffer();
-		return;
+		return true;
 	}
 
 	// TODO add support for arrow keys and simple editing
@@ -909,7 +912,7 @@ Key_Message (int key, int ascii)
 		key_dest = key_game;
 		chat_bufferlen = 0;
 		chat_buffer[0] = 0;
-		return;
+		return true;
 	}
 
 	if (key == K_BACKSPACE) {
@@ -918,29 +921,30 @@ Key_Message (int key, int ascii)
 			UIM_SetCursor(chat_bufferlen);
 			chat_buffer[chat_bufferlen] = 0;
 		}
-		return;
+		return true;
 	}
 
 	if(key == K_TAB) {
 		chat_bufferlen = Nicks_CompleteChatLine(chat_buffer, sizeof(chat_buffer), chat_bufferlen);
 		UIM_SetCursor(chat_bufferlen);
-		return;
+		return true;
 	}
 
 	if (chat_bufferlen == sizeof (chat_buffer) - 1)
-		return;							// all full
+		return true;						// all full
 
 	if (!ascii)
-		return;							// non printable
+		return true;						// non printable
 
 	if (keydown[K_CTRL] || keydown[K_ALT]) // no evil trickery, yeah?
-		return;
+		return true;
 
 	chat_bufferlen += u8_fromchar(ascii, chat_buffer+chat_bufferlen, sizeof(chat_buffer) - chat_bufferlen - 1);
 	UIM_SetCursor(chat_bufferlen);
 
 	//chat_buffer[chat_bufferlen++] = ascii;
 	//chat_buffer[chat_bufferlen] = 0;
+	return true;
 }
 
 //============================================================================
@@ -1459,6 +1463,17 @@ Key_Event (int key, int ascii, qboolean down)
 	}
 
 	// send function keydowns to interpreter no matter what mode is (unless the menu has specifically grabbed the keyboard, for rebinding keys)
+	// NOTE: if UIM is active, let it handle function keys too:
+	if (keydest == key_message && key >= K_F1 && key <= K_F12)
+	{
+		if (down)
+		{
+			if (Key_Message(key, ascii))
+				return;
+		}
+		else
+			return;
+	}
 	if (keydest != key_menu_grabbed)
 	if (key >= K_F1 && key <= K_F12)
 	{
