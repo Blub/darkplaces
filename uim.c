@@ -530,18 +530,18 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCurso
 	quim.pc_len = 2;
 
 	// search for the previous color code
-	if (pos > 2)
+	if (pos >= 2)
 	{
-		--pos;
-		while (pos)
+		do
 		{
-			if (pos > 1 && buffer[pos-1] == STRING_COLOR_TAG && isdigit(buffer[pos]))
+			--pos;
+			if (pos >= 1 && buffer[pos-1] == STRING_COLOR_TAG && isdigit(buffer[pos]))
 			{
 				quim.pc = &buffer[pos-1];
 				quim.pc_len = 2;
 				break;
 			}
-			else if (pos > 4 &&
+			else if (pos >= 4 &&
 				 buffer[pos-4] == STRING_COLOR_TAG &&
 				 buffer[pos-3] == STRING_COLOR_RGB_TAG_CHAR &&
 				 isxdigit(buffer[pos-2]) &&
@@ -552,8 +552,7 @@ qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCurso
 				quim.pc_len = 5;
 				break;
 			}
-			--pos;
-		}
+		} while(pos);
 	}
 	return true;
 }
@@ -574,12 +573,15 @@ void UIM_SetCursor(int pos)
 	UIM_EnterBuffer(quim.buffer, quim.buffer_size, pos, quim.setcursor);
 }
 
-static qboolean UIM_Insert(const char *str)
+static qboolean UIM_Insert2(const char *str, size_t _slen)
 {
 	size_t slen;
 	if (!*str)
 		return true;
-	slen = strlen(str);
+	if (_slen)
+		slen = _slen;
+	else
+		slen = strlen(str);
 	if (quim.edit_pos + slen + quim.tail_length >= quim.buffer_size - 1) {
 		Con_Print("UIM: Insertion failed: not enough space!\n");
 		return false;
@@ -595,6 +597,11 @@ static qboolean UIM_Insert(const char *str)
 	quim.edit_pos += slen;
 	quim.edit_length += slen;
 	return true;
+}
+
+static inline qboolean UIM_Insert(const char *str)
+{
+	return UIM_Insert2(str, 0);
 }
 
 static void UIM_Commit(void *cookie, const char *str)
@@ -637,6 +644,8 @@ static void UIM_Clear(void *cookie)
 	quim.cursor_inpos = quim.edit_pos;
 	quim.cursor_inlength = 0;
 	quim.pushcount = 0;
+	if (quim.setcursor)
+		quim.setcursor(quim.edit_pos);
 }
 
 // we have BUFSTART and QUIM_CURSOR
@@ -701,7 +710,9 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 static void UIM_Update(void *cookie)
 {
 	++quim.actions;
-	UIM_Insert(quim.pc);
+	UIM_Insert2(quim.pc, quim.pc_len);
+	if (quim.setcursor)
+		quim.setcursor(quim.edit_pos);
 	//Con_Print("UIM_Update\n");
 	// well, of course
 	// we could allocate a buffer in which we work

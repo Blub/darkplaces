@@ -351,6 +351,7 @@ Interactive line editing and console scrollback
 static void Key_Console_SetCursor(size_t pos)
 {
 	key_linepos = pos;
+	//Con_Printf("Position: %lu\n", pos);
 }
 
 static void
