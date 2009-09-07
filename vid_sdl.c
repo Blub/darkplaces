@@ -388,7 +388,7 @@ void Sys_SendKeyEvents( void )
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
-				Con_Printf("Key: %lu\n", (long unsigned int)event.key.keysym.unicode);
+				//Con_Printf("Key: %lu\n", (long unsigned int)event.key.keysym.unicode);
 				Key_Event( MapKey( event.key.keysym.sym ), event.key.keysym.unicode, (event.key.state == SDL_PRESSED) );
 				break;
 			case SDL_ACTIVEEVENT:

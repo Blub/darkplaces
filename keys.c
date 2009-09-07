@@ -348,6 +348,11 @@ Key_ClearEditLine (int edit_line)
 Interactive line editing and console scrollback
 ====================
 */
+static void Key_Console_SetCursor(size_t pos)
+{
+	key_linepos = pos;
+}
+
 static void
 Key_Console (int key, int unicode)
 {
@@ -1316,11 +1321,6 @@ Should NOT be called during an interrupt!
 */
 static char tbl_keyascii[MAX_KEYS];
 static keydest_t tbl_keydest[MAX_KEYS];
-
-static void Key_Console_SetCursor(size_t pos)
-{
-	key_linepos = pos;
-}
 
 void
 Key_Event (int key, int ascii, qboolean down)
