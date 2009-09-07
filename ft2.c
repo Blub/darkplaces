@@ -761,6 +761,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 
 	// copy over the information
 	map->size = mapstart->size;
+	map->intSize = mapstart->intSize;
 	map->glyphSize = mapstart->glyphSize;
 	map->sfx = mapstart->sfx;
 	map->sfy = mapstart->sfy;
