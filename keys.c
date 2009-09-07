@@ -501,8 +501,8 @@ Key_Console (int key, int unicode)
 		key_line[0] = ']';
 		key_line[1] = 0;	// EvilTypeGuy: null terminate
 		key_linepos = 1;
-		UIM_CancelBuffer();
-		uim_in_console = false;
+		//UIM_CancelBuffer();
+		//uim_in_console = false;
 		// force an update, because the command may take some time
 		if (cls.state == ca_disconnected)
 			CL_UpdateScreen ();

@@ -489,9 +489,9 @@ qboolean UIM_Key(int key, Uchar unicode)
 }
 
 // api entry, must check for UIM availability
+static char defcolor[3];
 qboolean UIM_EnterBuffer(char *buffer, size_t bufsize, size_t pos, qUIM_SetCursor setcursor_cb)
 {
-	static char defcolor[3];
 	if (!UIM_Available())
 		return false;
 	if (quim.buffer)
@@ -555,6 +555,8 @@ void UIM_CancelBuffer(void)
 	quim_reset_context(quim.ctx);
 	quim.buffer = NULL;
 	quim.setcursor = NULL;
+	quim.pc = defcolor;
+	quim.pc_len = 2;
 }
 
 // api entry, must check for UIM availability
@@ -615,7 +617,7 @@ static void UIM_Commit(void *cookie, const char *str)
 static void UIM_HelperDisconnected(void)
 {
 	++quim.actions;
-	Con_Print("UIM Helper disconnected\n");
+	//Con_Print("UIM Helper disconnected\n");
 	if (quim.fd > 0)
 		UIM_Shutdown();
 }
