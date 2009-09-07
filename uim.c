@@ -319,6 +319,7 @@ void UIM_Start(void)
 		UIM_Shutdown();
 		return;
 	}
+	Con_Print("UIM Helper connected\n");
 
 	quim_set_preedit_cb(quim.ctx, &UIM_Clear, &UIM_Push, &UIM_Update);
 	quim_set_candidate_selector_cb(quim.ctx, &UIM_Activate, &UIM_Select, &UIM_Shift, &UIM_Deactivate);
