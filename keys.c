@@ -351,6 +351,12 @@ Interactive line editing and console scrollback
 static void
 Key_Console (int key, int unicode)
 {
+	if (!UIM_Direct())
+	{
+		if (UIM_Key(key, unicode))
+		    return;
+	}
+
 	// LordHavoc: copied most of this from Q2 to improve keyboard handling
 	switch (key)
 	{
