@@ -718,12 +718,12 @@ int COM_Wordwrap(const char *string, size_t length, float continuationWidth, flo
 		switch(ch)
 		{
 			case 0: // end of string
-				result += processLine(passthroughPL, startOfLine, cursor - startOfLine, spaceUsedInLine, isContinuation);
+				result += processLine(passthroughPL, startOfLine, u8_strnlen(startOfLine, cursor - startOfLine), spaceUsedInLine, isContinuation);
 				isContinuation = false;
 				goto out;
 				break;
 			case '\n': // end of line
-				result += processLine(passthroughPL, startOfLine, cursor - startOfLine, spaceUsedInLine, isContinuation);
+				result += processLine(passthroughPL, startOfLine, u8_strnlen(startOfLine, cursor - startOfLine), spaceUsedInLine, isContinuation);
 				isContinuation = false;
 				++cursor;
 				startOfLine = cursor;
@@ -763,7 +763,7 @@ int COM_Wordwrap(const char *string, size_t length, float continuationWidth, flo
 				else
 				{
 					// output current line
-					result += processLine(passthroughPL, startOfLine, cursor - startOfLine, spaceUsedInLine, isContinuation);
+					result += processLine(passthroughPL, startOfLine, u8_strnlen(startOfLine, cursor - startOfLine), spaceUsedInLine, isContinuation);
 					isContinuation = true;
 					startOfLine = cursor;
 					cursor += wordLen;
