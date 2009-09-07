@@ -357,11 +357,13 @@ static void Key_Console_SetCursor(size_t pos)
 static void
 Key_Console (int key, int unicode)
 {
+	/*
 	if (!UIM_Direct())
 	{
 		if (UIM_Key(key, unicode))
 		    return;
 	}
+	*/
 
 	// LordHavoc: copied most of this from Q2 to improve keyboard handling
 	switch (key)
@@ -1343,17 +1345,21 @@ Key_Event (int key, int ascii, qboolean down)
 
 	if (key_consoleactive)
 	{
+		/*
 		if (!uim_in_console)
 		{
 			UIM_EnterBuffer(key_line, sizeof(key_line), key_linepos, &Key_Console_SetCursor);
 			uim_in_console = true;
 		}
+		*/
 		keydest = key_console;
 	}
 	else if (uim_in_console)
 	{
+		/*
 		UIM_CancelBuffer();
 		uim_in_console = false;
+		*/
 	}
 	
 	if (down)
