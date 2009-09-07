@@ -369,6 +369,7 @@ Uchar u8_getchar(const char *_s, const char **_end)
 			return 0;
 	}
 	// for a little speedup:
+	/* this is inconsistent with the skipping-loop below
 	if ( (*s & 0xE0) == 0xC0 )
 	{
 		// 2-byte character
@@ -385,6 +386,7 @@ Uchar u8_getchar(const char *_s, const char **_end)
 			*_end = _s + 3;
 		return u;
 	}
+	*/
 
 	u = 0;
 	mask = 0x7F;
