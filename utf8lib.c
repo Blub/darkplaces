@@ -396,6 +396,14 @@ Uchar u8_getchar(const char *_s, const char **_end)
 {
 	size_t st, ln;
 	Uchar ch;
+
+	if (utf8_disabled.integer)
+	{
+		if (_end)
+			*_end = _s + 1;
+		return 0xE000 + (Uchar)*(const unsigned char*)_s;
+	}
+	
 	if (!u8_analyze(_s, &st, &ln, &ch))
 		return 0;
 	if (_end)
