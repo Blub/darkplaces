@@ -44,6 +44,7 @@ conbuffer_t history;
 #define HIST_MAXLINES 4096
 
 extern cvar_t	con_textsize;
+static qboolean uim_in_console = false;
 
 
 static void Key_History_Init(void)
@@ -443,6 +444,7 @@ Key_Console (int key, int unicode)
 				memmove(key_line + key_linepos + i, key_line + key_linepos, sizeof(key_line) - key_linepos - i);
 				memcpy(key_line + key_linepos, cbd, i);
 				key_linepos += i;
+				UIM_SetCursor(key_linepos);
 			}
 			Z_Free(cbd);
 		}
@@ -461,6 +463,7 @@ Key_Console (int key, int unicode)
 		key_line[0] = ']';
 		key_line[1] = 0;
 		key_linepos = 1;
+		UIM_SetCursor(key_linepos);
 		return;
 	}
 
@@ -471,6 +474,7 @@ Key_Console (int key, int unicode)
 		key_line[0] = ']';
 		key_line[1] = 0;
 		key_linepos = 1;
+		UIM_SetCursor(key_linepos);
 		return;
 	}
 
@@ -482,6 +486,8 @@ Key_Console (int key, int unicode)
 		key_line[0] = ']';
 		key_line[1] = 0;	// EvilTypeGuy: null terminate
 		key_linepos = 1;
+		UIM_CancelBuffer();
+		uim_in_console = false;
 		// force an update, because the command may take some time
 		if (cls.state == ca_disconnected)
 			CL_UpdateScreen ();
@@ -514,7 +520,10 @@ Key_Console (int key, int unicode)
 				cvar[cvar_len] = k;
 			}
 			if (cvar_len==0)
+			{
+				UIM_SetCursor(key_linepos);
 				return;
+			}
 			cvar[cvar_len] = 0;
 			
 			// go to the end of the cvar
@@ -524,7 +533,10 @@ Key_Console (int key, int unicode)
 			cvar_str = Cvar_VariableString(cvar);
 			cvar_str_len = strlen(cvar_str);
 			if (cvar_str_len==0)
+			{
+				UIM_SetCursor(key_linepos);
 				return;
+			}
 			
 			// insert space and cvar_str in key_line
 			chars_to_move = strlen(&key_line[key_linepos]);
@@ -539,6 +551,7 @@ Key_Console (int key, int unicode)
 			}
 			else
 				Con_Printf("Couldn't append cvar value, edit line too long.\n");
+			UIM_SetCursor(key_linepos);
 			return;
 		}
 		// Enhanced command completion
@@ -607,6 +620,7 @@ Key_Console (int key, int unicode)
 		{
 			key_linepos = u8_prevbyte(key_line, key_linepos);
 		}
+		UIM_SetCursor(key_linepos);
 		return;
 	}
 
@@ -619,6 +633,7 @@ Key_Console (int key, int unicode)
 			strlcpy(key_line + newpos, key_line + key_linepos, sizeof(key_line) + 1 - key_linepos);
 			key_linepos = newpos;
 		}
+		UIM_SetCursor(key_linepos);
 		return;
 	}
 
@@ -699,6 +714,7 @@ Key_Console (int key, int unicode)
 		}
 		else
 			key_linepos += u8_bytelen(key_line + key_linepos, 1);
+		UIM_SetCursor(key_linepos);
 		return;
 	}
 
@@ -713,12 +729,14 @@ Key_Console (int key, int unicode)
 	if (key == K_UPARROW || key == K_KP_UPARROW || (key == 'p' && keydown[K_CTRL]))
 	{
 		Key_History_Up();
+		UIM_SetCursor(key_linepos);
 		return;
 	}
 
 	if (key == K_DOWNARROW || key == K_KP_DOWNARROW || (key == 'n' && keydown[K_CTRL]))
 	{
 		Key_History_Down();
+		UIM_SetCursor(key_linepos);
 		return;
 	}
 	// ~1.0795 = 82/76  using con_textsize 64 76 is height of the char, 6 is the distance between 2 lines
@@ -796,6 +814,7 @@ Key_Console (int key, int unicode)
 			con_backscroll = INT_MAX;
 		else
 			key_linepos = 1;
+		UIM_SetCursor(key_linepos);
 		return;
 	}
 
@@ -805,6 +824,7 @@ Key_Console (int key, int unicode)
 			con_backscroll = 0;
 		else
 			key_linepos = (int)strlen(key_line);
+		UIM_SetCursor(key_linepos);
 		return;
 	}
 
@@ -831,6 +851,7 @@ Key_Console (int key, int unicode)
 		}
 		memcpy(key_line + key_linepos, buf, blen);
 		key_linepos += blen;
+		UIM_SetCursor(key_linepos);
 		//key_linepos += u8_fromchar(unicode, key_line + key_linepos, sizeof(key_line) - key_linepos - 1);
 		//key_line[key_linepos] = ascii;
 		//key_linepos++;
@@ -1290,6 +1311,11 @@ Should NOT be called during an interrupt!
 static char tbl_keyascii[MAX_KEYS];
 static keydest_t tbl_keydest[MAX_KEYS];
 
+static void Key_Console_SetCursor(size_t pos)
+{
+	key_linepos = pos;
+}
+
 void
 Key_Event (int key, int ascii, qboolean down)
 {
@@ -1308,8 +1334,20 @@ Key_Event (int key, int ascii, qboolean down)
 	if (developer.integer >= 1000)
 		Con_Printf("Key_Event(%i, '%c', %s) keydown %i bind \"%s\"\n", key, ascii, down ? "down" : "up", keydown[key], bind ? bind : "");
 
-	if(key_consoleactive)
+	if (key_consoleactive)
+	{
+		if (!uim_in_console)
+		{
+			UIM_EnterBuffer(key_line, sizeof(key_line), key_linepos, &Key_Console_SetCursor);
+			uim_in_console = true;
+		}
 		keydest = key_console;
+	}
+	else if (uim_in_console)
+	{
+		UIM_CancelBuffer();
+		uim_in_console = false;
+	}
 	
 	if (down)
 	{

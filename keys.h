@@ -128,6 +128,8 @@ typedef enum keynum_e
 	K_MOUSE15,
 	K_MOUSE16,
 
+	K_SUPER, // don't know how safe it is to add it elsewhere
+
 //
 // joystick buttons
 //

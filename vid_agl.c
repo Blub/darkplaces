@@ -732,7 +732,7 @@ static void Handle_KeyMod(UInt32 keymod)
 {
 	const struct keymod_to_event_s { UInt32 keybit; keynum_t event; } keymod_events [] =
 	{
-		{ cmdKey,						K_AUX1 },
+		{ cmdKey,						/*K_AUX1*/K_SUPER },
 		{ shiftKey,						K_SHIFT },
 		{ alphaLock,					K_CAPSLOCK },
 		{ optionKey,					K_ALT },

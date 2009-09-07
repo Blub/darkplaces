@@ -638,6 +638,8 @@ void Con_MessageMode2_f (void)
 	chat_mode = 1; // "say_team"
 	chat_bufferlen = 0;
 	chat_buffer[0] = 0;
+
+	UIM_EnterBuffer(chat_buffer, sizeof(chat_buffer), 0, &Con_MessageMode_SetCursor);
 }
 
 /*
@@ -654,6 +656,8 @@ void Con_CommandMode_f (void)
 		chat_bufferlen = strlen(chat_buffer);
 	}
 	chat_mode = -1; // command
+
+	UIM_EnterBuffer(chat_buffer, sizeof(chat_buffer), 0, &Con_MessageMode_SetCursor);
 }
 
 /*

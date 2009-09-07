@@ -350,6 +350,7 @@ static int UIM_GetKeyMod(void)
 	if (Key_IsPressed(K_SHIFT)) mod |= UMod_Shift;
 	if (Key_IsPressed(K_ALT))   mod |= UMod_Alt;
 	if (Key_IsPressed(K_CTRL))  mod |= UMod_Control;
+	if (Key_IsPressed(K_SUPER)) mod |= UMod_Super;
 	return mod;
 }
 

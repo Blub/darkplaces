@@ -213,8 +213,8 @@ static unsigned int tbl_sdltoquake[] =
 	K_ALT,		//SDLK_LALT		= 308,
 	0,			//SDLK_RMETA	= 309,
 	0,			//SDLK_LMETA	= 310,
-	0,			//SDLK_LSUPER	= 311,		/* Left "Windows" key */
-	0,			//SDLK_RSUPER	= 312,		/* Right "Windows" key */
+	K_SUPER,		//SDLK_LSUPER	= 311,		/* Left "Windows" key */
+	K_SUPER,		//SDLK_RSUPER	= 312,		/* Right "Windows" key */
 	K_ALT,			//SDLK_MODE		= 313,		/* "Alt Gr" key */
 	0,			//SDLK_COMPOSE	= 314,		/* Multi-key compose key */
 	0,			//SDLK_HELP		= 315,
@@ -388,6 +388,7 @@ void Sys_SendKeyEvents( void )
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
+				Con_Printf("Key: %lu\n", (long unsigned int)event.key.keysym.unicode);
 				Key_Event( MapKey( event.key.keysym.sym ), event.key.keysym.unicode, (event.key.state == SDL_PRESSED) );
 				break;
 			case SDL_ACTIVEEVENT:
