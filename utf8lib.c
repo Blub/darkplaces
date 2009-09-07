@@ -21,6 +21,92 @@ UTF-8 encoding and decoding functions follow.
 ================================================================================
 */
 
+/** Analyze the next character and return various information if requested.
+ * @param _s      An utf-8 string.
+ * @param _start  Filled with the start byte-offset of the next valid character
+ * @param _len    Fileed with the length of the next valid character
+ * @param _ch     Filled with the unicode value of the next character
+ * @return        Whether or not another valid character is in the string
+ */
+static qboolean u8_analyze(const char *_s, size_t *_start, size_t *_len, Uchar *_ch)
+{
+	const unsigned char *s = (const unsigned char*)_s;
+	unsigned char bt, bc;
+	size_t i;
+	size_t bits, j;
+	Uchar ch;
+
+	i = 0;
+findchar:
+
+	// <0xC2 is always an overlong encoding, they're invalid, thus skipped
+	while (s[i] && s[i] >= 0x80 && s[i] <= 0xC2)
+		++i;
+
+	// If we hit the end, well, we're out and invalid
+	if (!s[i])
+		return false;
+
+	// ascii characters
+	if (s[i] < 0x80)
+	{
+		if (_start) *_start = i;
+		if (_len) *_len = 1;
+		if (_ch) *_ch = (Uchar)s[i];
+		return true;
+	}
+
+	// Figure out the next char's length
+	bc = s[i];
+	bits = 1;
+	// count the 1 bits, they're the # of bytes
+	for (bt = 0x40; bt && (bc & bt); bt >>= 1, ++bits);
+	if (!bt)
+	{
+		++i;
+		goto findchar;
+	}
+	// turn bits into the amount or bytes
+	++bits;
+	// turn bt into a mask and give ch a starting value
+	--bt;
+	ch = (s[i] & bt);
+	// check the byte sequence for invalid bytes
+	for (j = 0; j < bits; ++j)
+	{
+		// valid bit value: 10xx xxxx
+		//if (s[i+j] < 0x80 || s[i+j] >= 0xC0)
+		if ( (s[i+j] & 0xC0) != 0x80 )
+		{
+			// this byte sequence is invalid, skip it
+			i += j;
+			// find a character after it
+			goto findchar;
+		}
+		// at the same time, decode the character
+		ch = (ch << 6) | (s[i+j] & 0x3F);
+	}
+
+	// Now check the decoded byte for an overlong encoding
+	if ( (bits >= 2 && ch < 0x80) ||
+	     (bits >= 3 && ch < 0x800) ||
+	     (bits >= 4 && ch < 0x10000) ||
+	     ch >= 0x10FFFF // RFC 3629
+		)
+	{
+		i += bits;
+		goto findchar;
+	}
+
+	if (_start)
+		*_start = i;
+	if (_len)
+		*_len = bits;
+	if (_ch)
+		*_ch = ch;
+	return true;
+}
+
 /** Validate that this strings starts with a valid utf8 character.
  * @param _s    An utf-8 encoded null-terminated string.
  * @return
