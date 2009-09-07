@@ -758,7 +758,16 @@ static void LoadFont_f(void)
 	{
 		Con_Printf("Available font commands:\n");
 		for(i = 0; i < MAX_FONTS; ++i)
-			Con_Printf("  loadfont %s gfx/tgafile[:face][,gfx/fallback1[:face][,...]] [size1 [size2 [... [size8]]]]\n", dp_fonts[i].title);
+			Con_Printf("  loadfont %s gfx/tgafile[...] [sizes...]\n", dp_fonts[i].title);
+		Con_Printf("A font can simply be gfx/tgafile, or alternatively you\n"
+			   "can specify multiple fonts and faces\n"
+			   "Like this: gfx/vera-sans:2,gfx/fallback:1\n"
+			   "to load face 2 of the font gfx/vera-sans and use face 1\n"
+			   "of gfx/fallback as fallback font.\n"
+			   "You can also specify a list of font sizes to load, like this:\n"
+			   "loadfont console gfx/conchars,gfx/fallback 8 12 16 24 32\n"
+			   "In many cases, 8 12 16 24 32 should be a good choice.\n"
+			);
 		return;
 	}
 	f = FindFont(Cmd_Argv(1));
