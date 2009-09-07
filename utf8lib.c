@@ -40,12 +40,16 @@ static qboolean u8_analyze(const char *_s, size_t *_start, size_t *_len, Uchar *
 findchar:
 
 	// <0xC2 is always an overlong encoding, they're invalid, thus skipped
-	while (s[i] && s[i] >= 0x80 && s[i] <= 0xC2)
+	while (s[i] && s[i] >= 0x80 && s[i] <= 0xC2) {
+		//fprintf(stderr, "skipping\n");
 		++i;
+	}
+	//fprintf(stderr, "checking\n");
 
 	// If we hit the end, well, we're out and invalid
 	if (!s[i])
 		return false;
+	//fprintf(stderr, "checking ascii\n");
 
 	// ascii characters
 	if (s[i] < 0x80)
@@ -53,8 +57,10 @@ findchar:
 		if (_start) *_start = i;
 		if (_len) *_len = 1;
 		if (_ch) *_ch = (Uchar)s[i];
+		//fprintf(stderr, "valid ascii\n");
 		return true;
 	}
+	//fprintf(stderr, "checking length\n");
 
 	// Figure out the next char's length
 	bc = s[i];
@@ -63,21 +69,21 @@ findchar:
 	for (bt = 0x40; bt && (bc & bt); bt >>= 1, ++bits);
 	if (!bt)
 	{
+		//fprintf(stderr, "superlong\n");
 		++i;
 		goto findchar;
 	}
-	// turn bits into the amount or bytes
-	++bits;
 	// turn bt into a mask and give ch a starting value
 	--bt;
 	ch = (s[i] & bt);
 	// check the byte sequence for invalid bytes
-	for (j = 0; j < bits; ++j)
+	for (j = 1; j < bits; ++j)
 	{
 		// valid bit value: 10xx xxxx
 		//if (s[i+j] < 0x80 || s[i+j] >= 0xC0)
 		if ( (s[i+j] & 0xC0) != 0x80 )
 		{
+			//fprintf(stderr, "sequence of %i f'd at %i by %x\n", bits, j, (unsigned int)s[i+j]);
 			// this byte sequence is invalid, skip it
 			i += j;
 			// find a character after it
@@ -95,6 +101,7 @@ findchar:
 		)
 	{
 		i += bits;
+		//fprintf(stderr, "overlong: %i bytes for %x\n", bits, ch);
 		goto findchar;
 	}
 
@@ -104,26 +111,8 @@ findchar:
 		*_len = bits;
 	if (_ch)
 		*_ch = ch;
+	//fprintf(stderr, "valid utf8\n");
 	return true;
-}
-
-/** Validate that this strings starts with a valid utf8 character.
- * @param _s    An utf-8 encoded null-terminated string.
- * @return
- */
-static inline qboolean u8_validate(const char *_s)
-{
-	const unsigned char *s = (const unsigned char*)_s;
-	if (*s < 0x80) // ascii
-		return true;
-	if (*s < 0xC0) // in-between
-		return false;
-	if (*s < 0xC2) // overlong encoding, not allowed
-		return false;
-	if (*s < 0xF5) // valid start of a sequence
-		return true;
-	// anything else is restricted since RFC 3629, November 2003
-	return false;
 }
 
 /** Get the number of characters in an UTF-8 string.
@@ -132,6 +121,7 @@ static inline qboolean u8_validate(const char *_s)
  */
 size_t u8_strlen(const char *_s)
 {
+	size_t st, ln;
 	size_t len = 0;
 	const unsigned char *s = (const unsigned char*)_s;
 
@@ -140,7 +130,7 @@ size_t u8_strlen(const char *_s)
 
 	while (*s)
 	{
-		// ascii char
+		// ascii char, skip u8_analyze
 		if (*s < 0x80)
 		{
 			++len;
@@ -148,17 +138,18 @@ size_t u8_strlen(const char *_s)
 			continue;
 		}
 
-		// part of a wide character, we ignore that one
-		if (*s < 0xC0) // 10111111
+		// invalid, skip u8_analyze
+		if (*s <= 0xC2)
 		{
 			++s;
 			continue;
 		}
 
-		// start of a wide character
-		if (u8_validate((const char*)s))
-			++len;
-		for (++s; *s >= 0x80 && *s <= 0xC0; ++s);
+		if (!u8_analyze((const char*)s, &st, &ln, NULL))
+			break;
+		// valid character, skip after it
+		s += st + ln;
+		++len;
 	}
 	return len;
 }
@@ -170,6 +161,7 @@ size_t u8_strlen(const char *_s)
  */
 size_t u8_strnlen(const char *_s, size_t n)
 {
+	size_t st, ln;
 	size_t len = 0;
 	const unsigned char *s = (const unsigned char*)_s;
 
@@ -181,7 +173,7 @@ size_t u8_strnlen(const char *_s, size_t n)
 
 	while (*s && n)
 	{
-		// ascii char
+		// ascii char, skip u8_analyze
 		if (*s < 0x80)
 		{
 			++len;
@@ -190,18 +182,22 @@ size_t u8_strnlen(const char *_s, size_t n)
 			continue;
 		}
 
-		// part of a wide character, we ignore that one
-		if (*s < 0xC0) // 10111111
+		// invalid, skip u8_analyze
+		if (*s <= 0xC2)
 		{
 			++s;
 			--n;
 			continue;
 		}
 
-		// start of a wide character
-		if (u8_validate((const char*)s))
-			++len;
-		for (++s, --n; n && *s >= 0x80 && *s <= 0xC0; ++s, --n);
+		if (!u8_analyze((const char*)s, &st, &ln, NULL))
+			break;
+		// valid character, see if it's still inside the range specified by n:
+		if (n < st + ln)
+			return len;
+		++len;
+		n -= st + ln;
+		s += st + ln;
 	}
 	return len;
 }
@@ -213,6 +209,7 @@ size_t u8_strnlen(const char *_s, size_t n)
  */
 size_t u8_bytelen(const char *_s, size_t n)
 {
+	size_t st, ln;
 	size_t len = 0;
 	const unsigned char *s = (const unsigned char*)_s;
 
@@ -221,7 +218,7 @@ size_t u8_bytelen(const char *_s, size_t n)
 
 	while (*s && n)
 	{
-		// ascii char
+		// ascii char, skip u8_analyze
 		if (*s < 0x80)
 		{
 			++len;
@@ -230,17 +227,19 @@ size_t u8_bytelen(const char *_s, size_t n)
 			continue;
 		}
 
-		// part of a wide character, this time we cannot ignore it
-		if (*s < 0xC0) // 10111111
+		// invalid, skip u8_analyze
+		if (*s <= 0xC2)
 		{
 			++s;
 			++len;
 			continue;
 		}
 
-		// start of a wide character
-		for (++len, ++s; *s >= 0x80 && *s < 0xC0; ++s, ++len);
+		if (!u8_analyze((const char*)s, &st, &ln, NULL))
+			break;
 		--n;
+		s += st + ln;
+		len += st + ln;
 	}
 	return len;
 }
@@ -253,51 +252,26 @@ size_t u8_bytelen(const char *_s, size_t n)
  */
 int u8_byteofs(const char *_s, size_t i, size_t *len)
 {
+	size_t st, ln;
 	size_t ofs = 0;
 	const unsigned char *s = (const unsigned char*)_s;
 
 	if (utf8_disabled.integer)
 	{
-		if (len) *len = 0;
+		if (len) *len = 1;
 		return i;
 	}
 
-	while (i > 0 && s[ofs])
+	st = ln = 0;
+	do
 	{
-		// ascii character
-		if (s[ofs] < 0x80)
-		{
-			++ofs;
-			--i;
-			continue;
-		}
-
-		// part of a wide character, we ignore that one
-		if (s[ofs] < 0xC0)
-		{
-			++ofs;
-			continue;
-		}
-
-		// start of a wide character
-		if (u8_validate((const char*)s))
-			--i;
-		for (++ofs; s[ofs] >= 0x80 && s[ofs] <= 0xC0; ++ofs);
-	}
-	if (!s[ofs])
-		return -1;
-	if (len) {
-		if (s[ofs] < 0x80)
-			*len = 1;
-		else if (s[ofs] & 0xC0)
-		{
-			size_t i;
-			for (i = 1; s[ofs+i] >= 0x80 && s[ofs+i] <= 0xC0; ++i);
-			*len = i;
-		}
-		else if (s[ofs] < 0xC0)
-			*len = 0;
-	}
+		ofs += ln;
+		if (!u8_analyze((const char*)s + ofs, &st, &ln, NULL))
+			return -1;
+		ofs += st;
+	} while(i-- > 0);
+	if (len)
+		*len = ln;
 	return ofs;
 }
 
@@ -309,9 +283,10 @@ int u8_byteofs(const char *_s, size_t i, size_t *len)
  */
 int u8_charidx(const char *_s, size_t i, size_t *len)
 {
+	size_t st, ln;
 	size_t ofs = 0;
+	size_t pofs = 0;
 	int idx = 0;
-	size_t start;
 	const unsigned char *s = (const unsigned char*)_s;
 
 	if (utf8_disabled.integer)
@@ -322,39 +297,41 @@ int u8_charidx(const char *_s, size_t i, size_t *len)
 
 	while (ofs < i && s[ofs])
 	{
-		// ascii character
+		// ascii character, skip u8_analyze
 		if (s[ofs] < 0x80)
 		{
+			pofs = ofs;
 			++idx;
 			++ofs;
 			continue;
 		}
 
-		// part of a wide character, weignore that one
-		if (s[ofs] < 0xC0)
+		// invalid, skip u8_analyze
+		if (s[ofs] <= 0xC2)
 		{
 			++ofs;
 			continue;
 		}
 
-		// start of a wide character
-		start = ofs;
-		if (!u8_validate((const char*)s+ofs))
+		if (!u8_analyze((const char*)s+ofs, &st, &ln, NULL))
+			return -1;
+		// see if next char is after the bytemark
+		if (ofs + st > i)
 		{
-			// invalid byte
-			++ofs;
-			continue;
-		}
-		for (++ofs; s[ofs] >= 0x80 && s[ofs] < 0xC0 && ofs < i; ++ofs);
-		if (s[ofs] >= 0x80 && s[ofs] < 0xC0)
-		{
-			// it ends within this character
 			if (len)
-				*len = ofs - start;
+				*len = i - pofs;
 			return idx;
 		}
 		++idx;
-		continue;
+		pofs = ofs + st;
+		ofs += st + ln;
+		// see if bytemark is within the char
+		if (ofs > i)
+		{
+			if (len)
+				*len = i - pofs;
+			return idx;
+		}
 	}
 	if (len) *len = 0;
 	return idx;
@@ -369,6 +346,7 @@ int u8_charidx(const char *_s, size_t i, size_t *len)
  */
 size_t u8_prevbyte(const char *_s, size_t i)
 {
+	size_t st, ln;
 	const unsigned char *s = (const unsigned char*)_s;
 	size_t lastofs = 0;
 	size_t ofs = 0;
@@ -382,34 +360,29 @@ size_t u8_prevbyte(const char *_s, size_t i)
 
 	while (ofs < i && s[ofs])
 	{
-		// ascii character
+		// ascii character, skip u8_analyze
 		if (s[ofs] < 0x80)
 		{
 			lastofs = ofs++;
 			continue;
 		}
 
-		// part of a wide character, we ignore that one
-		if (s[ofs] < 0xC0)
+		// invalid, skip u8_analyze
+		if (s[ofs] <= 0xC2)
 		{
 			++ofs;
 			continue;
 		}
 
-		// start of a wide character
-		if (!u8_validate((const char*)s+ofs))
-		{
-			// invalid byte
-			++ofs;
-			continue;
-		}
-		lastofs = ofs;
-		for (++ofs; s[ofs] >= 0x80 && s[ofs] < 0xC0 && ofs < i; ++ofs);
-		if (s[ofs] >= 0x80 && s[ofs] < 0xC0)
-		{
-			// it ends within this character
+		if (!u8_analyze((const char*)s+ofs, &st, &ln, NULL))
 			return lastofs;
-		}
+		if (ofs + st > i)
+			return lastofs;
+		if (ofs + st + ln >= i)
+			return ofs + st;
+
+		lastofs = ofs;
+		ofs += st + ln;
 	}
 	return lastofs;
 }
@@ -421,72 +394,13 @@ size_t u8_prevbyte(const char *_s, size_t i)
  */
 Uchar u8_getchar(const char *_s, const char **_end)
 {
-	const unsigned char *s = (const unsigned char*)_s;
-	Uchar u;
-	unsigned char mask;
-	unsigned char v;
-
-	if (utf8_disabled.integer)
-	{
-		if (_end)
-			*_end = _s + 1;
-		return 0xE000 + (Uchar)*s;
-	}
-
-	if (*s < 0x80)
-	{
-		if (_end)
-			*_end = _s + 1;
-		return (Uchar)*s;
-	}
-
-	if (*s < 0xC0)
-	{
-		// starting within a wide character - skip it and retrieve the one after it
-		for (++s; *s >= 0x80 && *s < 0xC0; ++s);
-		// or we could return '?' here?
-	}
-
-	while (!u8_validate((const char*)s))
-	{
-		// skip invalid characters
-		for (++s; *s >= 0x80 && *s < 0xC0; ++s);
-		if (!*s)
-			return 0;
-	}
-	// for a little speedup:
-	/* this is inconsistent with the skipping-loop below
-	if ( (*s & 0xE0) == 0xC0 )
-	{
-		// 2-byte character
-		u = ( (s[0] & 0x1F) << 6 ) | (s[1] & 0x3F);
-		if (_end)
-			*_end = _s + 2;
-		return u;
-	}
-	if ( (*s & 0xF0) == 0xE0 )
-	{
-		// 3-byte character
-		u = ( (s[0] & 0x0F) << 12 ) | ( (s[1] & 0x3F) << 6 ) | (s[2] & 0x3F);
-		if (_end)
-			*_end = _s + 3;
-		return u;
-	}
-	*/
-
-	u = 0;
-	mask = 0x7F;
-	v = *s & mask;
-	for (mask >>= 1; v > (*s & mask); mask >>= 1)
-		v = (*s & mask);
-	u = (Uchar)(*s & mask);
-	for (++s; *s >= 0x80 && *s < 0xC0; ++s)
-		u = (u << 6) | (*s & 0x3F);
-
+	size_t st, ln;
+	Uchar ch;
+	if (!u8_analyze(_s, &st, &ln, &ch))
+		return 0;
 	if (_end)
-		*_end = (const char*)s;
-
-	return u;
+		*_end = _s + st + ln;
+	return ch;
 }
 
 /** Encode a wide-character into utf-8.
@@ -498,10 +412,6 @@ Uchar u8_getchar(const char *_s, const char **_end)
  */
 int u8_fromchar(Uchar w, char *to, size_t maxlen)
 {
-	size_t i, j;
-	char bt;
-	char tmp[16];
-
 	if (maxlen < 1)
 		return -2;
 
@@ -546,34 +456,22 @@ int u8_fromchar(Uchar w, char *to, size_t maxlen)
 		return 3;
 	}
 
-	// "more general" version:
-
-	// check how much space we need and store data into a
-	// temp buffer - this is faster than recalculating again
-	i = 0;
-	bt = 0;
-	while (w)
+	// RFC 3629
+	if (w <= 0x10FFFF)
 	{
-		tmp[i++] = 0x80 | (w & 0x3F);
-		bt = (bt >> 1) | 0x80;
-		w >>= 6;
-		// see if we still fit into the target buffer
-		if (i+1 >= maxlen) // +1 for the \0
-			return -i;
-
-		// there are no characters which take up that much space yet
-		// and there won't be for the next many many years, still... let's be safe
-		if (i >= sizeof(tmp))
+		if (maxlen < 5)
+		{
+			to[0] = 0;
 			return -1;
+		}
+		to[4] = 0;
+		to[3] = 0x80 | (w & 0x3F); w >>= 6;
+		to[2] = 0x80 | (w & 0x3F); w >>= 6;
+		to[1] = 0x80 | (w & 0x3F); w >>= 6;
+		to[0] = 0xE0 | w;
+		return 4;
 	}
-	tmp[i-1] |= bt;
-	for (j = 0; j < i; ++j)
-	{
-		to[i-j-1] = tmp[j];
-	}
-
-	to[i] = 0;
-	return i;
+	return -1;
 }
 
 /** uses u8_fromchar on a static buffer
