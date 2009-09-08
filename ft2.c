@@ -635,16 +635,6 @@ static qboolean Font_SetSize(ft2_font_t *font, float w, float h)
 	h = (int)h;
 	if (font->image_font)
 	{
-		if (!font->next)
-		{
-			Con_Print("ASSERTION FAULT: no fallback for image font!\n");
-			exit(1);
-		}
-		if (!font->next->face)
-		{
-			Con_Print("ASSERTION FAULT: no face for fallback\n");
-			exit(1);
-		}
 		if (qFT_Set_Char_Size((FT_Face)font->next->face, (FT_F26Dot6)(w*64), (FT_F26Dot6)(h*64), 72, 72))
 			return false;
 	}
