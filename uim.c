@@ -192,6 +192,7 @@ typedef struct
 	// this is the only way K_RETURN actually sends a chat message
 	// when using stuff like anthy
 	int            actions;
+	int            pushed;
 } quim_state;
 
 static quim_state quim;
@@ -599,6 +600,7 @@ static inline qboolean UIM_Insert(const char *str)
 static void UIM_Commit(void *cookie, const char *str)
 {
 	++quim.actions;
+	quim.pushed = 0;
 	//Con_Printf("UIM_Commit: %s\n", str);
 	UIM_Clear(cookie);
 	if (!UIM_Insert(str))
@@ -625,6 +627,7 @@ static void UIM_HelperDisconnected(void)
 static void UIM_Clear(void *cookie)
 {
 	++quim.actions;
+	quim.pushed = 0;
 	//Con_Print("UIM_Clear\n");
 	memmove(quim.buffer + quim.buffer_pos,
 		quim.buffer + quim.edit_pos,
@@ -644,6 +647,7 @@ static void UIM_Clear(void *cookie)
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
 	++quim.actions;
+	++quim.pushed;
 	//Con_Printf("UIM_Push: (%i) %s\n", attr, str);
 	if ((attr & (UPreeditAttr_Cursor | UPreeditAttr_Reverse)) == (UPreeditAttr_Cursor | UPreeditAttr_Reverse))
 	{
@@ -702,7 +706,8 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 static void UIM_Update(void *cookie)
 {
 	++quim.actions;
-	UIM_Insert2(quim.pc, quim.pc_len);
+	if (quim.pushed) // do not append color to commits, only to pushed objects
+		UIM_Insert2(quim.pc, quim.pc_len);
 	if (quim.setcursor)
 		quim.setcursor(quim.edit_pos);
 	//Con_Print("UIM_Update\n");
