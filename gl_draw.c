@@ -1234,7 +1234,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 						{
 							colorindex = tempcolorindex | 0xf;
 							// ...done! now colorindex has rgba codes (1,rrrr,gggg,bbbb,aaaa)
-							i+=3;
+							i+=4;
 							text += 4;
 							continue;
 						}
@@ -1438,7 +1438,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 								// ...done! now colorindex has rgba codes (1,rrrr,gggg,bbbb,aaaa)
 								//Con_Printf("^1colorindex:^7 %x\n", colorindex);
 								DrawQ_GetTextColor(color, colorindex, basered, basegreen, baseblue, basealpha, shadow);
-								i+=3;
+								i+=4;
 								text+=4;
 								continue;
 							}
