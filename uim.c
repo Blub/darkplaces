@@ -601,7 +601,7 @@ static void UIM_Commit(void *cookie, const char *str)
 {
 	++quim.actions;
 	quim.pushed = 0;
-	Con_Printf("UIM_Commit: %s\n", str);
+	//Con_Printf("UIM_Commit: %s\n", str);
 	UIM_Clear(cookie);
 	if (!UIM_Insert(str))
 	{
@@ -628,7 +628,7 @@ static void UIM_Clear(void *cookie)
 {
 	++quim.actions;
 	quim.pushed = 0;
-	Con_Print("UIM_Clear\n");
+	//Con_Print("UIM_Clear\n");
 	memmove(quim.buffer + quim.buffer_pos,
 		quim.buffer + quim.edit_pos,
 		quim.buffer_size - quim.edit_pos);
@@ -650,7 +650,7 @@ static void UIM_Push(void *cookie, int attr, const char *str)
 	if (!str[0])
 		return;
 	++quim.pushed;
-	Con_Printf("UIM_Push: (%i) [%s] <%lu>\n", attr, str, strlen(str));
+	//Con_Printf("UIM_Push: (%i) [%s] <%lu>\n", attr, str, strlen(str));
 	if ((attr & (UPreeditAttr_Cursor | UPreeditAttr_Reverse)) == (UPreeditAttr_Cursor | UPreeditAttr_Reverse))
 	{
 		quim.cursor_pos = quim.edit_pos;
@@ -712,7 +712,7 @@ static void UIM_Update(void *cookie)
 		UIM_Insert2(quim.pc, quim.pc_len);
 	if (quim.setcursor)
 		quim.setcursor(quim.edit_pos);
-	Con_Print("UIM_Update\n");
+	//Con_Print("UIM_Update\n");
 	// well, of course
 	// we could allocate a buffer in which we work
 	// and only update on "update"
