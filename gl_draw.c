@@ -1145,7 +1145,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	int colorindex = STRING_COLOR_DEFAULT;
 	size_t i;
 	float x = 0;
-	Uchar ch, mapch;
+	Uchar ch, mapch, nextch;
 	Uchar prevch = 0; // used for kerning
 	int tempcolorindex;
 	float kx;
@@ -1189,20 +1189,22 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 
 	for (i = 0;i < *maxlen && *text;)
 	{
+		ch = u8_getchar(text, &text);
+		//i = text - text_start;
+		if (!ch)
+			break;
 		if (snap)
 			x = snap_to_pixel_x(x, 0.4);
-		if (*text == ' ' && !fontmap)
+		if (ch == ' ' && !fontmap)
 		{
 			if(x + fnt->width_of[(int) ' '] * w > maxwidth)
 				break; // oops, can't draw this
 			x += fnt->width_of[(int) ' '] * w;
-			++text;
 			++i;
 			continue;
 		}
-		if (*text == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < *maxlen)
+		if (ch == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < *maxlen)
 		{
-			++text;
 			++i;
 			ch = *text; // colors are ascii, so no u8_ needed
 			if (ch <= '9' && ch >= '0') // ^[0-9] found
@@ -1251,10 +1253,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 			i--;
 			text--;
 		}
-		ch = u8_getchar(text, &text);
-		//i = text - text_start;
-		if (!ch)
-			break;
+		ch = nextch;
 		++i;
 
 		if (!fontmap || (ch <= 0xFF && fontmap->glyphs[ch].image) || (ch >= 0xE000 && ch <= 0xE0FF))
@@ -1309,7 +1308,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	float vertex3f[QUADELEMENTS_MAXQUADS*4*3];
 	float texcoord2f[QUADELEMENTS_MAXQUADS*4*2];
 	float color4f[QUADELEMENTS_MAXQUADS*4*4];
-	Uchar ch, mapch;
+	Uchar ch, mapch, nextch;
 	Uchar prevch = 0; // used for kerning
 	int tempcolorindex;
 	int map_index;
@@ -1390,21 +1389,23 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 		}
 		for (i = 0;i < maxlen && *text;)
 		{
+			nextch = ch = u8_getchar(text, &text);
+			//i = text - text_start;
+			if (!ch)
+				break;
 			if (snap)
 			{
 				x = snap_to_pixel_x(x, 0.4);
 				y = snap_to_pixel_y(y, 0.4);
 			}
-			if (*text == ' ' && !fontmap)
+			if (ch == ' ' && !fontmap)
 			{
 				x += fnt->width_of[(int) ' '] * w;
-				++text;
 				++i;
 				continue;
 			}
-			if (*text == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < maxlen)
+			if (ch == STRING_COLOR_TAG && !ignorecolorcodes && i + 1 < maxlen)
 			{
-				++text;
 				++i;
 				ch = *text; // colors are ascii, so no u8_ needed
 				if (ch <= '9' && ch >= '0') // ^[0-9] found
@@ -1456,10 +1457,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				i--;
 				text--;
 			}
-			ch = u8_getchar(text, &text);
-			//i = text - text_start;
-			if (!ch)
-				break;
+			// get the backup
+			ch = nextch;
 			++i;
 			// using a value of -1 for the oldstyle map because NULL means uninitialized...
 			// this way we don't need to rebind fnt->tex for every old-style character
