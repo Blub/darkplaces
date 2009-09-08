@@ -1251,7 +1251,6 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 				text++;
 			}
 			i--;
-			text--;
 		}
 		ch = nextch;
 		++i;
@@ -1455,7 +1454,6 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 					text++;
 				}
 				i--;
-				text--;
 			}
 			// get the backup
 			ch = nextch;
