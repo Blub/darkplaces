@@ -782,6 +782,8 @@ static void LoadFont_f(void)
 	else
 		filelist = Cmd_Argv(2);
 
+	memset(f->fallbacks, 0, sizeof(f->fallbacks));
+	memset(f->fallback_faces, 0, sizeof(f->fallback_faces));
 
 	// first font is handled "normally"
 	c = strchr(filelist, ':');
