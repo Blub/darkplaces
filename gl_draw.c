@@ -1257,13 +1257,14 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 			break;
 		++i;
 
-		if (!fontmap || (ch >= 0xE000 && ch <= 0xE0FF))
+		if (!fontmap || (ch <= 0xFF && fontmap->glyphs[ch].image) || (ch >= 0xE000 && ch <= 0xE0FF))
 		{
 			if (ch > 0xE000)
 				ch -= 0xE000;
 			if (ch > 0xFF)
 				continue;
-			map = ft2_oldstyle_map;
+			if (fontmap)
+				map = ft2_oldstyle_map;
 			prevch = 0;
 			if(x + fnt->width_of[ch] * w > maxwidth)
 				break; // oops, can't draw this
@@ -1463,7 +1464,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			// using a value of -1 for the oldstyle map because NULL means uninitialized...
 			// this way we don't need to rebind fnt->tex for every old-style character
 			// E000..E0FF: emulate old-font characters (to still have smileys and such available)
-			if (!fontmap || (ch >= 0xE000 && ch <= 0xE0FF))
+			if (!fontmap || (ch <= 0xFF && fontmap->glyphs[ch].image) || (ch >= 0xE000 && ch <= 0xE0FF))
 			{
 				if (ch > 0xE000)
 					ch -= 0xE000;

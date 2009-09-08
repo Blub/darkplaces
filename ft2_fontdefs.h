@@ -9,6 +9,7 @@
 
 typedef struct glyph_slot_s
 {
+	qboolean image;
 	// we keep the quad coords here only currently
 	// if you need other info, make Font_LoadMapForIndex fill it into this slot
 	float txmin; // texture coordinate in [0,1]
@@ -34,6 +35,7 @@ struct ft2_font_map_s
 	int                    glyphSize;
 
 	rtexture_t            *texture;
+	qboolean               static_tex;
 	glyph_slot_t           glyphs[FONT_CHARS_PER_MAP];
 
 	// contains the kerning information for the first 256 characters

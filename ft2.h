@@ -39,6 +39,7 @@ typedef struct ft2_font_s
 	float		currenth;
 	float           ascend;
 	float           descend;
+	qboolean        image_font; // only fallbacks are freetype fonts
 
 	// TODO: clean this up and do not expose everything.
 	
