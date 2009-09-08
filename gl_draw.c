@@ -1149,7 +1149,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 	Uchar prevch = 0; // used for kerning
 	int tempcolorindex;
 	float kx;
-	int map_index;
+	int map_index = 0;
 	ft2_font_map_t *fontmap = NULL;
 	ft2_font_map_t *map = NULL;
 	ft2_font_map_t *prevmap = NULL;
@@ -1311,7 +1311,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	Uchar ch, mapch, nextch;
 	Uchar prevch = 0; // used for kerning
 	int tempcolorindex;
-	int map_index;
+	int map_index = 0;
 	ft2_font_map_t *prevmap = NULL; // the previous map
 	ft2_font_map_t *map = NULL;     // the currently used map
 	ft2_font_map_t *fontmap = NULL; // the font map for the size
