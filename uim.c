@@ -583,7 +583,7 @@ static qboolean UIM_Insert2(const char *str, size_t _slen)
 	//Con_Printf("Insertion point: %lu\n", (unsigned long)quim.edit_pos);
 	memmove(quim.buffer + quim.edit_pos + slen,
 		quim.buffer + quim.edit_pos,
-		quim.buffer_size - quim.edit_pos - slen + 1);
+		quim.buffer_size - quim.edit_pos - slen);
 	memcpy(quim.buffer + quim.edit_pos, str, slen);
 	if (quim.edit_pos >= quim.length)
 		quim.buffer[quim.edit_pos + slen] = 0;
@@ -601,7 +601,7 @@ static void UIM_Commit(void *cookie, const char *str)
 {
 	++quim.actions;
 	quim.pushed = 0;
-	//Con_Printf("UIM_Commit: %s\n", str);
+	Con_Printf("UIM_Commit: %s\n", str);
 	UIM_Clear(cookie);
 	if (!UIM_Insert(str))
 	{
@@ -628,10 +628,10 @@ static void UIM_Clear(void *cookie)
 {
 	++quim.actions;
 	quim.pushed = 0;
-	//Con_Print("UIM_Clear\n");
+	Con_Print("UIM_Clear\n");
 	memmove(quim.buffer + quim.buffer_pos,
 		quim.buffer + quim.edit_pos,
-		quim.buffer_size - quim.edit_pos + 1);
+		quim.buffer_size - quim.edit_pos);
 	quim.edit_pos = quim.buffer_pos;
 	quim.edit_length = 0;
 	quim.cursor_pos = quim.edit_pos;
@@ -647,8 +647,10 @@ static void UIM_Clear(void *cookie)
 static void UIM_Push(void *cookie, int attr, const char *str)
 {
 	++quim.actions;
+	if (!str[0])
+		return;
 	++quim.pushed;
-	//Con_Printf("UIM_Push: (%i) %s\n", attr, str);
+	Con_Printf("UIM_Push: (%i) [%s] <%lu>\n", attr, str, strlen(str));
 	if ((attr & (UPreeditAttr_Cursor | UPreeditAttr_Reverse)) == (UPreeditAttr_Cursor | UPreeditAttr_Reverse))
 	{
 		quim.cursor_pos = quim.edit_pos;
@@ -710,7 +712,7 @@ static void UIM_Update(void *cookie)
 		UIM_Insert2(quim.pc, quim.pc_len);
 	if (quim.setcursor)
 		quim.setcursor(quim.edit_pos);
-	//Con_Print("UIM_Update\n");
+	Con_Print("UIM_Update\n");
 	// well, of course
 	// we could allocate a buffer in which we work
 	// and only update on "update"
@@ -746,7 +748,7 @@ static void UIM_Select(void *cookie, int index)
 		// erase the part in the cursor:
 		memmove(quim.buffer + quim.cursor_inpos,
 			quim.buffer + quim.cursor_inpos + quim.cursor_inlength,
-			quim.buffer_size - quim.cursor_inpos - quim.cursor_inlength + 1);
+			quim.buffer_size - quim.cursor_inpos - quim.cursor_inlength);
 		quim.cursor_length -= quim.cursor_inlength;
 		quim.cursor_inpos -= quim.cursor_inlength;
 		quim.edit_length -= quim.cursor_inlength;
@@ -760,7 +762,7 @@ static void UIM_Select(void *cookie, int index)
 	// move the cursor-end + tail
 	memmove(quim.buffer + quim.cursor_inpos + quim.cursor_inlength,
 		quim.buffer + quim.cursor_pos + quim.cursor_length,
-		quim.buffer_size - quim.cursor_pos - quim.cursor_length + 1);
+		quim.buffer_size - quim.cursor_pos - quim.cursor_length);
 	
 	memcpy(quim.buffer + quim.cursor_inpos, str, slen);
 
