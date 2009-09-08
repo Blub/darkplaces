@@ -1189,7 +1189,7 @@ float DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size(const char *text, float w
 
 	for (i = 0;i < *maxlen && *text;)
 	{
-		ch = u8_getchar(text, &text);
+		nextch = ch = u8_getchar(text, &text);
 		//i = text - text_start;
 		if (!ch)
 			break;
