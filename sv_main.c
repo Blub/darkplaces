@@ -63,7 +63,6 @@ cvar_t sv_areagrid_mingridsize = {CVAR_NOTIFY, "sv_areagrid_mingridsize", "64", 
 cvar_t sv_checkforpacketsduringsleep = {0, "sv_checkforpacketsduringsleep", "0", "uses select() function to wait between frames which can be interrupted by packets being received, instead of Sleep()/usleep()/SDL_Sleep() functions which do not check for packets"};
 cvar_t sv_clmovement_enable = {0, "sv_clmovement_enable", "1", "whether to allow clients to use cl_movement prediction, which can cause choppy movement on the server which may annoy other players"};
 cvar_t sv_clmovement_minping = {0, "sv_clmovement_minping", "0", "if client ping is below this time in milliseconds, then their ability to use cl_movement prediction is disabled for a while (as they don't need it)"};
-cvar_t sv_clmovement_maxnetfps = {0, "sv_clmovement_maxnetfps", "0", "max amount of movement packets to accept per second"};
 cvar_t sv_clmovement_minping_disabletime = {0, "sv_clmovement_minping_disabletime", "1000", "when client falls below minping, disable their prediction for this many milliseconds (should be at least 1000 or else their prediction may turn on/off frequently)"};
 cvar_t sv_clmovement_inputtimeout = {0, "sv_clmovement_inputtimeout", "0.2", "when a client does not send input for this many seconds, force them to move anyway (unlike QuakeWorld)"};
 cvar_t sv_cullentities_nevercullbmodels = {0, "sv_cullentities_nevercullbmodels", "0", "if enabled the clients are always notified of moving doors and lifts and other submodels of world (warning: eats a lot of network bandwidth on some levels!)"};
@@ -350,7 +349,6 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_areagrid_mingridsize);
 	Cvar_RegisterVariable (&sv_checkforpacketsduringsleep);
 	Cvar_RegisterVariable (&sv_clmovement_enable);
-	Cvar_RegisterVariable (&sv_clmovement_maxnetfps);
 	Cvar_RegisterVariable (&sv_clmovement_minping);
 	Cvar_RegisterVariable (&sv_clmovement_minping_disabletime);
 	Cvar_RegisterVariable (&sv_clmovement_inputtimeout);
@@ -1829,7 +1827,7 @@ void SV_FlushBroadcastMessages(void)
 	SZ_Clear(&sv.datagram);
 }
 
-static void SV_WriteUnreliableMessages(client_t *client, sizebuf_t *msg, int maxsize)
+static void SV_WriteUnreliableMessages(client_t *client, sizebuf_t *msg, int maxsize, int maxsize2)
 {
 	// scan the splitpoints to find out how many we can fit in
 	int numsegments, j, split;
@@ -1838,34 +1836,28 @@ static void SV_WriteUnreliableMessages(client_t *client, sizebuf_t *msg, int max
 	// always accept the first one if it's within 1024 bytes, this ensures
 	// that very big datagrams which are over the rate limit still get
 	// through, just to keep it working
-	j = msg->cursize + client->unreliablemsg_splitpoint[0];
-	if (maxsize < 1024 && j > maxsize && j <= 1024)
-	{
-		numsegments = 1;
-		maxsize = 1024;
-	}
-	else
-		for (numsegments = 0;numsegments < client->unreliablemsg_splitpoints;numsegments++)
-			if (msg->cursize + client->unreliablemsg_splitpoint[numsegments] > maxsize)
-				break;
-	if (numsegments > 0)
-	{
-		// some will fit, so add the ones that will fit
-		split = client->unreliablemsg_splitpoint[numsegments-1];
-		// note this discards ones that were accepted by the segments scan but
-		// can not fit, such as a really huge first one that will never ever
-		// fit in a packet...
-		if (msg->cursize + split <= maxsize)
-			SZ_Write(msg, client->unreliablemsg.data, split);
-		// remove the part we sent, keeping any remaining data
-		client->unreliablemsg.cursize -= split;
-		if (client->unreliablemsg.cursize > 0)
-			memmove(client->unreliablemsg.data, client->unreliablemsg.data + split, client->unreliablemsg.cursize);
-		// adjust remaining splitpoints
-		client->unreliablemsg_splitpoints -= numsegments;
-		for (j = 0;j < client->unreliablemsg_splitpoints;j++)
-			client->unreliablemsg_splitpoint[j] = client->unreliablemsg_splitpoint[numsegments + j] - split;
-	}
+	for (numsegments = 1;numsegments < client->unreliablemsg_splitpoints;numsegments++)
+		if (msg->cursize + client->unreliablemsg_splitpoint[numsegments] > maxsize)
+			break;
+	// the first segment gets an exemption from the rate limiting, otherwise
+	// it could get dropped consistently due to a low rate limit
+	if (numsegments == 1)
+		maxsize = maxsize2;
+	// some will fit, so add the ones that will fit
+	split = client->unreliablemsg_splitpoint[numsegments-1];
+	// note this discards ones that were accepted by the segments scan but
+	// can not fit, such as a really huge first one that will never ever
+	// fit in a packet...
+	if (msg->cursize + split <= maxsize)
+		SZ_Write(msg, client->unreliablemsg.data, split);
+	// remove the part we sent, keeping any remaining data
+	client->unreliablemsg.cursize -= split;
+	if (client->unreliablemsg.cursize > 0)
+		memmove(client->unreliablemsg.data, client->unreliablemsg.data + split, client->unreliablemsg.cursize);
+	// adjust remaining splitpoints
+	client->unreliablemsg_splitpoints -= numsegments;
+	for (j = 0;j < client->unreliablemsg_splitpoints;j++)
+		client->unreliablemsg_splitpoint[j] = client->unreliablemsg_splitpoint[numsegments + j] - split;
 }
 
 /*
@@ -1971,7 +1963,7 @@ static void SV_SendClientDatagram (client_t *client)
 		// add as many queued unreliable messages (effects) as we can fit
 		// limit effects to half of the remaining space
 		if (client->unreliablemsg.cursize)
-			SV_WriteUnreliableMessages (client, &msg, (msg.cursize + maxsize) / 2);
+			SV_WriteUnreliableMessages (client, &msg, maxsize/2, maxsize2);
 
 		// now write as many entities as we can fit, and also sends stats
 		SV_WriteEntitiesToClient (client, client->edict, &msg, maxsize);

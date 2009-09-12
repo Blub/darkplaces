@@ -1338,6 +1338,7 @@ void CL_UpdateMoveVars(void)
 	}
 	else if (cl.stats[STAT_MOVEVARS_TICRATE])
 	{
+		cl.movevars_ticrate = cl.statsf[STAT_MOVEVARS_TICRATE];
 		cl.movevars_timescale = cl.statsf[STAT_MOVEVARS_TIMESCALE];
 		cl.movevars_gravity = cl.statsf[STAT_MOVEVARS_GRAVITY];
 		cl.movevars_stopspeed = cl.statsf[STAT_MOVEVARS_STOPSPEED] ;
@@ -1368,6 +1369,7 @@ void CL_UpdateMoveVars(void)
 	}
 	else
 	{
+		cl.movevars_ticrate = slowmo.value / bound(1.0f, cl_netfps.value, 1000.0f);
 		cl.movevars_timescale = slowmo.value;
 		cl.movevars_gravity = sv_gravity.value;
 		cl.movevars_stopspeed = cl_movement_stopspeed.value;
@@ -1655,9 +1657,18 @@ void CL_SendMove(void)
 	// don't send too often or else network connections can get clogged by a
 	// high renderer framerate
 	packettime = 1.0 / bound(1, cl_netfps.value, 1000);
+	if (cl.movevars_timescale && cl.movevars_ticrate)
+	{
+		float maxtic = cl.movevars_ticrate / cl.movevars_timescale;
+		packettime = min(packettime, maxtic);
+	}
 	// send input every frame in singleplayer
 	if (cl.islocalgame)
 		packettime = 0;
+
+	// do not send if we do not have anything useful to send
+	if(msecdelta <= 0)
+		return;
 	// always send if buttons changed or an impulse is pending
 	// even if it violates the rate limit!
 	if (!cl.movecmd[0].impulse && (!cl_netimmediatebuttons.integer || cl.movecmd[0].buttons == cl.movecmd[1].buttons))
@@ -1785,7 +1796,7 @@ void CL_SendMove(void)
 		case PROTOCOL_DARKPLACES6:
 		case PROTOCOL_DARKPLACES7:
 			// set the maxusercmds variable to limit how many should be sent
-			maxusercmds = bound(1, cl_netrepeatinput.integer + 1, CL_MAX_USERCMDS);
+			maxusercmds = bound(1, cl_netrepeatinput.integer + 1, min(3, CL_MAX_USERCMDS));
 			// when movement prediction is off, there's not much point in repeating old input as it will just be ignored
 			if (!cl.cmd.predicted)
 				maxusercmds = 1;
