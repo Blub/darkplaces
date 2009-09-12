@@ -2947,12 +2947,24 @@ string	chr(float ascii)
 */
 void VM_chr(void)
 {
+	/*
 	char tmp[2];
 	VM_SAFEPARMCOUNT(1, VM_chr);
 
 	tmp[0] = (unsigned char) PRVM_G_FLOAT(OFS_PARM0);
 	tmp[1] = 0;
 
+	PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(tmp);
+	*/
+	
+	char tmp[8];
+	int len;
+	VM_SAFEPARMCOUNT(1, VM_chr);
+
+	len = u8_fromchar((Uchar)PRVM_G_FLOAT(OFS_PARM0), tmp, sizeof(tmp));
+	if (len < 0)
+		len = 0;
+	tmp[len] = 0;
 	PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(tmp);
 }
 
