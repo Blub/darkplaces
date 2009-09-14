@@ -889,6 +889,12 @@ typedef struct client_state_s
 	// how long it has been since the previous client frame in real time
 	// (not game time, for that use cl.time - cl.oldtime)
 	double realframetime;
+	
+	// fade var for fading while dead
+	float deathfade;
+
+	// motionblur alpha level variable
+	float motionbluralpha;
 
 	// copy of realtime from last recieved message, for net trouble icon
 	float last_received_message;
@@ -1076,6 +1082,7 @@ typedef struct client_state_s
 	float movevars_warsowbunny_topspeed;
 	float movevars_warsowbunny_turnaccel;
 	float movevars_warsowbunny_backtosideratio;
+	float movevars_ticrate;
 
 	// models used by qw protocol
 	int qw_modelindex_spike;
