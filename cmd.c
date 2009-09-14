@@ -203,14 +203,15 @@ size_t Con_GetTID(void)
 	return cmd_tid;
 }
 
-qboolean Con_SetTID (size_t tid)
+qboolean Con_SetTID (size_t tid, qboolean quiet)
 {
 	cmd_executor_t *ex;
 
 	ex = Mem_ExpandableArray_RecordAtIndex(&cmd_exec_array, tid);
 	if (ex == NULL)
 	{
-		Con_Printf("Con_SetTID: no such id: %lu\n", (unsigned long)tid);
+		if (!quiet)
+			Con_Printf("Con_SetTID: no such id: %lu\n", (unsigned long)tid);
 		return false;
 	}
 
@@ -261,15 +262,16 @@ void Con_Kill(size_t id)
 		return;
 	}
 	Mem_ExpandableArray_FreeRecord(&cmd_exec_array, Mem_ExpandableArray_RecordAtIndex(&cmd_exec_array, id));
+	--cmd_num_executors;
 }
 
 void Cbuf_AddTo (size_t tid, const char *text)
 {
 	size_t old = Con_GetTID();
-	if (Con_SetTID(tid))
+	if (Con_SetTID(tid, false))
 	{
 		Cbuf_AddText(text);
-		Con_SetTID(old);
+		Con_SetTID(old, false);
 	}
 }
 
@@ -336,7 +338,7 @@ static void Cmd_SetTID_f (void)
 		Con_Printf("setid: invalid name: %s\n", Cmd_Argv(1));
 		return;
 	}
-	if (!Con_SetTID(tid))
+	if (!Con_SetTID(tid, false))
 		Con_Printf("setid: invalid instance: %s\n", Cmd_Argv(1));
 }
 
@@ -390,7 +392,7 @@ static void Cmd_Suspend_f (void)
 			return;
 		}
 		cmd_ex->suspended = true;
-		Con_SetTID(0);
+		Con_SetTID(0, false);
 		return;
 	}
 
@@ -597,7 +599,43 @@ Cbuf_Execute
 ============
 */
 static void Cmd_PreprocessString( const char *intext, char *outtext, unsigned maxoutlen, cmdalias_t *alias );
+static void Cbuf_Execute_Instance (void);
 void Cbuf_Execute (void)
+{
+	size_t oldid;
+	size_t numtids;
+	size_t tid;
+	double systime = Sys_DoubleTime();
+
+	Cbuf_Execute_Deferred();
+
+	oldid = Con_GetTID();
+	numtids = Mem_ExpandableArray_IndexRange(&cmd_exec_array);
+	for (tid = 0; tid < numtids; ++tid)
+	{
+		if (!Con_SetTID(tid, true))
+			continue;
+		if (tid != 0)
+		{
+			// only tid != 0 may be suspended or sleep etc.
+			if (cmd_ex->suspended || cmd_ex->sleep > systime)
+				continue;
+			if (cmd_ex->condvar[0])
+			{
+				cvar_t *cv = Cvar_FindVar(cmd_ex->condvar);
+				if (!cv || cv->value)
+					cmd_ex->condvar[0] = 0;
+				else
+					continue;
+			}
+		}
+		Cbuf_Execute_Instance();
+	}
+	if (!Con_SetTID(oldid, true))
+		Con_SetTID(0, false);
+}
+
+static void Cbuf_Execute_Instance (void)
 {
 	int i;
 	char *text;
@@ -609,7 +647,6 @@ void Cbuf_Execute (void)
 	// LordHavoc: making sure the tokenizebuffer doesn't get filled up by repeated crashes
 	cmd_tokenizebufferpos = 0;
 
-	Cbuf_Execute_Deferred();
 	while (cmd_text->cursize)
 	{
 // find a \n or ; line break
@@ -1483,7 +1520,7 @@ void Cmd_Init (void)
 	Mem_ExpandableArray_NewArray(&cmd_exec_array, cmd_mempool, sizeof(cmd_executor_t), 4);
 
 	cmd_ex = Con_Spawn(&cmd_tid);
-	Con_SetTID(cmd_tid);
+	Con_SetTID(cmd_tid, false);
 
 	/*
 	cmd_tid = 0;
