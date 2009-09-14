@@ -198,6 +198,8 @@ static sizebuf_t              *cmd_text = NULL;
 static cmd_executor_t         *cmd_ex = NULL;
 static size_t                  cmd_num_executors = 0;
 
+cvar_t con_this = {CVAR_READONLY, "_cthis","0", "the current console instance id"};
+
 qboolean Con_Running(cmd_executor_t *ex, double systime)
 {
 	if (ex->tid == 0)
@@ -239,6 +241,7 @@ qboolean Con_SetTID (size_t tid, qboolean quiet)
 	cmd_tid = tid;
 	cmd_text = &ex->text;
 	cmd_ex = ex;
+	Cvar_SetValueQuick(&con_this, tid);
 	return true;
 }
 
@@ -549,6 +552,34 @@ static void Cmd_XAdd_f (void)
 	Cbuf_AddText(Cmd_Argv(2));
 	Cbuf_AddText("\n");
 	Con_SetTID(oldid, false);
+}
+
+static void Cmd_SetLocal_f (void)
+{
+	static char varname[MAX_INPUTLINE];
+	cvar_t *cvar;
+
+	// make sure it's the right number of parameters
+	if (Cmd_Argc() < 3)
+	{
+		Con_Printf("setlocal: wrong number of parameters, usage: setlocal <variablename> <value> [<description>]\n");
+		return;
+	}
+
+	// check if it's read-only
+	cvar = Cvar_FindVar(Cmd_Argv(1));
+	if (cvar && cvar->flags & CVAR_READONLY)
+	{
+		Con_Printf("setlocal: %s is read-only\n", cvar->name);
+		return;
+	}
+
+	if (developer.integer >= 100)
+		Con_DPrint("Set: ");
+
+	// all looks ok, create/modify the cvar
+	dpsnprintf(varname, sizeof(varname), "_cin_%lu_%s", (unsigned long)cmd_tid, Cmd_Argv(1));
+	Cvar_Get(varname, Cmd_Argv(2), 0, Cmd_Argc() > 3 ? Cmd_Argv(3) : NULL);
 }
 
 /*
@@ -1257,6 +1288,21 @@ static const char *Cmd_GetCvarValue(const char *var, size_t varlen, cmdalias_t *
 	{
 		*varfunc = 0;
 		++varfunc;
+		if (!memcmp(varfunc, "local", 5) && (varfunc[5] == ' ' || !varfunc[5]))
+		{
+			static char tmp[MAX_INPUTLINE];
+			int len;
+			len = dpsnprintf(tmp, sizeof(tmp), "_cin_%lu_", (unsigned long)cmd_tid);
+			memcpy(tmp + len, varname, varfunc - varname - 1);
+			strlcpy(tmp + len + (varfunc - varname - 1), varfunc + 5, sizeof(tmp) - len - (varfunc - varname - 1));
+			memcpy(varname, tmp, sizeof(varname));
+			varfunc = strchr(varname, ' ');
+			if(varfunc)
+			{
+				*varfunc = 0;
+				++varfunc;
+			}
+		}
 	}
 
 	if(*var == 0)
@@ -1558,6 +1604,7 @@ Cmd_Init
 void Cmd_Init (void)
 {
 	cmd_mempool = Mem_AllocPool("commands", 0, NULL);
+	Cvar_RegisterVariable(&con_this);
 	// space for commands and script files
 	Mem_ExpandableArray_NewArray(&cmd_exec_array, cmd_mempool, sizeof(cmd_executor_t), 4);
 
@@ -1613,6 +1660,7 @@ void Cmd_Init_Commands (void)
 	Cmd_AddCommand ("resume", Cmd_Resume_f, "resume the execution of a console instance");
 	Cmd_AddCommand ("xkill", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
 	Cmd_AddCommand ("xadd", Cmd_XAdd_f, "add a command to a console instance");
+	Cmd_AddCommand ("setlocal", Cmd_SetLocal_f, "set a instance-local cvar");
 
 	// DRESK - 5/14/06
 	// Support Doom3-style Toggle Command
