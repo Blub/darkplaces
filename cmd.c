@@ -295,7 +295,8 @@ static void Cmd_Spawn_f (void)
 			continue;
 		}
 		//Cvar_Set(Cmd_Argv(i), va("%i", (int)id));
-		Cvar_SetValue(Cmd_Argv(i), id);
+		//Cvar_SetValue(Cmd_Argv(i), id);
+		Cvar_Get(Cmd_Argv(i), va("%i", (int)id), 0, "a console instance");
 	}
 }
 
