@@ -198,6 +198,27 @@ static sizebuf_t              *cmd_text = NULL;
 static cmd_executor_t         *cmd_ex = NULL;
 static size_t                  cmd_num_executors = 0;
 
+qboolean Con_Running(cmd_executor_t *ex, double systime)
+{
+	if (ex->tid == 0)
+		return true;
+	if (ex->suspended || ex->sleep > systime)
+		return false;
+	if (ex->condvar[0])
+	{
+		cvar_t *c = Cvar_FindVar(ex->condvar);
+		if (!c)
+			return true;
+		if (c->integer)
+		{
+			ex->condvar[0] = 0;
+			return true;
+		}
+		return false;
+	}
+	return true;
+}
+
 size_t Con_GetTID(void)
 {
 	return cmd_tid;
@@ -630,7 +651,7 @@ Cbuf_Execute
 ============
 */
 static void Cmd_PreprocessString( const char *intext, char *outtext, unsigned maxoutlen, cmdalias_t *alias );
-static void Cbuf_Execute_Instance (void);
+static void Cbuf_Execute_Instance (double systime);
 void Cbuf_Execute (void)
 {
 	size_t oldid;
@@ -646,27 +667,15 @@ void Cbuf_Execute (void)
 	{
 		if (!Con_SetTID(tid, true))
 			continue;
-		if (tid != 0)
-		{
-			// only tid != 0 may be suspended or sleep etc.
-			if (cmd_ex->suspended || cmd_ex->sleep > systime)
-				continue;
-			if (cmd_ex->condvar[0])
-			{
-				cvar_t *cv = Cvar_FindVar(cmd_ex->condvar);
-				if (!cv || cv->value)
-					cmd_ex->condvar[0] = 0;
-				else
-					continue;
-			}
-		}
-		Cbuf_Execute_Instance();
+		if (!Con_Running(cmd_ex, systime))
+			continue;
+		Cbuf_Execute_Instance(systime);
 	}
 	if (!Con_SetTID(oldid, true))
 		Con_SetTID(0, false);
 }
 
-static void Cbuf_Execute_Instance (void)
+static void Cbuf_Execute_Instance (double systime)
 {
 	int i;
 	char *text;
@@ -675,15 +684,12 @@ static void Cbuf_Execute_Instance (void)
 	char *firstchar;
 	qboolean quotes, comment;
 	size_t id;
-	double systime = Sys_DoubleTime();
 
 	// LordHavoc: making sure the tokenizebuffer doesn't get filled up by repeated crashes
 	cmd_tokenizebufferpos = 0;
 
 	id = cmd_ex->tid;
-	while (cmd_ex->tid == id &&
-	       (id == 0 || (!cmd_ex->suspended && cmd_ex->sleep <= systime))
-	       && cmd_text->cursize)
+	while (cmd_ex->tid == id && Con_Running(cmd_ex, systime) && cmd_text->cursize)
 	{
 // find a \n or ; line break
 		text = (char *)cmd_text->data;
