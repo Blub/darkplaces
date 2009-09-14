@@ -374,6 +374,8 @@ static void Cmd_Sleep_f (void)
 		ex->sleep = systime + sleeptime;
 	else
 		ex->sleep += sleeptime;
+	if (ex->tid == cmd_ex->tid)
+		Con_SetTID(0, false);
 }
 
 static void Cmd_Suspend_f (void)
@@ -497,6 +499,30 @@ static void Cmd_XKill_f (void)
 		Con_Kill(id);
 		return;
 	}
+}
+
+static void Cmd_XAdd_f (void)
+{
+	size_t id;
+	size_t oldid;
+
+	if (Cmd_Argc() != 3)
+	{
+		Con_Print("xadd <instance> <command> : Append <command> to a console instance's command buffer\n");
+		return;
+	}
+
+	if (!Con_ForName(Cmd_Argv(1), &id, NULL))
+		return;
+
+	oldid = Con_GetTID();
+	if (!Con_SetTID(id, false))
+	{
+		Con_Printf("xadd: cannot append to %s\n", Cmd_Argv(1));
+		return;
+	}
+	Cbuf_AddText(Cmd_Argv(2));
+	Con_SetTID(oldid, false);
 }
 
 /*
@@ -1564,12 +1590,13 @@ void Cmd_Init_Commands (void)
 	Cmd_AddCommand ("defer", Cmd_Defer_f, "execute a command in the future");
 
 	Cmd_AddCommand ("spawn", Cmd_Spawn_f, "spawn new console instances, their IDs are stored in the provided cvars");
-	Cmd_AddCommand ("setid", Cmd_SetTID_f, "set the console-ID to which new input-commands are being added, has no effect when an invalid id is provided");
+	Cmd_AddCommand ("setid", Cmd_SetTID_f, "experts only! set the console-ID to which new input-commands are being added, has no effect when an invalid id is provided");
 	Cmd_AddCommand ("sleep", Cmd_Sleep_f, "let the current, or a specific console instance sleep for some time in the background");
 	Cmd_AddCommand ("xcond", Cmd_Cond_f, "suspend a console instance until a cvar becomes true (not-null)");
 	Cmd_AddCommand ("suspend", Cmd_Suspend_f, "suspend a console instance, when suspending the current console, this also does 'setid 0'");
 	Cmd_AddCommand ("resume", Cmd_Resume_f, "resume the execution of a console instance");
 	Cmd_AddCommand ("xkill", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
+	Cmd_AddCommand ("xadd", Cmd_XAdd_f, "add a command to a console instance");
 
 	// DRESK - 5/14/06
 	// Support Doom3-style Toggle Command
