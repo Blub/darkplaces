@@ -495,6 +495,46 @@ static void Cmd_Cond_f (void)
 	}
 }
 
+static void Cmd_CondLocal_f (void)
+{
+	const char *cvar;
+	int i;
+	size_t id;
+	cmd_executor_t *ex;
+
+	if (Cmd_Argc() < 2)
+	{
+		Con_Print("xcond <cvar> [<instance>...] : Suspend a console instance until cvar becomes not-null\n");
+		return;
+	}
+
+	cvar = Cmd_Argv(1);
+	if (!Cvar_FindVar(cvar))
+	{
+		Con_Printf("xcond: no such cvar \"%s\"\n", cvar);
+		return;
+	}
+
+	if (Cmd_Argc() == 2)
+	{
+		id = Con_GetTID();
+		if (id == 0)
+		{
+			Con_Print("xcond: Cannot suspend instance 0\n");
+			return;
+		}
+		strlcpy(cmd_ex->condvar, cvar, sizeof(cmd_ex->condvar));
+		return;
+	}
+
+	for (i = 2; i < Cmd_Argc(); ++i)
+	{
+		if (!Con_ForName(Cmd_Argv(i), NULL, &ex))
+			continue;
+		dpsnprintf(ex->condvar, sizeof(ex->condvar), "_cin_%lu_%s", (unsigned long) ex->tid, cvar);
+	}
+}
+
 static void Cmd_XKill_f (void)
 {
 	size_t id;
@@ -1691,6 +1731,7 @@ void Cmd_Init_Commands (void)
 	Cmd_AddCommand ("setid", Cmd_SetTID_f, "experts only! set the console-ID to which new input-commands are being added, has no effect when an invalid id is provided");
 	Cmd_AddCommand ("sleep", Cmd_Sleep_f, "let the current, or a specific console instance sleep for some time in the background");
 	Cmd_AddCommand ("xcond", Cmd_Cond_f, "suspend a console instance until a cvar becomes true (not-null)");
+	Cmd_AddCommand ("xcondl", Cmd_CondLocal_f, "suspend a console instance until a local cvar becomes true (not-null)");
 	Cmd_AddCommand ("suspend", Cmd_Suspend_f, "suspend a console instance, when suspending the current console, this also does 'setid 0'");
 	Cmd_AddCommand ("resume", Cmd_Resume_f, "resume the execution of a console instance");
 	Cmd_AddCommand ("xkill", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
