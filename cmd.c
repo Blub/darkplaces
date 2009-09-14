@@ -504,23 +504,18 @@ static void Cmd_CondLocal_f (void)
 
 	if (Cmd_Argc() < 2)
 	{
-		Con_Print("xcond <cvar> [<instance>...] : Suspend a console instance until cvar becomes not-null\n");
+		Con_Print("xcondl <cvar> [<instance>...] : Suspend a console instance until cvar becomes not-null\n");
 		return;
 	}
 
 	cvar = Cmd_Argv(1);
-	if (!Cvar_FindVar(cvar))
-	{
-		Con_Printf("xcond: no such cvar \"%s\"\n", cvar);
-		return;
-	}
 
 	if (Cmd_Argc() == 2)
 	{
 		id = Con_GetTID();
 		if (id == 0)
 		{
-			Con_Print("xcond: Cannot suspend instance 0\n");
+			Con_Print("xcondl: Cannot suspend instance 0\n");
 			return;
 		}
 		strlcpy(cmd_ex->condvar, cvar, sizeof(cmd_ex->condvar));
