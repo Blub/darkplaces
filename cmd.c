@@ -523,6 +523,7 @@ static void Cmd_XAdd_f (void)
 		return;
 	}
 	Cbuf_AddText(Cmd_Argv(2));
+	Cbuf_AddText("\n");
 	Con_SetTID(oldid, false);
 }
 
@@ -670,11 +671,14 @@ static void Cbuf_Execute_Instance (void)
 	char preprocessed[MAX_INPUTLINE];
 	char *firstchar;
 	qboolean quotes, comment;
+	size_t id;
+	double systime = Sys_DoubleTime();
 
 	// LordHavoc: making sure the tokenizebuffer doesn't get filled up by repeated crashes
 	cmd_tokenizebufferpos = 0;
 
-	while (cmd_text->cursize)
+	id = cmd_ex->tid;
+	while (cmd_ex->tid == id && !cmd_ex->suspended && cmd_ex->sleep < systime && cmd_text->cursize)
 	{
 // find a \n or ; line break
 		text = (char *)cmd_text->data;
