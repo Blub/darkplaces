@@ -188,6 +188,8 @@ typedef struct {
 	unsigned char text_buf[CMDBUFSIZE];
 	double        sleep;
 	size_t        tid;
+	qboolean      suspended;
+	char          condvar[128];
 } cmd_executor_t;
 
 static memexpandablearray_t    cmd_exec_array;
@@ -243,9 +245,22 @@ cmd_executor_t *Con_Spawn(size_t *out_id)
 	ex->text.cursize = 0;
 	ex->sleep = 0;
 	ex->tid = id;
+	ex->suspended = false;
+	ex->sleep = 0;
+	ex->condvar[0] = 0;
 	if (out_id)
 		*out_id = id;
 	return ex;
+}
+
+void Con_Kill(size_t id)
+{
+	if (id == 0)
+	{
+		Con_Print("Con_Kill(): Cannot kill console instance 0\n");
+		return;
+	}
+	Mem_ExpandableArray_FreeRecord(&cmd_exec_array, Mem_ExpandableArray_RecordAtIndex(&cmd_exec_array, id));
 }
 
 void Cbuf_AddTo (size_t tid, const char *text)
@@ -274,48 +289,213 @@ static void Cmd_Spawn_f (void)
 		ex = Con_Spawn(&id);
 		if (ex == NULL)
 		{
-			Con_Print("Failed to spawn instance for: %s\n", Cmd_Argv(i));
+			Con_Printf("Failed to spawn instance for: %s\n", Cmd_Argv(i));
 			continue;
 		}
-		Cvar_SetValue(Cmd_Argv(i), va("%i", (int)id));
+		//Cvar_Set(Cmd_Argv(i), va("%i", (int)id));
+		Cvar_SetValue(Cmd_Argv(i), id);
 	}
+}
+
+static qboolean Con_ForName(const char *name, size_t *out_id, cmd_executor_t **out_ex)
+{
+	size_t id;
+	cvar_t *c;
+	cmd_executor_t *x;
+
+	if (isdigit(name[0]))
+		id = (size_t)atoi(name);
+	else
+	{
+		c = Cvar_FindVar(name);
+		if (!name)
+			return false;
+		id = (size_t)c->integer;
+	}
+
+	x = Mem_ExpandableArray_RecordAtIndex(&cmd_exec_array, id);
+	if (x == NULL)
+		return false;
+	if (out_ex)
+		*out_ex = x;
+	if (out_id)
+		*out_id = id;
+	return true;
 }
 
 static void Cmd_SetTID_f (void)
 {
-	const char *cid;
 	size_t tid = 0;
 	if (Cmd_Argc() != 1)
 	{
 		Con_Print("setid <id|cvar> : Use the specified console instance by ID or cvar containing an ID\n");
 		return;
 	}
-	cid = Cmd_Argv(1);
-	if (isdigit(cid[0]))
-		tid = (size_t)atoi(cid);
-	else
+	if (!Con_ForName(Cmd_Argv(1), &tid, NULL))
 	{
-		cvar_t *c = Cvar_Get(cid);
-		if (!c)
-		{
-			Con_Printf("setid: invalid name: %s\n", cid);
-			return;
-		}
-		tid = (size_t)c->integer;
+		Con_Printf("setid: invalid name: %s\n", Cmd_Argv(1));
+		return;
 	}
 	if (!Con_SetTID(tid))
-		Con_Printf("setid: invalid instance: %s\n", cid);
+		Con_Printf("setid: invalid instance: %s\n", Cmd_Argv(1));
 }
 
-/*
-Cmd_AddCommand ("spawn", Cmd_Spawn_f, "spawn new console instances, their IDs are stored in the provided cvars");
-Cmd_AddCommand ("setid", Cmd_SetTID_f, "set the console-ID to which new input-commands are being added, has no effect when an invalid id is provided");
-Cmd_AddCommand ("sleep", Cmd_Sleep_f, "let the current, or a specific console instance sleep for some time in the background");
-Cmd_AddCommand ("xcond", Cmd_Cond_f, "suspend a console instance until a cvar becomes true (not-null)");
-Cmd_AddCommand ("suspend", Cmd_Suspend_f, "suspend a console instance, when suspending the current console, this also does 'setid 0'");
-Cmd_AddCommand ("resume", Cmd_Resume_f, "resume the execution of a console instance");
-Cmd_AddCommand ("xkill", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
-*/
+static void Cmd_Sleep_f (void)
+{
+	cmd_executor_t *ex = NULL;
+	double sleeptime = 0;
+	double systime = Sys_DoubleTime();
+
+	if (Cmd_Argc() == 2)
+	{
+		ex = cmd_ex;
+		sleeptime = atof(Cmd_Argv(1));
+	}
+	else if (Cmd_Argc() == 3)
+	{
+		Con_ForName(Cmd_Argv(1), NULL, &ex);
+		sleeptime = atof(Cmd_Argv(2));
+	}
+	else
+	{
+		Con_Print("sleep [<instance>] <sleeptime> : let a console instance sleep for an amount of time\n"
+			  "the time is added to the current sleep time\n");
+	}
+
+	if (ex->tid == 0)
+	{
+		Con_Print("sleep: cannot suspend instance 0\n");
+		return;
+	}
+
+	if (ex->sleep < systime)
+		ex->sleep = systime + sleeptime;
+	else
+		ex->sleep += sleeptime;
+}
+
+static void Cmd_Suspend_f (void)
+{
+	int i;
+	size_t id;
+	cmd_executor_t *ex;
+
+	if (Cmd_Argc() == 1)
+	{
+		id = Con_GetTID();
+		if (id == 0)
+		{
+			Con_Print("suspend [<instance1> [<instance2>...]] : Suspend the current or specified console instances\n"
+				  "Error: you cannot suspend instance 0\n");
+			return;
+		}
+		cmd_ex->suspended = true;
+		Con_SetTID(0);
+		return;
+	}
+
+	for (i = 1; i < Cmd_Argc(); ++i)
+	{
+		if (!Con_ForName(Cmd_Argv(i), &id, &ex))
+			continue;
+		if (id == 0)
+			Con_Print("suspend: cannot suspend instance 0\n");
+		else
+			ex->suspended = true;
+	}
+}
+
+static void Cmd_Resume_f (void)
+{
+	int i;
+	size_t id;
+	cmd_executor_t *ex;
+
+	if (Cmd_Argc() == 1)
+	{
+		// No, we don't resume the current instance here, resume wouldn't be executed in the "current" instance...
+		Con_Print("resume <instance1> [<instance2>...] : Resume the specified console instances\n");
+		return;
+	}
+
+	for (i = 1; i < Cmd_Argc(); ++i)
+	{
+		if (!Con_ForName(Cmd_Argv(i), &id, &ex))
+			continue;
+		ex->suspended = false;
+	}
+}
+
+static void Cmd_Cond_f (void)
+{
+	const char *cvar;
+	int i;
+	size_t id;
+	cmd_executor_t *ex;
+
+	if (Cmd_Argc() < 2)
+	{
+		Con_Print("xcond <cvar> [<instance>...] : Suspend a console instance until cvar becomes not-null\n");
+		return;
+	}
+
+	cvar = Cmd_Argv(1);
+	if (!Cvar_FindVar(cvar))
+	{
+		Con_Printf("xcond: no such cvar \"%s\"\n", cvar);
+		return;
+	}
+
+	if (Cmd_Argc() == 3)
+	{
+		id = Con_GetTID();
+		if (id == 0)
+		{
+			Con_Print("xcond: Cannot suspend instance 0\n");
+			return;
+		}
+		strlcpy(cmd_ex->condvar, cvar, sizeof(cmd_ex->condvar));
+		return;
+	}
+
+	for (i = 2; i < Cmd_Argc(); ++i)
+	{
+		if (!Con_ForName(Cmd_Argv(i), NULL, &ex))
+			continue;
+		strlcpy(ex->condvar, cvar, sizeof(ex->condvar));
+	}
+}
+
+static void Cmd_XKill_f (void)
+{
+	size_t id;
+	int i;
+
+	if (Cmd_Argc() == 1)
+	{
+		id = Con_GetTID();
+		if (id == 0)
+		{
+			Con_Print("xkill: cannot kill instance 0\n");
+			return;
+		}
+		Con_Kill(id);
+		return;
+	}
+
+	for (i = 1; i < Cmd_Argc(); ++i)
+	{
+		if (!Con_ForName(Cmd_Argv(i), &id, NULL))
+			continue;
+		if (id == 0)
+		{
+			Con_Print("xkill: cannot kill instance 0\n");
+			continue;
+		}
+		Con_Kill(id);
+		return;
+	}
+}
 
 /*
 ============
