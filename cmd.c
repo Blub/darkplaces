@@ -329,7 +329,7 @@ static qboolean Con_ForName(const char *name, size_t *out_id, cmd_executor_t **o
 static void Cmd_SetTID_f (void)
 {
 	size_t tid = 0;
-	if (Cmd_Argc() != 1)
+	if (Cmd_Argc() != 2)
 	{
 		Con_Print("setid <id|cvar> : Use the specified console instance by ID or cvar containing an ID\n");
 		return;
