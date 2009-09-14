@@ -678,7 +678,9 @@ static void Cbuf_Execute_Instance (void)
 	cmd_tokenizebufferpos = 0;
 
 	id = cmd_ex->tid;
-	while (cmd_ex->tid == id && !cmd_ex->suspended && cmd_ex->sleep < systime && cmd_text->cursize)
+	while (cmd_ex->tid == id &&
+	       (id == 0 || (!cmd_ex->suspended && cmd_ex->sleep <= systime))
+	       && cmd_text->cursize)
 	{
 // find a \n or ; line break
 		text = (char *)cmd_text->data;
