@@ -1319,6 +1319,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	float kx, ky;
 	ft2_font_t *ft2 = fnt->ft2;
 	qboolean snap = true;
+	float pix_x, pix_y;
 
 	int tw, th;
 	tw = R_TextureWidth(fnt->tex);
@@ -1368,6 +1369,8 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	//ftbase_x = snap_to_pixel_x(ftbase_x);
 	ftbase_y = snap_to_pixel_y(ftbase_y, 0.3);
 
+	pix_x = vid.width / vid_conwidth.value;
+	pix_y = vid.height / vid_conheight.value;
 	for (shadow = r_textshadow.value != 0 && basealpha > 0;shadow >= 0;shadow--)
 	{
 		text = text_start;
@@ -1381,11 +1384,13 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 		x = startx;
 		y = starty;
+		/*
 		if (shadow)
 		{
 			x += r_textshadow.value * vid.width / vid_conwidth.value;
 			y += r_textshadow.value * vid.height / vid_conheight.value;
 		}
+		*/
 		for (i = 0;i < maxlen && *text;)
 		{
 			nextch = ch = u8_getchar(text, &text);
@@ -1461,6 +1466,11 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 			// using a value of -1 for the oldstyle map because NULL means uninitialized...
 			// this way we don't need to rebind fnt->tex for every old-style character
 			// E000..E0FF: emulate old-font characters (to still have smileys and such available)
+			if (shadow)
+			{
+				x += pix_x * r_textshadow.value;
+				y += pix_y * r_textshadow.value;
+			}
 			if (!fontmap || (ch <= 0xFF && fontmap->glyphs[ch].image) || (ch >= 0xE000 && ch <= 0xE0FF))
 			{
 				if (ch > 0xE000)
@@ -1603,6 +1613,11 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 
 				prevmap = map;
 				prevch = ch;
+			}
+			if (shadow)
+			{
+				x -= pix_x * r_textshadow.value;
+				y -= pix_y * r_textshadow.value;
 			}
 		}
 	}
