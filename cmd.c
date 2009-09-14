@@ -451,7 +451,7 @@ static void Cmd_Cond_f (void)
 		return;
 	}
 
-	if (Cmd_Argc() == 3)
+	if (Cmd_Argc() == 2)
 	{
 		id = Con_GetTID();
 		if (id == 0)
