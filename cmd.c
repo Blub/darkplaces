@@ -1725,11 +1725,11 @@ void Cmd_Init_Commands (void)
 	Cmd_AddCommand ("spawn", Cmd_Spawn_f, "spawn new console instances, their IDs are stored in the provided cvars");
 	Cmd_AddCommand ("setid", Cmd_SetTID_f, "experts only! set the console-ID to which new input-commands are being added, has no effect when an invalid id is provided");
 	Cmd_AddCommand ("sleep", Cmd_Sleep_f, "let the current, or a specific console instance sleep for some time in the background");
-	Cmd_AddCommand ("xcond", Cmd_Cond_f, "suspend a console instance until a cvar becomes true (not-null)");
-	Cmd_AddCommand ("xcondl", Cmd_CondLocal_f, "suspend a console instance until a local cvar becomes true (not-null)");
+	Cmd_AddCommand ("cond", Cmd_Cond_f, "suspend a console instance until a cvar becomes true (not-null)");
+	Cmd_AddCommand ("condl", Cmd_CondLocal_f, "suspend a console instance until a local cvar becomes true (not-null)");
 	Cmd_AddCommand ("suspend", Cmd_Suspend_f, "suspend a console instance, when suspending the current console, this also does 'setid 0'");
 	Cmd_AddCommand ("resume", Cmd_Resume_f, "resume the execution of a console instance");
-	Cmd_AddCommand ("xkill", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
+	Cmd_AddCommand ("term", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
 	Cmd_AddCommand ("xadd", Cmd_XAdd_f, "add a command to a console instance");
 	Cmd_AddCommand ("setlocal", Cmd_SetLocal_f, "set a instance-local cvar");
 	Cmd_AddCommand ("setforeign", Cmd_SetForeign_f, "set an instance's local cvar");
