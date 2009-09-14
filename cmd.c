@@ -514,7 +514,10 @@ static void Cmd_XAdd_f (void)
 	}
 
 	if (!Con_ForName(Cmd_Argv(1), &id, NULL))
+	{
+		Con_Printf("xadd: invalid instance: %s\n", Cmd_Argv(1));
 		return;
+	}
 
 	oldid = Con_GetTID();
 	if (!Con_SetTID(id, false))
