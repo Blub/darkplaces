@@ -332,7 +332,7 @@ static qboolean Con_ForName(const char *name, size_t *out_id, cmd_executor_t **o
 	else
 	{
 		c = Cvar_FindVar(name);
-		if (!name)
+		if (!c)
 			return false;
 		id = (size_t)c->integer;
 	}
