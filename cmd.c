@@ -648,7 +648,7 @@ static void Cmd_SetForeign_f (void)
 		Con_DPrint("Set: ");
 
 	// all looks ok, create/modify the cvar
-	dpsnprintf(varname, sizeof(varname), "_cin_%lu_%s", (unsigned long)cmd_tid, Cmd_Argv(2));
+	dpsnprintf(varname, sizeof(varname), "_cin_%lu_%s", (unsigned long)id, Cmd_Argv(2));
 	Cvar_Get(varname, Cmd_Argv(3), 0, Cmd_Argc() > 4 ? Cmd_Argv(4) : NULL);
 }
 
