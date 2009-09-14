@@ -582,6 +582,41 @@ static void Cmd_SetLocal_f (void)
 	Cvar_Get(varname, Cmd_Argv(2), 0, Cmd_Argc() > 3 ? Cmd_Argv(3) : NULL);
 }
 
+static void Cmd_SetForeign_f (void)
+{
+	static char varname[MAX_INPUTLINE];
+	cvar_t *cvar;
+	size_t id;
+
+	// make sure it's the right number of parameters
+	if (Cmd_Argc() < 4)
+	{
+		Con_Printf("setforeign: wrong number of parameters, usage: setforeign <instance> <variablename> <value> [<description>]\n");
+		return;
+	}
+
+	if (!Con_ForName(Cmd_Argv(1), &id, NULL))
+	{
+		Con_Printf("setforeign: invalid instance: %s\n", Cmd_Argv(1));
+		return;
+	}
+
+	// check if it's read-only
+	cvar = Cvar_FindVar(Cmd_Argv(2));
+	if (cvar && cvar->flags & CVAR_READONLY)
+	{
+		Con_Printf("setforeign: %s is read-only\n", cvar->name);
+		return;
+	}
+
+	if (developer.integer >= 100)
+		Con_DPrint("Set: ");
+
+	// all looks ok, create/modify the cvar
+	dpsnprintf(varname, sizeof(varname), "_cin_%lu_%s", (unsigned long)cmd_tid, Cmd_Argv(2));
+	Cvar_Get(varname, Cmd_Argv(3), 0, Cmd_Argc() > 4 ? Cmd_Argv(4) : NULL);
+}
+
 /*
 ============
 Cbuf_AddText
@@ -1661,6 +1696,7 @@ void Cmd_Init_Commands (void)
 	Cmd_AddCommand ("xkill", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
 	Cmd_AddCommand ("xadd", Cmd_XAdd_f, "add a command to a console instance");
 	Cmd_AddCommand ("setlocal", Cmd_SetLocal_f, "set a instance-local cvar");
+	Cmd_AddCommand ("setforeign", Cmd_SetForeign_f, "set an instance's local cvar");
 
 	// DRESK - 5/14/06
 	// Support Doom3-style Toggle Command
