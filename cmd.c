@@ -518,7 +518,7 @@ static void Cmd_CondLocal_f (void)
 			Con_Print("xcondl: Cannot suspend instance 0\n");
 			return;
 		}
-		strlcpy(cmd_ex->condvar, cvar, sizeof(cmd_ex->condvar));
+		dpsnprintf(cmd_ex->condvar, sizeof(cmd_ex->condvar), "_cin_%lu_%s", (unsigned long)cmd_tid, cvar);
 		return;
 	}
 
@@ -526,7 +526,7 @@ static void Cmd_CondLocal_f (void)
 	{
 		if (!Con_ForName(Cmd_Argv(i), NULL, &ex))
 			continue;
-		dpsnprintf(ex->condvar, sizeof(ex->condvar), "_cin_%lu_%s", (unsigned long) ex->tid, cvar);
+		dpsnprintf(ex->condvar, sizeof(ex->condvar), "_cin_%lu_%s",(unsigned long) ex->tid, cvar);
 	}
 }
 
