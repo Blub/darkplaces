@@ -306,7 +306,7 @@ static void Cmd_Spawn_f (void)
 	size_t id;
 	if (Cmd_Argc() < 2)
 	{
-		Con_Print("spawn <cvar1> [<cvar2>...] : Spawn console instances and store the id into the given cvars\n");
+		Con_Print("conspawn <cvar1> [<cvar2>...] : Spawn console instances and store the id into the given cvars\n");
 		return;
 	}
 	
@@ -1722,7 +1722,7 @@ void Cmd_Init_Commands (void)
 	Cmd_AddCommand ("cprint", Cmd_Centerprint_f, "print something at the screen center");
 	Cmd_AddCommand ("defer", Cmd_Defer_f, "execute a command in the future");
 
-	Cmd_AddCommand ("spawn", Cmd_Spawn_f, "spawn new console instances, their IDs are stored in the provided cvars");
+	Cmd_AddCommand ("conspawn", Cmd_Spawn_f, "spawn new console instances, their IDs are stored in the provided cvars");
 	Cmd_AddCommand ("setid", Cmd_SetTID_f, "experts only! set the console-ID to which new input-commands are being added, has no effect when an invalid id is provided");
 	Cmd_AddCommand ("sleep", Cmd_Sleep_f, "let the current, or a specific console instance sleep for some time in the background");
 	Cmd_AddCommand ("cond", Cmd_Cond_f, "suspend a console instance until a cvar becomes true (not-null)");
