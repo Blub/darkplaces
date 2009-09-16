@@ -230,7 +230,7 @@ int Mod_FrameGroupify_ParseGroups(const char *buf, mod_framegroupify_parsegroups
 			if (!COM_ParseToken_Simple(&bufptr, true, false))
 				break;
 			if (strcmp(com_token, "\n"))
-				loop = atoi(com_token);
+				loop = atoi(com_token) != 0;
 			else
 				loop = true;
 		}
@@ -318,7 +318,7 @@ dp_model_t *Mod_LoadModel(dp_model_t *mod, qboolean crash, qboolean checkdisk)
 			Con_Printf("loading model %s\n", mod->name);
 
 		mod->used = true;
-		mod->crc = -1;
+		mod->crc = (unsigned int)-1;
 		mod->loaded = false;
 
 		VectorClear(mod->normalmins);
