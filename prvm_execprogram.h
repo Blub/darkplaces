@@ -20,7 +20,7 @@
 		if (++jumpcount == 10000000)				\
 		{							\
 			prog->xstatement = st - prog->statements;	\
-			PRVM_Profile(1<<30, 1000000);			\
+			PRVM_Profile(1<<30, 1000000, 0);			\
 			PRVM_ERROR("%s runaway loop counter hit limit of %d jumps\ntip: read above for list of most-executed functions", PRVM_NAME, jumpcount);	\
 		}							\
 	} while(0)
@@ -422,7 +422,6 @@ ptrvalC = 0;
 					startst = st;
 					// no bounds check needed, it is done when loading progs
 					RUNAWAYCHECK();
-
 				}
 				break;
 
