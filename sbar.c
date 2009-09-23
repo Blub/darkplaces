@@ -1119,10 +1119,7 @@ void Sbar_ShowFPS(void)
 		newtime = Sys_DoubleTime();
 		if (newtime >= nexttime)
 		{
-			if (framecount > 1) // frames per second
-				framerate = framecount / interval;
-			else // seconds per frame
-				framerate = framecount / (newtime - lasttime);
+			framerate = framecount / (newtime - lasttime);
 			if (nexttime < newtime - interval * 1.5)
 				nexttime = newtime;
 			lasttime = newtime;
@@ -1131,8 +1128,11 @@ void Sbar_ShowFPS(void)
 		}
 		framecount++;
 		calc = framerate;
+		red = (calc < 1.0f);
 
-		if ((red = (calc < 1.0f)))
+		if(showfps.integer == 2)
+			dpsnprintf(fpsstring, sizeof(fpsstring), "%7.3f mspf", (1000.0 / calc));
+		else if (red)
 			dpsnprintf(fpsstring, sizeof(fpsstring), "%4i spf", (int)(1.0 / calc + 0.5));
 		else
 			dpsnprintf(fpsstring, sizeof(fpsstring), "%4i fps", (int)(calc + 0.5));
