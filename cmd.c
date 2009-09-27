@@ -285,6 +285,8 @@ void Con_Kill(size_t id)
 		Con_Print("Con_Kill(): Cannot kill console instance 0\n");
 		return;
 	}
+	if (id == cmd_tid)
+		Con_SetTID(0, false);
 	Mem_ExpandableArray_FreeRecord(&cmd_exec_array, Mem_ExpandableArray_RecordAtIndex(&cmd_exec_array, id));
 	--cmd_num_executors;
 }
@@ -540,7 +542,7 @@ static void Cmd_XKill_f (void)
 		id = Con_GetTID();
 		if (id == 0)
 		{
-			Con_Print("xkill: cannot kill instance 0\n");
+			Con_Print("term: cannot kill instance 0\n");
 			return;
 		}
 		Con_Kill(id);
@@ -553,7 +555,7 @@ static void Cmd_XKill_f (void)
 			continue;
 		if (id == 0)
 		{
-			Con_Print("xkill: cannot kill instance 0\n");
+			Con_Print("term: cannot kill instance 0\n");
 			continue;
 		}
 		Con_Kill(id);
