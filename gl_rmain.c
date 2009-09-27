@@ -76,7 +76,7 @@ cvar_t r_shadows = {CVAR_SAVE, "r_shadows", "0", "casts fake stencil shadows fro
 cvar_t r_shadows_darken = {CVAR_SAVE, "r_shadows_darken", "0.5", "how much shadowed areas will be darkened"};
 cvar_t r_shadows_throwdistance = {CVAR_SAVE, "r_shadows_throwdistance", "500", "how far to cast shadows from models"};
 cvar_t r_shadows_throwdirection = {CVAR_SAVE, "r_shadows_throwdirection", "0 0 -1", "override throwing direction for r_shadows 2"};
-cvar_t r_shadows_drawafterrtlightning = {CVAR_SAVE, "r_shadows_drawafterrtlightning", "0", "draw fake shadows AFTER realtime lightning is drawn. May be useful for simulating fast sunlight on large outdoor maps with only one noshadow rtlight. The price is less realistic appearance of dynamic light shadows."};
+cvar_t r_shadows_drawafterrtlighting = {CVAR_SAVE, "r_shadows_drawafterrtlighting", "0", "draw fake shadows AFTER realtime lightning is drawn. May be useful for simulating fast sunlight on large outdoor maps with only one noshadow rtlight. The price is less realistic appearance of dynamic light shadows."};
 cvar_t r_shadows_castfrombmodels = {CVAR_SAVE, "r_shadows_castfrombmodels", "0", "do cast shadows from bmodels"};
 cvar_t r_q1bsp_skymasking = {0, "r_q1bsp_skymasking", "1", "allows sky polygons in quake1 maps to obscure other geometry"};
 cvar_t r_polygonoffset_submodel_factor = {0, "r_polygonoffset_submodel_factor", "0", "biases depth values of world submodels such as doors, to prevent z-fighting artifacts in Quake maps"};
@@ -166,6 +166,8 @@ static struct r_bloomstate_s
 	float screentexcoord2f[8];
 	float bloomtexcoord2f[8];
 	float offsettexcoord2f[8];
+
+	r_viewport_t viewport;
 }
 r_bloomstate;
 
@@ -194,7 +196,7 @@ char r_qwskincache[MAX_SCOREBOARD][MAX_QPATH];
 skinframe_t *r_qwskincache_skinframe[MAX_SCOREBOARD];
 
 /// vertex coordinates for a quad that covers the screen exactly
-const static float r_screenvertex3f[12] =
+const float r_screenvertex3f[12] =
 {
 	0, 0, 0,
 	1, 0, 0,
@@ -1066,7 +1068,23 @@ static const char *builtinshaderstring =
 "\n"
 "	vec4 ScreenScaleRefractReflectIW = ScreenScaleRefractReflect * (1.0 / ModelViewProjectionPosition.w);\n"
 "	//vec4 ScreenTexCoord = (ModelViewProjectionPosition.xyxy + normalize(myhalf3(texture2D(Texture_Normal, TexCoord)) - myhalf3(0.5)).xyxy * DistortScaleRefractReflect * 100) * ScreenScaleRefractReflectIW + ScreenCenterRefractReflect;\n"
-"	vec4 ScreenTexCoord = ModelViewProjectionPosition.xyxy * ScreenScaleRefractReflectIW + ScreenCenterRefractReflect + vec2(normalize(myhalf3(texture2D(Texture_Normal, TexCoord)) - myhalf3(0.5))).xyxy * DistortScaleRefractReflect;\n"
+"	vec4 SafeScreenTexCoord = ModelViewProjectionPosition.xyxy * ScreenScaleRefractReflectIW + ScreenCenterRefractReflect;\n"
+"	vec4 ScreenTexCoord = SafeScreenTexCoord + vec2(normalize(myhalf3(texture2D(Texture_Normal, TexCoord)) - myhalf3(0.5))).xyxy * DistortScaleRefractReflect;\n"
+"	// FIXME temporary hack to detect the case that the reflection\n"
+"	// gets blackened at edges due to leaving the area that contains actual\n"
+"	// content.\n"
+"	// Remove this 'ack once we have a better way to stop this thing from\n"
+"	// 'appening.\n"
+"	float f = min(1.0, length(texture2D(Texture_Refraction, ScreenTexCoord.xy + vec2(0.01, 0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Refraction, ScreenTexCoord.xy + vec2(0.01, -0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Refraction, ScreenTexCoord.xy + vec2(-0.01, 0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Refraction, ScreenTexCoord.xy + vec2(-0.01, -0.01)).rgb) / 0.05);\n"
+"	ScreenTexCoord.xy = mix(SafeScreenTexCoord.xy, ScreenTexCoord.xy, f);\n"
+"	f       = min(1.0, length(texture2D(Texture_Reflection, ScreenTexCoord.zw + vec2(0.01, 0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Reflection, ScreenTexCoord.zw + vec2(0.01, -0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Reflection, ScreenTexCoord.zw + vec2(-0.01, 0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Reflection, ScreenTexCoord.zw + vec2(-0.01, -0.01)).rgb) / 0.05);\n"
+"	ScreenTexCoord.zw = mix(SafeScreenTexCoord.zw, ScreenTexCoord.zw, f);\n"
 "	float Fresnel = pow(min(1.0, 1.0 - float(normalize(EyeVector).z)), 2.0) * ReflectFactor + ReflectOffset;\n"
 "	gl_FragColor = mix(texture2D(Texture_Refraction, ScreenTexCoord.xy) * RefractColor, texture2D(Texture_Reflection, ScreenTexCoord.zw) * ReflectColor, Fresnel);\n"
 "}\n"
@@ -1085,7 +1103,18 @@ static const char *builtinshaderstring =
 "\n"
 "	vec2 ScreenScaleRefractReflectIW = ScreenScaleRefractReflect.xy * (1.0 / ModelViewProjectionPosition.w);\n"
 "	//vec2 ScreenTexCoord = (ModelViewProjectionPosition.xy + normalize(myhalf3(texture2D(Texture_Normal, TexCoord)) - myhalf3(0.5)).xy * DistortScaleRefractReflect.xy * 100) * ScreenScaleRefractReflectIW + ScreenCenterRefractReflect.xy;\n"
-"	vec2 ScreenTexCoord = ModelViewProjectionPosition.xy * ScreenScaleRefractReflectIW + ScreenCenterRefractReflect.xy + vec2(normalize(myhalf3(texture2D(Texture_Normal, TexCoord)) - myhalf3(0.5))).xy * DistortScaleRefractReflect.xy;\n"
+"	vec2 SafeScreenTexCoord = ModelViewProjectionPosition.xy * ScreenScaleRefractReflectIW + ScreenCenterRefractReflect.xy;\n"
+"	vec2 ScreenTexCoord = SafeScreenTexCoord + vec2(normalize(myhalf3(texture2D(Texture_Normal, TexCoord)) - myhalf3(0.5))).xy * DistortScaleRefractReflect.xy;\n"
+"	// FIXME temporary hack to detect the case that the reflection\n"
+"	// gets blackened at edges due to leaving the area that contains actual\n"
+"	// content.\n"
+"	// Remove this 'ack once we have a better way to stop this thing from\n"
+"	// 'appening.\n"
+"	float f = min(1.0, length(texture2D(Texture_Refraction, ScreenTexCoord + vec2(0.01, 0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Refraction, ScreenTexCoord + vec2(0.01, -0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Refraction, ScreenTexCoord + vec2(-0.01, 0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Refraction, ScreenTexCoord + vec2(-0.01, -0.01)).rgb) / 0.05);\n"
+"	ScreenTexCoord = mix(SafeScreenTexCoord, ScreenTexCoord, f);\n"
 "	gl_FragColor = texture2D(Texture_Refraction, ScreenTexCoord) * RefractColor;\n"
 "}\n"
 "\n"
@@ -1311,8 +1340,19 @@ static const char *builtinshaderstring =
 "#ifdef USEREFLECTION\n"
 "	vec4 ScreenScaleRefractReflectIW = ScreenScaleRefractReflect * (1.0 / ModelViewProjectionPosition.w);\n"
 "	//vec4 ScreenTexCoord = (ModelViewProjectionPosition.xyxy + normalize(myhalf3(texture2D(Texture_Normal, TexCoord)) - myhalf3(0.5)).xyxy * DistortScaleRefractReflect * 100) * ScreenScaleRefractReflectIW + ScreenCenterRefractReflect;\n"
-"	vec4 ScreenTexCoord = ModelViewProjectionPosition.xyxy * ScreenScaleRefractReflectIW + ScreenCenterRefractReflect + vec3(normalize(myhalf3(texture2D(Texture_Normal, TexCoord)) - myhalf3(0.5))).xyxy * DistortScaleRefractReflect;\n"
-"	color.rgb = mix(color.rgb, myhalf3(texture2D(Texture_Reflection, ScreenTexCoord.zw)) * ReflectColor.rgb, ReflectColor.a);\n"
+"	vec2 SafeScreenTexCoord = ModelViewProjectionPosition.xy * ScreenScaleRefractReflectIW.zw + ScreenCenterRefractReflect.zw;\n"
+"	vec2 ScreenTexCoord = SafeScreenTexCoord + vec3(normalize(myhalf3(texture2D(Texture_Normal, TexCoord)) - myhalf3(0.5))).xy * DistortScaleRefractReflect.zw;\n"
+"	// FIXME temporary hack to detect the case that the reflection\n"
+"	// gets blackened at edges due to leaving the area that contains actual\n"
+"	// content.\n"
+"	// Remove this 'ack once we have a better way to stop this thing from\n"
+"	// 'appening.\n"
+"	float f = min(1.0, length(texture2D(Texture_Reflection, ScreenTexCoord + vec2(0.01, 0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Reflection, ScreenTexCoord + vec2(0.01, -0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Reflection, ScreenTexCoord + vec2(-0.01, 0.01)).rgb) / 0.05);\n"
+"	f      *= min(1.0, length(texture2D(Texture_Reflection, ScreenTexCoord + vec2(-0.01, -0.01)).rgb) / 0.05);\n"
+"	ScreenTexCoord = mix(SafeScreenTexCoord, ScreenTexCoord, f);\n"
+"	color.rgb = mix(color.rgb, myhalf3(texture2D(Texture_Reflection, ScreenTexCoord)) * ReflectColor.rgb, ReflectColor.a);\n"
 "#endif\n"
 "\n"
 "	gl_FragColor = vec4(color);\n"
@@ -2709,7 +2749,7 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_fullbright);
 	Cvar_RegisterVariable(&r_shadows);
 	Cvar_RegisterVariable(&r_shadows_darken);
-	Cvar_RegisterVariable(&r_shadows_drawafterrtlightning);
+	Cvar_RegisterVariable(&r_shadows_drawafterrtlighting);
 	Cvar_RegisterVariable(&r_shadows_castfrombmodels);
 	Cvar_RegisterVariable(&r_shadows_throwdistance);
 	Cvar_RegisterVariable(&r_shadows_throwdirection);
@@ -3450,11 +3490,11 @@ void R_SetupView(qboolean allowwaterclippingplane)
 	}
 
 	if (!r_refdef.view.useperspective)
-		R_Viewport_InitOrtho(&r_refdef.view.viewport, &r_refdef.view.matrix, r_refdef.view.x, r_refdef.view.y, r_refdef.view.width, r_refdef.view.height, -r_refdef.view.ortho_x, -r_refdef.view.ortho_y, r_refdef.view.ortho_x, r_refdef.view.ortho_y, -r_refdef.farclip, r_refdef.farclip, customclipplane);
+		R_Viewport_InitOrtho(&r_refdef.view.viewport, &r_refdef.view.matrix, r_refdef.view.x, vid.height - r_refdef.view.height - r_refdef.view.y, r_refdef.view.width, r_refdef.view.height, -r_refdef.view.ortho_x, -r_refdef.view.ortho_y, r_refdef.view.ortho_x, r_refdef.view.ortho_y, -r_refdef.farclip, r_refdef.farclip, customclipplane);
 	else if (gl_stencil && r_useinfinitefarclip.integer)
-		R_Viewport_InitPerspectiveInfinite(&r_refdef.view.viewport, &r_refdef.view.matrix, r_refdef.view.x, r_refdef.view.y, r_refdef.view.width, r_refdef.view.height, r_refdef.view.frustum_x, r_refdef.view.frustum_y, r_refdef.nearclip, customclipplane);
+		R_Viewport_InitPerspectiveInfinite(&r_refdef.view.viewport, &r_refdef.view.matrix, r_refdef.view.x, vid.height - r_refdef.view.height - r_refdef.view.y, r_refdef.view.width, r_refdef.view.height, r_refdef.view.frustum_x, r_refdef.view.frustum_y, r_refdef.nearclip, customclipplane);
 	else
-		R_Viewport_InitPerspective(&r_refdef.view.viewport, &r_refdef.view.matrix, r_refdef.view.x, r_refdef.view.y, r_refdef.view.width, r_refdef.view.height, r_refdef.view.frustum_x, r_refdef.view.frustum_y, r_refdef.nearclip, r_refdef.farclip, customclipplane);
+		R_Viewport_InitPerspective(&r_refdef.view.viewport, &r_refdef.view.matrix, r_refdef.view.x, vid.height - r_refdef.view.height - r_refdef.view.y, r_refdef.view.width, r_refdef.view.height, r_refdef.view.frustum_x, r_refdef.view.frustum_y, r_refdef.nearclip, r_refdef.farclip, customclipplane);
 	R_SetViewport(&r_refdef.view.viewport);
 }
 
@@ -3464,9 +3504,9 @@ void R_ResetViewRendering2D(void)
 	DrawQ_Finish();
 
 	// GL is weird because it's bottom to top, r_refdef.view.y is top to bottom
-	R_Viewport_InitOrtho(&viewport, &identitymatrix, r_refdef.view.x, r_refdef.view.y, r_refdef.view.width, r_refdef.view.height, 0, 0, 1, 1, -10, 100, NULL);
+	R_Viewport_InitOrtho(&viewport, &identitymatrix, r_refdef.view.x, vid.height - r_refdef.view.height - r_refdef.view.y, r_refdef.view.width, r_refdef.view.height, 0, 0, 1, 1, -10, 100, NULL);
 	R_SetViewport(&viewport);
-	GL_Scissor(r_refdef.view.x, vid.height - r_refdef.view.y - r_refdef.view.height, r_refdef.view.width, r_refdef.view.height);
+	GL_Scissor(viewport.x, viewport.y, viewport.width, viewport.height);
 	GL_Color(1, 1, 1, 1);
 	GL_ColorMask(r_refdef.view.colormask[0], r_refdef.view.colormask[1], r_refdef.view.colormask[2], 1);
 	GL_BlendFunc(GL_ONE, GL_ZERO);
@@ -3492,10 +3532,8 @@ void R_ResetViewRendering3D(void)
 {
 	DrawQ_Finish();
 
-	// GL is weird because it's bottom to top, r_refdef.view.y is top to bottom
-	qglViewport(r_refdef.view.x, vid.height - (r_refdef.view.y + r_refdef.view.height), r_refdef.view.width, r_refdef.view.height);CHECKGLERROR
 	R_SetupView(true);
-	GL_Scissor(r_refdef.view.x, vid.height - r_refdef.view.y - r_refdef.view.height, r_refdef.view.width, r_refdef.view.height);
+	GL_Scissor(r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
 	GL_Color(1, 1, 1, 1);
 	GL_ColorMask(r_refdef.view.colormask[0], r_refdef.view.colormask[1], r_refdef.view.colormask[2], 1);
 	GL_BlendFunc(GL_ONE, GL_ZERO);
@@ -3528,8 +3566,8 @@ static void R_Water_StartFrame(void)
 
 	// set waterwidth and waterheight to the water resolution that will be
 	// used (often less than the screen resolution for faster rendering)
-	waterwidth = (int)bound(1, r_refdef.view.width * r_water_resolutionmultiplier.value, r_refdef.view.width);
-	waterheight = (int)bound(1, r_refdef.view.height * r_water_resolutionmultiplier.value, r_refdef.view.height);
+	waterwidth = (int)bound(1, vid.width * r_water_resolutionmultiplier.value, vid.width);
+	waterheight = (int)bound(1, vid.height * r_water_resolutionmultiplier.value, vid.height);
 
 	// calculate desired texture sizes
 	// can't use water if the card does not support the texture size
@@ -3565,6 +3603,10 @@ static void R_Water_StartFrame(void)
 		r_waterstate.texturewidth = texturewidth;
 		r_waterstate.textureheight = textureheight;
 	}
+
+	// when doing a reduced render (HDR) we want to use a smaller area
+	waterwidth = (int)bound(1, r_refdef.view.width * r_water_resolutionmultiplier.value, r_refdef.view.width);
+	waterheight = (int)bound(1, r_refdef.view.height * r_water_resolutionmultiplier.value, r_refdef.view.height);
 
 	if (r_waterstate.waterwidth)
 	{
@@ -3705,7 +3747,7 @@ static void R_Water_ProcessPlanes(void)
 			R_Mesh_TexBind(0, R_GetTexture(p->texture_refraction));
 			GL_ActiveTexture(0);
 			CHECKGLERROR
-			qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.x, vid.height - (r_refdef.view.y + r_refdef.view.height), r_refdef.view.width, r_refdef.view.height);CHECKGLERROR
+			qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);CHECKGLERROR
 		}
 
 		if (p->materialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFLECTION))
@@ -3736,7 +3778,7 @@ static void R_Water_ProcessPlanes(void)
 			R_Mesh_TexBind(0, R_GetTexture(p->texture_reflection));
 			GL_ActiveTexture(0);
 			CHECKGLERROR
-			qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.x, vid.height - (r_refdef.view.y + r_refdef.view.height), r_refdef.view.width, r_refdef.view.height);CHECKGLERROR
+			qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);CHECKGLERROR
 		}
 	}
 	r_waterstate.renderingscene = false;
@@ -3759,11 +3801,11 @@ void R_Bloom_StartFrame(void)
 
 	// set bloomwidth and bloomheight to the bloom resolution that will be
 	// used (often less than the screen resolution for faster rendering)
-	r_bloomstate.bloomwidth = bound(1, r_bloom_resolution.integer, r_refdef.view.width);
-	r_bloomstate.bloomheight = r_bloomstate.bloomwidth * r_refdef.view.height / r_refdef.view.width;
-	r_bloomstate.bloomheight = bound(1, r_bloomstate.bloomheight, r_refdef.view.height);
-	r_bloomstate.bloomwidth = min(r_bloomstate.bloomwidth, gl_max_texture_size);
-	r_bloomstate.bloomheight = min(r_bloomstate.bloomheight, gl_max_texture_size);
+	r_bloomstate.bloomwidth = bound(1, r_bloom_resolution.integer, vid.height);
+	r_bloomstate.bloomheight = r_bloomstate.bloomwidth * vid.height / vid.width;
+	r_bloomstate.bloomheight = bound(1, r_bloomstate.bloomheight, vid.height);
+	r_bloomstate.bloomwidth = bound(1, r_bloomstate.bloomwidth, gl_max_texture_size);
+	r_bloomstate.bloomheight = bound(1, r_bloomstate.bloomheight, gl_max_texture_size);
 
 	// calculate desired texture sizes
 	if (gl_support_arb_texture_non_power_of_two)
@@ -3816,6 +3858,13 @@ void R_Bloom_StartFrame(void)
 			r_bloomstate.texture_bloom = R_LoadTexture2D(r_main_texturepool, "bloom", r_bloomstate.bloomtexturewidth, r_bloomstate.bloomtextureheight, NULL, TEXTYPE_BGRA, TEXF_FORCELINEAR | TEXF_CLAMP | TEXF_ALWAYSPRECACHE, NULL);
 	}
 
+	// when doing a reduced render (HDR) we want to use a smaller area
+	r_bloomstate.bloomwidth = bound(1, r_bloom_resolution.integer, r_refdef.view.height);
+	r_bloomstate.bloomheight = r_bloomstate.bloomwidth * r_refdef.view.height / r_refdef.view.width;
+	r_bloomstate.bloomheight = bound(1, r_bloomstate.bloomheight, r_refdef.view.height);
+	r_bloomstate.bloomwidth = bound(1, r_bloomstate.bloomwidth, r_bloomstate.bloomtexturewidth);
+	r_bloomstate.bloomheight = bound(1, r_bloomstate.bloomheight, r_bloomstate.bloomtextureheight);
+
 	// set up a texcoord array for the full resolution screen image
 	// (we have to keep this around to copy back during final render)
 	r_bloomstate.screentexcoord2f[0] = 0;
@@ -3843,6 +3892,8 @@ void R_Bloom_StartFrame(void)
 		r_bloomstate.enabled = true;
 		r_bloomstate.hdr = r_hdr.integer != 0;
 	}
+
+	R_Viewport_InitOrtho(&r_bloomstate.viewport, &identitymatrix, r_refdef.view.x, vid.height - r_bloomstate.bloomheight - r_refdef.view.y, r_bloomstate.bloomwidth, r_bloomstate.bloomheight, 0, 0, 1, 1, -10, 100, NULL);
 }
 
 void R_Bloom_CopyBloomTexture(float colorscale)
@@ -3851,7 +3902,7 @@ void R_Bloom_CopyBloomTexture(float colorscale)
 
 	// scale down screen texture to the bloom texture size
 	CHECKGLERROR
-	qglViewport(r_refdef.view.x, vid.height - (r_refdef.view.y + r_bloomstate.bloomheight), r_bloomstate.bloomwidth, r_bloomstate.bloomheight);CHECKGLERROR
+	R_SetViewport(&r_bloomstate.viewport);
 	GL_BlendFunc(GL_ONE, GL_ZERO);
 	GL_Color(colorscale, colorscale, colorscale, 1);
 	// TODO: optimize with multitexture or GLSL
@@ -3866,8 +3917,8 @@ void R_Bloom_CopyBloomTexture(float colorscale)
 	R_Mesh_TexBind(0, R_GetTexture(r_bloomstate.texture_bloom));
 	GL_ActiveTexture(0);
 	CHECKGLERROR
-	qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.x, vid.height - (r_refdef.view.y + r_bloomstate.bloomheight), r_bloomstate.bloomwidth, r_bloomstate.bloomheight);CHECKGLERROR
-	r_refdef.stats.bloom_copypixels += r_bloomstate.bloomwidth * r_bloomstate.bloomheight;
+	qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_bloomstate.viewport.x, r_bloomstate.viewport.y, r_bloomstate.viewport.width, r_bloomstate.viewport.height);CHECKGLERROR
+	r_refdef.stats.bloom_copypixels += r_bloomstate.viewport.width * r_bloomstate.viewport.height;
 }
 
 void R_Bloom_CopyHDRTexture(void)
@@ -3875,8 +3926,8 @@ void R_Bloom_CopyHDRTexture(void)
 	R_Mesh_TexBind(0, R_GetTexture(r_bloomstate.texture_bloom));
 	GL_ActiveTexture(0);
 	CHECKGLERROR
-	qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.x, vid.height - (r_refdef.view.y + r_refdef.view.height), r_refdef.view.width, r_refdef.view.height);CHECKGLERROR
-	r_refdef.stats.bloom_copypixels += r_refdef.view.width * r_refdef.view.height;
+	qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);CHECKGLERROR
+	r_refdef.stats.bloom_copypixels += r_refdef.view.viewport.width * r_refdef.view.viewport.height;
 }
 
 void R_Bloom_MakeTexture(void)
@@ -3893,7 +3944,7 @@ void R_Bloom_MakeTexture(void)
 
 	// we have a bloom image in the framebuffer
 	CHECKGLERROR
-	qglViewport(r_refdef.view.x, vid.height - (r_refdef.view.y + r_bloomstate.bloomheight), r_bloomstate.bloomwidth, r_bloomstate.bloomheight);CHECKGLERROR
+	R_SetViewport(&r_bloomstate.viewport);
 
 	for (x = 1;x < min(r_bloom_colorexponent.value, 32);)
 	{
@@ -3909,8 +3960,8 @@ void R_Bloom_MakeTexture(void)
 		// copy the vertically blurred bloom view to a texture
 		GL_ActiveTexture(0);
 		CHECKGLERROR
-		qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.x, vid.height - (r_refdef.view.y + r_bloomstate.bloomheight), r_bloomstate.bloomwidth, r_bloomstate.bloomheight);CHECKGLERROR
-		r_refdef.stats.bloom_copypixels += r_bloomstate.bloomwidth * r_bloomstate.bloomheight;
+		qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_bloomstate.viewport.x, r_bloomstate.viewport.y, r_bloomstate.viewport.width, r_bloomstate.viewport.height);CHECKGLERROR
+		r_refdef.stats.bloom_copypixels += r_bloomstate.viewport.width * r_bloomstate.viewport.height;
 	}
 
 	range = r_bloom_blur.integer * r_bloomstate.bloomwidth / 320;
@@ -3955,8 +4006,8 @@ void R_Bloom_MakeTexture(void)
 		// copy the vertically blurred bloom view to a texture
 		GL_ActiveTexture(0);
 		CHECKGLERROR
-		qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.x, vid.height - (r_refdef.view.y + r_bloomstate.bloomheight), r_bloomstate.bloomwidth, r_bloomstate.bloomheight);CHECKGLERROR
-		r_refdef.stats.bloom_copypixels += r_bloomstate.bloomwidth * r_bloomstate.bloomheight;
+		qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_bloomstate.viewport.x, r_bloomstate.viewport.y, r_bloomstate.viewport.width, r_bloomstate.viewport.height);CHECKGLERROR
+		r_refdef.stats.bloom_copypixels += r_bloomstate.viewport.width * r_bloomstate.viewport.height;
 	}
 
 	// apply subtract last
@@ -3983,8 +4034,8 @@ void R_Bloom_MakeTexture(void)
 		R_Mesh_TexBind(0, R_GetTexture(r_bloomstate.texture_bloom));
 		GL_ActiveTexture(0);
 		CHECKGLERROR
-		qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.x, vid.height - (r_refdef.view.y + r_bloomstate.bloomheight), r_bloomstate.bloomwidth, r_bloomstate.bloomheight);CHECKGLERROR
-		r_refdef.stats.bloom_copypixels += r_bloomstate.bloomwidth * r_bloomstate.bloomheight;
+		qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_bloomstate.viewport.x, r_bloomstate.viewport.y, r_bloomstate.viewport.width, r_bloomstate.viewport.height);CHECKGLERROR
+		r_refdef.stats.bloom_copypixels += r_bloomstate.viewport.width * r_bloomstate.viewport.height;
 	}
 }
 
@@ -4016,8 +4067,9 @@ void R_HDR_RenderBloomTexture(void)
 	if (r_timereport_active)
 		R_TimeReport("visibility");
 
+	// only do secondary renders with HDR if r_hdr is 2 or higher
 	r_waterstate.numwaterplanes = 0;
-	if (r_waterstate.enabled)
+	if (r_waterstate.enabled && r_hdr.integer >= 2)
 		R_RenderWaterPlanes();
 
 	r_refdef.view.showdebug = true;
@@ -4091,13 +4143,13 @@ static void R_BlendView(void)
 				R_Mesh_TexBind(0, R_GetTexture(r_bloomstate.texture_screen));
 				R_Mesh_TexCoordPointer(0, 2, r_bloomstate.screentexcoord2f, 0, 0);
 				R_Mesh_Draw(0, 4, 0, 2, NULL, polygonelements, 0, 0);
-				r_refdef.stats.bloom_drawpixels += r_refdef.view.width * r_refdef.view.height;
+				r_refdef.stats.bloom_drawpixels += r_refdef.view.viewport.width * r_refdef.view.viewport.height;
 			}
 		}
 
 		// copy view into the screen texture
-		qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.x, vid.height - (r_refdef.view.y + r_refdef.view.height), r_refdef.view.width, r_refdef.view.height);CHECKGLERROR
-		r_refdef.stats.bloom_copypixels += r_refdef.view.width * r_refdef.view.height;
+		qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);CHECKGLERROR
+		r_refdef.stats.bloom_copypixels += r_refdef.view.viewport.width * r_refdef.view.viewport.height;
 	}
 
 	if (r_glsl.integer && gl_support_fragment_shader && (r_bloomstate.texture_screen || r_bloomstate.texture_bloom))
@@ -4166,7 +4218,7 @@ static void R_BlendView(void)
 		if (r_glsl_permutation->loc_Saturation >= 0)
 			qglUniform1fARB(r_glsl_permutation->loc_Saturation, r_glsl_saturation.value);
 		R_Mesh_Draw(0, 4, 0, 2, NULL, polygonelements, 0, 0);
-		r_refdef.stats.bloom_drawpixels += r_refdef.view.width * r_refdef.view.height;
+		r_refdef.stats.bloom_drawpixels += r_refdef.view.viewport.width * r_refdef.view.viewport.height;
 		return;
 	}
 
@@ -4186,7 +4238,7 @@ static void R_BlendView(void)
 		R_Mesh_TexBind(0, R_GetTexture(r_bloomstate.texture_bloom));
 		R_Mesh_TexCoordPointer(0, 2, r_bloomstate.bloomtexcoord2f, 0, 0);
 		R_Mesh_Draw(0, 4, 0, 2, NULL, polygonelements, 0, 0);
-		r_refdef.stats.bloom_drawpixels += r_refdef.view.width * r_refdef.view.height;
+		r_refdef.stats.bloom_drawpixels += r_refdef.view.viewport.width * r_refdef.view.viewport.height;
 	}
 	else if (r_bloomstate.texture_bloom)
 	{
@@ -4215,14 +4267,14 @@ static void R_BlendView(void)
 		{
 			R_SetupGenericShader(true);
 			R_Mesh_Draw(0, 4, 0, 2, NULL, polygonelements, 0, 0);
-			r_refdef.stats.bloom_drawpixels += r_refdef.view.width * r_refdef.view.height;
+			r_refdef.stats.bloom_drawpixels += r_refdef.view.viewport.width * r_refdef.view.viewport.height;
 			// now blend on the bloom texture
 			GL_BlendFunc(GL_ONE, GL_ONE);
 			R_Mesh_TexBind(0, R_GetTexture(r_bloomstate.texture_screen));
 			R_Mesh_TexCoordPointer(0, 2, r_bloomstate.screentexcoord2f, 0, 0);
 		}
 		R_Mesh_Draw(0, 4, 0, 2, NULL, polygonelements, 0, 0);
-		r_refdef.stats.bloom_drawpixels += r_refdef.view.width * r_refdef.view.height;
+		r_refdef.stats.bloom_drawpixels += r_refdef.view.viewport.width * r_refdef.view.viewport.height;
 	}
 	if (r_refdef.viewblend[3] >= (1.0f / 256.0f))
 	{
@@ -4599,7 +4651,7 @@ void R_RenderScene(void)
 	if (r_refdef.scene.extraupdate)
 		S_ExtraUpdate ();
 
-	if (r_shadows.integer > 0 && !r_shadows_drawafterrtlightning.integer && r_refdef.lightmapintensity > 0)
+	if (r_shadows.integer > 0 && !r_shadows_drawafterrtlighting.integer && r_refdef.lightmapintensity > 0)
 	{
 		R_DrawModelShadows();
 		R_ResetViewRendering3D();
@@ -4616,7 +4668,7 @@ void R_RenderScene(void)
 	if (r_refdef.scene.extraupdate)
 		S_ExtraUpdate ();
 
-	if (r_shadows.integer > 0 && r_shadows_drawafterrtlightning.integer && r_refdef.lightmapintensity > 0)
+	if (r_shadows.integer > 0 && r_shadows_drawafterrtlighting.integer && r_refdef.lightmapintensity > 0)
 	{
 		R_DrawModelShadows();
 		R_ResetViewRendering3D();
