@@ -542,7 +542,9 @@ static void Cmd_XKill_f (void)
 		id = Con_GetTID();
 		if (id == 0)
 		{
-			Con_Print("term: cannot kill instance 0\n");
+			// termq = quiet, no warning when killing 0
+			if (strcmp(Cmd_Argv(0), "termq"))
+				Con_Print("term: cannot kill instance 0\n");
 			return;
 		}
 		Con_Kill(id);
@@ -555,7 +557,9 @@ static void Cmd_XKill_f (void)
 			continue;
 		if (id == 0)
 		{
-			Con_Print("term: cannot kill instance 0\n");
+			// termq = quiet, no warning when killing 0
+			if (strcmp(Cmd_Argv(0), "termq"))
+				Con_Print("term: cannot kill instance 0\n");
 			continue;
 		}
 		Con_Kill(id);
@@ -1732,6 +1736,7 @@ void Cmd_Init_Commands (void)
 	Cmd_AddCommand ("suspend", Cmd_Suspend_f, "suspend a console instance, when suspending the current console, this also does 'setid 0'");
 	Cmd_AddCommand ("resume", Cmd_Resume_f, "resume the execution of a console instance");
 	Cmd_AddCommand ("term", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
+	Cmd_AddCommand ("termq", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
 	Cmd_AddCommand ("xadd", Cmd_XAdd_f, "add a command to a console instance");
 	Cmd_AddCommand ("setlocal", Cmd_SetLocal_f, "set a instance-local cvar");
 	Cmd_AddCommand ("setforeign", Cmd_SetForeign_f, "set an instance's local cvar");
