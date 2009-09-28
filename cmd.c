@@ -545,6 +545,7 @@ static void Cmd_XKill_f (void)
 			// termq = quiet, no warning when killing 0
 			if (strcmp(Cmd_Argv(0), "termq"))
 				Con_Print("term: cannot kill instance 0\n");
+			SZ_Clear(&cmd_ex->text);
 			return;
 		}
 		Con_Kill(id);
