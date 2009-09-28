@@ -791,12 +791,13 @@ static void Cbuf_Execute_Instance (double systime)
 	char *firstchar;
 	qboolean quotes, comment;
 	size_t id;
+	size_t runaway = 0;
 
 	// LordHavoc: making sure the tokenizebuffer doesn't get filled up by repeated crashes
 	cmd_tokenizebufferpos = 0;
 
 	id = cmd_ex->tid;
-	while (cmd_ex->tid == id && Con_Running(cmd_ex, systime) && cmd_text->cursize)
+	while (cmd_ex->tid == id && Con_Running(cmd_ex, systime) && cmd_text->cursize && (cmd_ex->tid == 0 || ++runaway < 1000))
 	{
 // find a \n or ; line break
 		text = (char *)cmd_text->data;
