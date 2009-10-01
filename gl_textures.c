@@ -724,7 +724,7 @@ void R_MakeResizeBufferBigger(int size)
 	}
 }
 
-static void GL_SetupTextureParameters(int flags, int texturetype)
+static void GL_SetupTextureParameters(int flags, textype_t textype, int texturetype)
 {
 	int textureenum = gltexturetypeenums[texturetype];
 	int wrapmode = ((flags & TEXF_CLAMP) && gl_support_clamptoedge) ? GL_CLAMP_TO_EDGE : GL_REPEAT;
@@ -790,17 +790,21 @@ static void GL_SetupTextureParameters(int flags, int texturetype)
 		qglTexParameteri(textureenum, GL_TEXTURE_MAG_FILTER, gl_filter_mag);CHECKGLERROR
 	}
 
-	if (texturetype == TEXTYPE_SHADOWMAP)
+	if (textype == TEXTYPE_SHADOWMAP)
 	{
-#if 1
-		qglTexParameteri(textureenum, GL_TEXTURE_COMPARE_MODE_ARB, GL_COMPARE_R_TO_TEXTURE_ARB);CHECKGLERROR
-		qglTexParameteri(textureenum, GL_TEXTURE_COMPARE_FUNC_ARB, GL_LEQUAL);CHECKGLERROR
-		qglTexParameteri(textureenum, GL_DEPTH_TEXTURE_MODE_ARB, GL_INTENSITY);CHECKGLERROR
-#else
-		qglTexParameteri(textureenum, GL_TEXTURE_COMPARE_MODE_ARB, GL_NONE);CHECKGLERROR
-		qglTexParameteri(textureenum, GL_TEXTURE_COMPARE_FUNC_ARB, GL_ALWAYS);CHECKGLERROR
-		qglTexParameteri(textureenum, GL_DEPTH_TEXTURE_MODE_ARB, GL_INTENSITY);CHECKGLERROR
-#endif
+		if (gl_support_arb_shadow)
+		{
+			if (flags & TEXF_COMPARE)
+			{
+				qglTexParameteri(textureenum, GL_TEXTURE_COMPARE_MODE_ARB, GL_COMPARE_R_TO_TEXTURE_ARB);CHECKGLERROR
+			}
+			else
+			{
+				qglTexParameteri(textureenum, GL_TEXTURE_COMPARE_MODE_ARB, GL_NONE);CHECKGLERROR
+			}
+			qglTexParameteri(textureenum, GL_TEXTURE_COMPARE_FUNC_ARB, GL_LEQUAL);CHECKGLERROR
+		}
+		qglTexParameteri(textureenum, GL_DEPTH_TEXTURE_MODE_ARB, GL_LUMINANCE);CHECKGLERROR
 	}
 
 	CHECKGLERROR
@@ -820,7 +824,7 @@ static void R_Upload(gltexture_t *glt, const unsigned char *data, int fragx, int
 	qglBindTexture(gltexturetypeenums[glt->texturetype], glt->texnum);CHECKGLERROR
 
 	// these are rounded up versions of the size to do better resampling
-	if (gl_support_arb_texture_non_power_of_two)
+	if (gl_support_arb_texture_non_power_of_two || glt->texturetype == GLTEXTURETYPE_RECTANGLE)
 	{
 		width = glt->inputwidth;
 		height = glt->inputheight;
@@ -973,7 +977,7 @@ static void R_Upload(gltexture_t *glt, const unsigned char *data, int fragx, int
 			qglTexImage2D(GL_TEXTURE_RECTANGLE_ARB, mip++, glt->glinternalformat, width, height, 0, glt->glformat, glt->gltype, NULL);CHECKGLERROR
 			break;
 		}
-		GL_SetupTextureParameters(glt->flags, glt->texturetype);
+		GL_SetupTextureParameters(glt->flags, glt->textype->textype, glt->texturetype);
 	}
 	qglBindTexture(gltexturetypeenums[glt->texturetype], oldbindtexnum);CHECKGLERROR
 }
@@ -1139,24 +1143,19 @@ rtexture_t *R_LoadTextureCubeMap(rtexturepool_t *rtexturepool, const char *ident
 	return R_SetupTexture(rtexturepool, identifier, width, width, 1, 6, flags, textype, GLTEXTURETYPE_CUBEMAP, data, palette);
 }
 
-rtexture_t *R_LoadTextureShadowMapRectangle(rtexturepool_t *rtexturepool, const char *identifier, int width, int height)
+rtexture_t *R_LoadTextureShadowMapRectangle(rtexturepool_t *rtexturepool, const char *identifier, int width, int height, qboolean filter)
 {
-	return R_SetupTexture(rtexturepool, identifier, width, height, 1, 1, TEXF_ALWAYSPRECACHE | TEXF_FORCENEAREST | TEXF_CLAMP, TEXTYPE_SHADOWMAP, GLTEXTURETYPE_RECTANGLE, NULL, NULL);
+	return R_SetupTexture(rtexturepool, identifier, width, height, 1, 1, TEXF_ALWAYSPRECACHE | TEXF_CLAMP | (filter ? TEXF_FORCELINEAR | TEXF_COMPARE : TEXF_FORCENEAREST), TEXTYPE_SHADOWMAP, GLTEXTURETYPE_RECTANGLE, NULL, NULL);
 }
 
-rtexture_t *R_LoadTextureShadowMapCube(rtexturepool_t *rtexturepool, const char *identifier, int width)
+rtexture_t *R_LoadTextureShadowMap2D(rtexturepool_t *rtexturepool, const char *identifier, int width, int height, qboolean filter)
 {
-	return R_SetupTexture(rtexturepool, identifier, width, width, 1, 6, TEXF_ALWAYSPRECACHE | TEXF_FORCELINEAR | TEXF_CLAMP, TEXTYPE_SHADOWMAP, GLTEXTURETYPE_CUBEMAP, NULL, NULL);
+	return R_SetupTexture(rtexturepool, identifier, width, height, 1, 1, TEXF_ALWAYSPRECACHE | TEXF_CLAMP | (filter ? TEXF_FORCELINEAR | TEXF_COMPARE : TEXF_FORCENEAREST), TEXTYPE_SHADOWMAP, GLTEXTURETYPE_2D, NULL, NULL);
 }
 
-rtexture_t *R_LoadTextureShadowMap2D(rtexturepool_t *rtexturepool, const char *identifier, int width, int height)
+rtexture_t *R_LoadTextureShadowMapCube(rtexturepool_t *rtexturepool, const char *identifier, int width, qboolean filter)
 {
-	return R_SetupTexture(rtexturepool, identifier, width, height, 1, 1, TEXF_ALWAYSPRECACHE | TEXF_FORCENEAREST | TEXF_CLAMP, TEXTYPE_SHADOWMAP, GLTEXTURETYPE_2D, NULL, NULL);
-}
-
-rtexture_t *R_LoadTextureCubeProjection(rtexturepool_t *rtexturepool, const char *identifier)
-{
-	return R_SetupTexture(rtexturepool, identifier, 2, 2, 1, 6, TEXF_ALWAYSPRECACHE | TEXF_FORCELINEAR | TEXF_CLAMP, TEXTYPE_BGRA, GLTEXTURETYPE_CUBEMAP, NULL, NULL);
+    return R_SetupTexture(rtexturepool, identifier, width, width, 1, 6, TEXF_ALWAYSPRECACHE | TEXF_CLAMP | (filter ? TEXF_FORCELINEAR | TEXF_COMPARE : TEXF_FORCENEAREST), TEXTYPE_SHADOWMAP, GLTEXTURETYPE_CUBEMAP, NULL, NULL);
 }
 
 int R_TextureHasAlpha(rtexture_t *rt)
