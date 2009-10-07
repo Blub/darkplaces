@@ -192,6 +192,7 @@ typedef struct prvm_prog_fieldoffsets_s
 	int glow_color; // ssqc
 	int glow_size; // ssqc
 	int glow_trail; // ssqc
+	int glowmod; // ssqc / csqc
 	int gravity; // ssqc
 	int groundentity; // ssqc / csqc
 	int hull; // ssqc / csqc
@@ -277,6 +278,7 @@ typedef struct prvm_prog_globaloffsets_s
 	int gettaginfo_forward; // ssqc / csqc
 	int gettaginfo_right; // ssqc / csqc
 	int gettaginfo_up; // ssqc / csqc
+	int transparent_offset; // csqc
 }
 prvm_prog_globaloffsets_t;
 
@@ -471,6 +473,8 @@ typedef struct prvm_prog_s
 	void				(*reset_cmd)(void); // [INIT] used by PRVM_ResetProg
 
 	void				(*error_cmd)(const char *format, ...) DP_FUNC_PRINTF(1); // [INIT]
+
+	void				(*ExecuteProgram)(func_t fnum, const char *errormessage); // pointer to one of the *VM_ExecuteProgram functions
 } prvm_prog_t;
 
 extern prvm_prog_t * prog;
@@ -511,7 +515,10 @@ void VM_Cmd_Reset(void);
 
 void PRVM_Init (void);
 
-void PRVM_ExecuteProgram (func_t fnum, const char *errormessage);
+void MVM_ExecuteProgram (func_t fnum, const char *errormessage);
+void CLVM_ExecuteProgram (func_t fnum, const char *errormessage);
+void SVVM_ExecuteProgram (func_t fnum, const char *errormessage);
+#define PRVM_ExecuteProgram prog->ExecuteProgram
 
 #define PRVM_Alloc(buffersize) _PRVM_Alloc(buffersize, __FILE__, __LINE__)
 #define PRVM_Free(buffer) _PRVM_Free(buffer, __FILE__, __LINE__)

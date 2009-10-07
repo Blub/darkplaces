@@ -409,6 +409,7 @@ extern cvar_t sv_fixedframeratesingleplayer;
 extern cvar_t sv_freezenonclients;
 extern cvar_t sv_friction;
 extern cvar_t sv_gameplayfix_blowupfallenzombies;
+extern cvar_t sv_gameplayfix_consistentplayerprethink;
 extern cvar_t sv_gameplayfix_delayprojectiles;
 extern cvar_t sv_gameplayfix_droptofloorstartsolid;
 extern cvar_t sv_gameplayfix_droptofloorstartsolid_nudgetocorrect;
@@ -499,7 +500,7 @@ void SV_BroadcastPrintf(const char *fmt, ...) DP_FUNC_PRINTF(1);
 
 void SV_Physics (void);
 void SV_Physics_ClientMove (void);
-void SV_Physics_ClientEntity (prvm_edict_t *ent);
+//void SV_Physics_ClientEntity (prvm_edict_t *ent);
 
 qboolean SV_PlayerCheckGround (prvm_edict_t *ent);
 qboolean SV_CheckBottom (prvm_edict_t *ent);
@@ -507,9 +508,10 @@ qboolean SV_movestep (prvm_edict_t *ent, vec3_t move, qboolean relink, qboolean 
 
 /*! Needs to be called any time an entity changes origin, mins, maxs, or solid
  * sets ent->v.absmin and ent->v.absmax
- * if touchtriggers, calls prog functions for the intersected triggers
+ * call TouchAreaGrid as well to fire triggers that overlap the box
  */
-void SV_LinkEdict (prvm_edict_t *ent, qboolean touch_triggers);
+void SV_LinkEdict(prvm_edict_t *ent);
+void SV_LinkEdict_TouchAreaGrid(prvm_edict_t *ent);
 
 /*! move an entity that is stuck by small amounts in various directions to try to nudge it back into the collision hull
  * returns true if it found a better place
@@ -519,7 +521,9 @@ qboolean SV_UnstickEntity (prvm_edict_t *ent);
 /// calculates hitsupercontentsmask for a generic qc entity
 int SV_GenericHitSuperContentsMask(const prvm_edict_t *edict);
 /// traces a box move against worldmodel and all entities in the specified area
-trace_t SV_Move(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask);
+trace_t SV_TraceBox(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask);
+trace_t SV_TraceLine(const vec3_t start, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask);
+trace_t SV_TracePoint(const vec3_t start, int type, prvm_edict_t *passedict, int hitsupercontentsmask);
 
 int SV_PointSuperContents(const vec3_t point);
 
