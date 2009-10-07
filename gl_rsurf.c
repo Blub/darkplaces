@@ -1059,42 +1059,69 @@ void R_Q1BSP_DrawShadowVolume(entity_render_t *ent, const vec3_t relativelightor
 		GL_PolygonOffset(r_refdef.shadowpolygonfactor, r_refdef.shadowpolygonoffset);
 }
 
-void R_Q1BSP_DrawShadowMap(entity_render_t *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int modelnumsurfaces, const int *modelsurfacelist, const vec3_t lightmins, const vec3_t lightmaxs)
+void R_Q1BSP_CompileShadowMap(entity_render_t *ent, vec3_t relativelightorigin, vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist)
 {
 	dp_model_t *model = ent->model;
 	msurface_t *surface;
-	int modelsurfacelistindex;
-	float projectdistance = relativelightdirection ? lightradius : lightradius + model->radius*2 + r_shadow_projectdistance.value;
+	int surfacelistindex;
+	int sidetotals[6] = { 0, 0, 0, 0, 0, 0 }, sidemasks = 0;
+	int i;
+	r_shadow_compilingrtlight->static_meshchain_shadow_shadowmap = Mod_ShadowMesh_Begin(r_main_mempool, 32768, 32768, NULL, NULL, NULL, false, false, true);
+	R_Shadow_PrepareShadowSides(model->brush.shadowmesh->numtriangles);
+	for (surfacelistindex = 0;surfacelistindex < numsurfaces;surfacelistindex++)
+	{
+		surface = model->data_surfaces + surfacelist[surfacelistindex];
+		sidemasks |= R_Shadow_ChooseSidesFromBox(surface->num_firstshadowmeshtriangle, surface->num_triangles, model->brush.shadowmesh->vertex3f, model->brush.shadowmesh->element3i, &r_shadow_compilingrtlight->matrix_worldtolight, relativelightorigin, relativelightdirection, r_shadow_compilingrtlight->cullmins, r_shadow_compilingrtlight->cullmaxs, surface->mins, surface->maxs, surface->texture->basematerialflags & MATERIALFLAG_NOSHADOW ? NULL : sidetotals);
+	}
+	R_Shadow_ShadowMapFromList(model->brush.shadowmesh->numverts, model->brush.shadowmesh->numtriangles, model->brush.shadowmesh->vertex3f, model->brush.shadowmesh->element3i, numshadowsides, sidetotals, shadowsides, shadowsideslist);
+	r_shadow_compilingrtlight->static_meshchain_shadow_shadowmap = Mod_ShadowMesh_Finish(r_main_mempool, r_shadow_compilingrtlight->static_meshchain_shadow_shadowmap, false, false, true);
+	r_shadow_compilingrtlight->static_shadowmap_receivers &= sidemasks;
+	for(i = 0;i<6;i++)
+		if(!sidetotals[i])
+			r_shadow_compilingrtlight->static_shadowmap_casters &= ~(1 << i);
+}
+
+void R_Q1BSP_DrawShadowMap(int side, entity_render_t *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int modelnumsurfaces, const int *modelsurfacelist, const unsigned char *surfacesides, const vec3_t lightmins, const vec3_t lightmaxs)
+{
+	dp_model_t *model = ent->model;
+	msurface_t *surface, *batch[64];
+	int modelsurfacelistindex, batchsize;
 	// check the box in modelspace, it was already checked in worldspace
 	if (!BoxesOverlap(model->normalmins, model->normalmaxs, lightmins, lightmaxs))
 		return;
-	if (model->brush.shadowmesh)
+	// identify lit faces within the bounding box
+	for (modelsurfacelistindex = 0;modelsurfacelistindex < modelnumsurfaces;modelsurfacelistindex++)
 	{
-		R_Shadow_PrepareShadowMark(model->brush.shadowmesh->numtriangles);
-		for (modelsurfacelistindex = 0;modelsurfacelistindex < modelnumsurfaces;modelsurfacelistindex++)
+		surface = model->data_surfaces + modelsurfacelist[modelsurfacelistindex];
+		if (surfacesides && !(surfacesides[modelsurfacelistindex] && (1 << side)))
+			continue;
+		rsurface.texture = R_GetCurrentTexture(surface->texture);
+		if (rsurface.texture->currentmaterialflags & MATERIALFLAG_NOSHADOW)
+			continue;
+		if (!BoxesOverlap(lightmins, lightmaxs, surface->mins, surface->maxs))
+			continue;
+		r_refdef.stats.lights_dynamicshadowtriangles += surface->num_triangles;
+		r_refdef.stats.lights_shadowtriangles += surface->num_triangles;
+		batch[0] = surface;
+        batchsize = 1;
+		while(++modelsurfacelistindex < modelnumsurfaces && batchsize < (int)(sizeof(batch)/sizeof(batch[0])))
 		{
 			surface = model->data_surfaces + modelsurfacelist[modelsurfacelistindex];
-			if (R_GetCurrentTexture(surface->texture)->currentmaterialflags & MATERIALFLAG_NOSHADOW)
+			if (surfacesides && !(surfacesides[modelsurfacelistindex] & (1 << side)))
 				continue;
-			R_Shadow_MarkVolumeFromBox(surface->num_firstshadowmeshtriangle, surface->num_triangles, model->brush.shadowmesh->vertex3f, model->brush.shadowmesh->element3i, relativelightorigin, relativelightdirection, lightmins, lightmaxs, surface->mins, surface->maxs);
-		}
-		R_Shadow_ShadowMapFromList(model->brush.shadowmesh->numverts, model->brush.shadowmesh->numtriangles, model->brush.shadowmesh->vertex3f, 0, 0, model->brush.shadowmesh->element3i, numshadowmark, shadowmarklist);
-	}
-	else
-	{
-		projectdistance = lightradius + model->radius*2;
-		R_Shadow_PrepareShadowMark(model->surfmesh.num_triangles);
-		// identify lit faces within the bounding box
-		for (modelsurfacelistindex = 0;modelsurfacelistindex < modelnumsurfaces;modelsurfacelistindex++)
-		{
-			surface = model->data_surfaces + modelsurfacelist[modelsurfacelistindex];
-			rsurface.texture = R_GetCurrentTexture(surface->texture);
-			if (rsurface.texture->currentmaterialflags & MATERIALFLAG_NOSHADOW)
+			if (surface->texture != batch[0]->texture)
+				break;
+			if (!BoxesOverlap(lightmins, lightmaxs, surface->mins, surface->maxs))
 				continue;
-			RSurf_PrepareVerticesForBatch(false, false, 1, &surface);
-			R_Shadow_MarkVolumeFromBox(surface->num_firsttriangle, surface->num_triangles, rsurface.vertex3f, rsurface.modelelement3i, relativelightorigin, relativelightdirection, lightmins, lightmaxs, surface->mins, surface->maxs);
+			r_refdef.stats.lights_dynamicshadowtriangles += surface->num_triangles;
+			r_refdef.stats.lights_shadowtriangles += surface->num_triangles;
+			batch[batchsize++] = surface;
 		}
-		R_Shadow_ShadowMapFromList(model->surfmesh.num_vertices, model->surfmesh.num_triangles, rsurface.vertex3f, rsurface.vertex3f_bufferobject, rsurface.vertex3f_bufferoffset, model->surfmesh.data_element3i, numshadowmark, shadowmarklist);
+		--modelsurfacelistindex;
+		GL_CullFace(rsurface.texture->currentmaterialflags & MATERIALFLAG_NOCULLFACE ? GL_NONE : r_refdef.view.cullface_back);
+		RSurf_PrepareVerticesForBatch(false, false, batchsize, batch);
+		RSurf_DrawBatch_Simple(batchsize, batch);
+		GL_LockArrays(0, 0);
 	}
 }
 

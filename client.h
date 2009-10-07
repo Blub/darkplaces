@@ -122,9 +122,12 @@ typedef struct rtlight_s
 	int isstatic;
 	/// true if this is a compiled world light, cleared if the light changes
 	int compiled;
+	/// the shadowing mode used to compile this light
+	int shadowmode;
 	/// premade shadow volumes to render for world entity
 	shadowmesh_t *static_meshchain_shadow_zpass;
 	shadowmesh_t *static_meshchain_shadow_zfail;
+	shadowmesh_t *static_meshchain_shadow_shadowmap;
 	/// used for visibility testing (more exact than bbox)
 	int static_numleafs;
 	int static_numleafpvsbytes;
@@ -146,6 +149,9 @@ typedef struct rtlight_s
 	/// (important on big surfaces such as terrain)
 	int static_numlighttrispvsbytes;
 	unsigned char *static_lighttrispvs;
+	/// masks of all shadowmap sides that have any potential static receivers or casters
+	int static_shadowmap_receivers;
+	int static_shadowmap_casters;
 }
 rtlight_t;
 
@@ -268,6 +274,8 @@ typedef struct entity_render_s
 	float alpha;
 	// size the model is shown
 	float scale;
+	// transparent sorting offset
+	float transparent_offset;
 
 	// NULL = no model
 	dp_model_t *model;
@@ -287,6 +295,7 @@ typedef struct entity_render_s
 
 	// colormod tinting of models
 	float colormod[3];
+	float glowmod[3];
 
 	// interpolated animation - active framegroups and blend factors
 	framegroupblend_t framegroupblend[MAX_FRAMEGROUPBLENDS];
@@ -580,6 +589,13 @@ typedef struct client_static_s
 	// protocol version of the server we're connected to
 	// (kept outside client_state_t because it's used between levels)
 	protocolversion_t protocol;
+
+#define MAX_RCONS 16
+	int rcon_trying;
+	lhnetaddress_t rcon_addresses[MAX_RCONS];
+	char rcon_commands[MAX_RCONS][MAX_INPUTLINE];
+	double rcon_timeout[MAX_RCONS];
+	int rcon_ringpos;
 
 // connection information
 	// 0 to SIGNONS
@@ -1330,6 +1346,7 @@ extern cvar_t cl_decals_fadetime;
 void CL_Particles_Clear(void);
 void CL_Particles_Init(void);
 void CL_Particles_Shutdown(void);
+particle_t *CL_NewParticle(unsigned short ptypeindex, int pcolor1, int pcolor2, int ptex, float psize, float psizeincrease, float palpha, float palphafade, float pgravity, float pbounce, float px, float py, float pz, float pvx, float pvy, float pvz, float pairfriction, float pliquidfriction, float originjitter, float velocityjitter, qboolean pqualityreduction, float lifetime, float stretch, pblend_t blendmode, porientation_t orientation, int staincolor1, int staincolor2, int staintex);
 
 typedef enum effectnameindex_s
 {

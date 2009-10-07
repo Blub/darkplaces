@@ -180,6 +180,7 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed)
 	if((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.alpha)) && val->_float)		entrender->alpha = val->_float;
 	if((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.scale)) && val->_float)		entrender->scale = scale = val->_float;
 	if((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.colormod)) && VectorLength2(val->vector))	VectorCopy(val->vector, entrender->colormod);
+	if((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.glowmod)) && VectorLength2(val->vector))	VectorCopy(val->vector, entrender->glowmod);
 	if((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.effects)) && val->_float)	entrender->effects |= (int)val->_float;
 	if((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.tag_entity)) && val->edict)
 	{
@@ -192,6 +193,10 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed)
 	}
 	else
 		Matrix4x4_CreateIdentity(&tagmatrix);
+	if (!VectorLength2(entrender->colormod))
+		VectorSet(entrender->colormod, 1, 1, 1);
+	if (!VectorLength2(entrender->glowmod))
+		VectorSet(entrender->glowmod, 1, 1, 1);
 
 	if (renderflags & RF_USEAXIS)
 	{
@@ -239,12 +244,18 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed)
 	// concat the matrices to make the entity relative to its tag
 	Matrix4x4_Concat(&entrender->matrix, &tagmatrix, &matrix2);
 
+	// transparent offset
+	if ((renderflags & RF_USETRANSPARENTOFFSET) && (val = PRVM_GLOBALFIELDVALUE(prog->globaloffsets.transparent_offset)))
+		entrender->transparent_offset = val->_float;
+
 	if(renderflags)
 	{
 		if(renderflags & RF_VIEWMODEL)	entrender->flags |= RENDER_VIEWMODEL;
 		if(renderflags & RF_EXTERNALMODEL)entrender->flags |= RENDER_EXTERIORMODEL;
+		if(renderflags & RF_NOCULL)		entrender->flags |= RENDER_NOCULL;
 		if(renderflags & RF_DEPTHHACK)	entrender->effects |= EF_NODEPTHTEST;
 		if(renderflags & RF_ADDITIVE)		entrender->effects |= EF_ADDITIVE;
+
 	}
 
 	c = (int)ed->fields.client->colormap;
@@ -883,6 +894,7 @@ void CL_VM_Init (void)
 	prog->init_cmd = VM_CL_Cmd_Init;
 	prog->reset_cmd = VM_CL_Cmd_Reset;
 	prog->error_cmd = CL_VM_Error;
+	prog->ExecuteProgram = CLVM_ExecuteProgram;
 
 	PRVM_LoadProgs(csprogsfn, cl_numrequiredfunc, cl_required_func, 0, NULL, 0, NULL);
 

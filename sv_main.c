@@ -84,6 +84,7 @@ cvar_t sv_fixedframeratesingleplayer = {0, "sv_fixedframeratesingleplayer", "1",
 cvar_t sv_freezenonclients = {CVAR_NOTIFY, "sv_freezenonclients", "0", "freezes time, except for players, allowing you to walk around and take screenshots of explosions"};
 cvar_t sv_friction = {CVAR_NOTIFY, "sv_friction","4", "how fast you slow down"};
 cvar_t sv_gameplayfix_blowupfallenzombies = {0, "sv_gameplayfix_blowupfallenzombies", "1", "causes findradius to detect SOLID_NOT entities such as zombies and corpses on the floor, allowing splash damage to apply to them"};
+cvar_t sv_gameplayfix_consistentplayerprethink = {0, "sv_gameplayfix_consistentplayerprethink", "1", "improves fairness in multiplayer by running all PlayerPreThink functions (which fire weapons) before performing physics, then runing all PlayerPostThink functions"};
 cvar_t sv_gameplayfix_delayprojectiles = {0, "sv_gameplayfix_delayprojectiles", "1", "causes entities to not move on the same frame they are spawned, meaning that projectiles wait until the next frame to perform their first move, giving proper interpolation and rocket trails, but making weapons harder to use at low framerates"};
 cvar_t sv_gameplayfix_droptofloorstartsolid = {0, "sv_gameplayfix_droptofloorstartsolid", "1", "prevents items and monsters that start in a solid area from falling out of the level (makes droptofloor treat trace_startsolid as an acceptable outcome)"};
 cvar_t sv_gameplayfix_droptofloorstartsolid_nudgetocorrect = {0, "sv_gameplayfix_droptofloorstartsolid_nudgetocorrect", "1", "tries to nudge stuck items and monsters out of walls before droptofloor is performed"};
@@ -128,6 +129,7 @@ cvar_t sv_warsowbunny_accel = {0, "sv_warsowbunny_accel", "0.1585", "how fast yo
 cvar_t sv_warsowbunny_topspeed = {0, "sv_warsowbunny_topspeed", "925", "soft speed limit (can get faster with rjs and on ramps)"};
 cvar_t sv_warsowbunny_turnaccel = {0, "sv_warsowbunny_turnaccel", "0", "max sharpness of turns (also master switch for the sv_warsowbunny_* mode; set this to 9 to enable)"};
 cvar_t sv_warsowbunny_backtosideratio = {0, "sv_warsowbunny_backtosideratio", "0.8", "lower values make it easier to change direction without losing speed; the drawback is \"understeering\" in sharp turns"};
+cvar_t sv_onlycsqcnetworking = {0, "sv_onlycsqcnetworking", "0", "disables legacy entity networking code for higher performance (except on clients, which can still be legacy)"};
 cvar_t sys_ticrate = {CVAR_SAVE, "sys_ticrate","0.0138889", "how long a server frame is in seconds, 0.05 is 20fps server rate, 0.1 is 10fps (can not be set higher than 0.1), 0 runs as many server frames as possible (makes games against bots a little smoother, overwhelms network players), 0.0138889 matches QuakeWorld physics"};
 cvar_t teamplay = {CVAR_NOTIFY, "teamplay","0", "teamplay mode, values depend on mod but typically 0 = no teams, 1 = no team damage no self damage, 2 = team damage and self damage, some mods support 3 = no team damage but can damage self"};
 cvar_t timelimit = {CVAR_NOTIFY, "timelimit","0", "ends level at this time (in minutes)"};
@@ -289,6 +291,7 @@ prvm_required_field_t reqfields[] =
 	{ev_vector, "cursor_screen"},
 	{ev_vector, "cursor_trace_endpos"},
 	{ev_vector, "cursor_trace_start"},
+	{ev_vector, "glowmod"},
 	{ev_vector, "movement"},
 	{ev_vector, "punchvector"},
 };
@@ -373,6 +376,7 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_freezenonclients);
 	Cvar_RegisterVariable (&sv_friction);
 	Cvar_RegisterVariable (&sv_gameplayfix_blowupfallenzombies);
+	Cvar_RegisterVariable (&sv_gameplayfix_consistentplayerprethink);
 	Cvar_RegisterVariable (&sv_gameplayfix_delayprojectiles);
 	Cvar_RegisterVariable (&sv_gameplayfix_droptofloorstartsolid);
 	Cvar_RegisterVariable (&sv_gameplayfix_droptofloorstartsolid_nudgetocorrect);
@@ -417,6 +421,7 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_warsowbunny_topspeed);
 	Cvar_RegisterVariable (&sv_warsowbunny_turnaccel);
 	Cvar_RegisterVariable (&sv_warsowbunny_backtosideratio);
+	Cvar_RegisterVariable (&sv_onlycsqcnetworking);
 	Cvar_RegisterVariable (&sys_ticrate);
 	Cvar_RegisterVariable (&teamplay);
 	Cvar_RegisterVariable (&timelimit);
@@ -1010,10 +1015,17 @@ static qboolean SV_PrepareEntityForSending (prvm_edict_t *ent, entity_state_t *c
 	unsigned int version;
 	unsigned int modelindex, effects, flags, glowsize, lightstyle, lightpflags, light[4], specialvisibilityradius;
 	unsigned int customizeentityforclient;
+	unsigned int sendentity;
 	float f;
 	vec3_t cullmins, cullmaxs;
 	dp_model_t *model;
 	prvm_eval_t *val, *val2;
+
+	// fast path for games that do not use legacy entity networking
+	// note: still networks clients even if they are legacy
+	sendentity = PRVM_EDICTFIELDVALUE(ent, prog->fieldoffsets.SendEntity)->function;
+	if (sv_onlycsqcnetworking.integer && !sendentity && enumber > svs.maxclients)
+		return false;
 
 	// this 2 billion unit check is actually to detect NAN origins
 	// (we really don't want to send those)
@@ -1130,6 +1142,16 @@ static qboolean SV_PrepareEntityForSending (prvm_edict_t *ent, entity_state_t *c
 		i = (int)(val->vector[0] * 32.0f);cs->colormod[0] = bound(0, i, 255);
 		i = (int)(val->vector[1] * 32.0f);cs->colormod[1] = bound(0, i, 255);
 		i = (int)(val->vector[2] * 32.0f);cs->colormod[2] = bound(0, i, 255);
+	}
+
+	// don't need to init cs->glowmod because the defaultstate did that for us
+	//cs->glowmod[0] = cs->glowmod[1] = cs->glowmod[2] = 32;
+	val = PRVM_EDICTFIELDVALUE(ent, prog->fieldoffsets.glowmod);
+	if (val->vector[0] || val->vector[1] || val->vector[2])
+	{
+		i = (int)(val->vector[0] * 32.0f);cs->glowmod[0] = bound(0, i, 255);
+		i = (int)(val->vector[1] * 32.0f);cs->glowmod[1] = bound(0, i, 255);
+		i = (int)(val->vector[2] * 32.0f);cs->glowmod[2] = bound(0, i, 255);
 	}
 
 	cs->modelindex = modelindex;
@@ -1249,8 +1271,7 @@ static qboolean SV_PrepareEntityForSending (prvm_edict_t *ent, entity_state_t *c
 	// we need to do some csqc entity upkeep here
 	// get self.SendFlags and clear them
 	// (to let the QC know that they've been read)
-	val = PRVM_EDICTFIELDVALUE(ent, prog->fieldoffsets.SendEntity);
-	if (val->function)
+	if (sendentity)
 	{
 		val = PRVM_EDICTFIELDVALUE(ent, prog->fieldoffsets.SendFlags);
 		sendflags = (unsigned int)val->_float;
@@ -3072,7 +3093,7 @@ static void SV_VM_CB_EndIncreaseEdicts(void)
 	// link every entity except world
 	for (i = 1, ent = prog->edicts;i < prog->max_edicts;i++, ent++)
 		if (!ent->priv.server->free)
-			SV_LinkEdict(ent, false);
+			SV_LinkEdict(ent);
 }
 
 static void SV_VM_CB_InitEdict(prvm_edict_t *e)
@@ -3232,6 +3253,7 @@ static void SV_VM_Setup(void)
 	prog->init_cmd = VM_SV_Cmd_Init;
 	prog->reset_cmd = VM_SV_Cmd_Reset;
 	prog->error_cmd = Host_Error;
+	prog->ExecuteProgram = SVVM_ExecuteProgram;
 
 	// TODO: add a requiredfuncs list (ask LH if this is necessary at all)
 	PRVM_LoadProgs( sv_progs.string, 0, NULL, REQFIELDS, reqfields, 0, NULL );
