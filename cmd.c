@@ -190,6 +190,8 @@ typedef struct {
 	size_t        tid;
 	qboolean      suspended;
 	char          condvar[128];
+	double        cps; // commands per second
+	double        lastTime;
 } cmd_executor_t;
 
 static memexpandablearray_t    cmd_exec_array;
@@ -273,6 +275,8 @@ cmd_executor_t *Con_Spawn(size_t *out_id)
 	ex->suspended = false;
 	ex->sleep = 0;
 	ex->condvar[0] = 0;
+	ex->lastTime = Sys_DoubleTime();
+	ex->cps = -1;
 	if (out_id)
 		*out_id = id;
 	return ex;
@@ -350,6 +354,29 @@ static qboolean Con_ForName(const char *name, size_t *out_id, cmd_executor_t **o
 	if (out_id)
 		*out_id = id;
 	return true;
+}
+
+static void Cmd_SetCPS_f (void)
+{
+	int i;
+	cmd_executor_t *ex;
+	double cps;
+
+	if (Cmd_Argc() < 3)
+	{
+		Con_Print("setcps <cps> <instances>... : Set the CPS of the given instances to <cps>\n");
+		return;
+	}
+
+	cps = atof(Cmd_Argv(1));
+	for (i = 2; i < Cmd_Argc(); ++i)
+	{
+		if(!Con_ForName(Cmd_Argv(i), NULL, &ex)) {
+			Con_Printf("setcps: unknown console: %s\n", Cmd_Argv(i));
+			continue;
+		}
+		ex->cps = cps;
+	}
 }
 
 static void Cmd_SetTID_f (void)
@@ -793,12 +820,24 @@ static void Cbuf_Execute_Instance (double systime)
 	qboolean quotes, comment;
 	size_t id;
 	size_t runaway = 0;
+	size_t runawaylimit = 1000;
 
 	// LordHavoc: making sure the tokenizebuffer doesn't get filled up by repeated crashes
 	cmd_tokenizebufferpos = 0;
 
+	// let's see how many commands we are allowed to execute:
+	if (cmd_ex->tid != 0 && cmd_ex->cps > 0) {
+		if (systime < cmd_ex->lastTime)
+			cmd_ex->lastTime = systime;
+
+		runawaylimit = cmd_ex->cps * (systime - cmd_ex->lastTime);
+		if (runawaylimit < 1)
+			return;
+		cmd_ex->lastTime += runawaylimit / cmd_ex->cps;
+	}
+
 	id = cmd_ex->tid;
-	while (cmd_ex->tid == id && Con_Running(cmd_ex, systime) && cmd_text->cursize && (cmd_ex->tid == 0 || ++runaway < 1000))
+	while (cmd_ex->tid == id && Con_Running(cmd_ex, systime) && cmd_text->cursize && (cmd_ex->tid == 0 || runaway++ < runawaylimit))
 	{
 // find a \n or ; line break
 		text = (char *)cmd_text->data;
@@ -1742,6 +1781,7 @@ void Cmd_Init_Commands (void)
 	Cmd_AddCommand ("xadd", Cmd_XAdd_f, "add a command to a console instance");
 	Cmd_AddCommand ("setlocal", Cmd_SetLocal_f, "set a instance-local cvar");
 	Cmd_AddCommand ("setforeign", Cmd_SetForeign_f, "set an instance's local cvar");
+	Cmd_AddCommand ("setcps", Cmd_SetCPS_f, "set the commands executed per second in a console instance");
 
 	// DRESK - 5/14/06
 	// Support Doom3-style Toggle Command
