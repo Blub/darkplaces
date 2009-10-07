@@ -79,20 +79,352 @@ int SV_GenericHitSuperContentsMask(const prvm_edict_t *passedict)
 
 /*
 ==================
+SV_TracePoint
+==================
+*/
+trace_t SV_TracePoint(const vec3_t start, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
+{
+	int i, bodysupercontents;
+	int passedictprog;
+	float pitchsign = 1;
+	prvm_edict_t *traceowner, *touch;
+	trace_t trace;
+	// bounding box of entire move area
+	vec3_t clipboxmins, clipboxmaxs;
+	// size when clipping against monsters
+	vec3_t clipmins2, clipmaxs2;
+	// start and end origin of move
+	vec3_t clipstart;
+	// trace results
+	trace_t cliptrace;
+	// matrices to transform into/out of other entity's space
+	matrix4x4_t matrix, imatrix;
+	// model of other entity
+	dp_model_t *model;
+	// list of entities to test for collisions
+	int numtouchedicts;
+	prvm_edict_t *touchedicts[MAX_EDICTS];
+
+	//return SV_TraceBox(start, vec3_origin, vec3_origin, end, type, passedict, hitsupercontentsmask);
+
+	VectorCopy(start, clipstart);
+	VectorClear(clipmins2);
+	VectorClear(clipmaxs2);
+#if COLLISIONPARANOID >= 3
+	Con_Printf("move(%f %f %f)", clipstart[0], clipstart[1], clipstart[2]);
+#endif
+
+	// clip to world
+	Collision_ClipPointToWorld(&cliptrace, sv.worldmodel, clipstart, hitsupercontentsmask);
+	cliptrace.bmodelstartsolid = cliptrace.startsolid;
+	if (cliptrace.startsolid || cliptrace.fraction < 1)
+		cliptrace.ent = prog->edicts;
+	if (type == MOVE_WORLDONLY)
+		goto finished;
+
+	if (type == MOVE_MISSILE)
+	{
+		// LordHavoc: modified this, was = -15, now -= 15
+		for (i = 0;i < 3;i++)
+		{
+			clipmins2[i] -= 15;
+			clipmaxs2[i] += 15;
+		}
+	}
+
+	// create the bounding box of the entire move
+	for (i = 0;i < 3;i++)
+	{
+		clipboxmins[i] = min(clipstart[i], cliptrace.endpos[i]) + clipmins2[i] - 1;
+		clipboxmaxs[i] = max(clipstart[i], cliptrace.endpos[i]) + clipmaxs2[i] + 1;
+	}
+
+	// debug override to test against everything
+	if (sv_debugmove.integer)
+	{
+		clipboxmins[0] = clipboxmins[1] = clipboxmins[2] = -999999999;
+		clipboxmaxs[0] = clipboxmaxs[1] = clipboxmaxs[2] =  999999999;
+	}
+
+	// if the passedict is world, make it NULL (to avoid two checks each time)
+	if (passedict == prog->edicts)
+		passedict = NULL;
+	// precalculate prog value for passedict for comparisons
+	passedictprog = PRVM_EDICT_TO_PROG(passedict);
+	// precalculate passedict's owner edict pointer for comparisons
+	traceowner = passedict ? PRVM_PROG_TO_EDICT(passedict->fields.server->owner) : 0;
+
+	// clip to entities
+	// because this uses World_EntitiestoBox, we know all entity boxes overlap
+	// the clip region, so we can skip culling checks in the loop below
+	numtouchedicts = World_EntitiesInBox(&sv.world, clipboxmins, clipboxmaxs, MAX_EDICTS, touchedicts);
+	if (numtouchedicts > MAX_EDICTS)
+	{
+		// this never happens
+		Con_Printf("SV_EntitiesInBox returned %i edicts, max was %i\n", numtouchedicts, MAX_EDICTS);
+		numtouchedicts = MAX_EDICTS;
+	}
+	for (i = 0;i < numtouchedicts;i++)
+	{
+		touch = touchedicts[i];
+
+		if (touch->fields.server->solid < SOLID_BBOX)
+			continue;
+		if (type == MOVE_NOMONSTERS && touch->fields.server->solid != SOLID_BSP)
+			continue;
+
+		if (passedict)
+		{
+			// don't clip against self
+			if (passedict == touch)
+				continue;
+			// don't clip owned entities against owner
+			if (traceowner == touch)
+				continue;
+			// don't clip owner against owned entities
+			if (passedictprog == touch->fields.server->owner)
+				continue;
+			// don't clip points against points (they can't collide)
+			if (VectorCompare(touch->fields.server->mins, touch->fields.server->maxs) && (type != MOVE_MISSILE || !((int)touch->fields.server->flags & FL_MONSTER)))
+				continue;
+		}
+
+		bodysupercontents = touch->fields.server->solid == SOLID_CORPSE ? SUPERCONTENTS_CORPSE : SUPERCONTENTS_BODY;
+
+		// might interact, so do an exact clip
+		model = NULL;
+		if ((int) touch->fields.server->solid == SOLID_BSP || type == MOVE_HITMODEL)
+		{
+			unsigned int modelindex = (unsigned int)touch->fields.server->modelindex;
+			// if the modelindex is 0, it shouldn't be SOLID_BSP!
+			if (modelindex > 0 && modelindex < MAX_MODELS)
+				model = sv.models[(int)touch->fields.server->modelindex];
+			//pitchsign = 1;
+			if (
+				((modelindex = (int)touch->fields.server->modelindex) >= 1 && modelindex < MAX_MODELS && (model = sv.models[(int)touch->fields.server->modelindex]))
+				?
+					model->type == mod_alias
+				:
+					(
+						(((unsigned char)PRVM_EDICTFIELDVALUE(touch, prog->fieldoffsets.pflags)->_float) & PFLAGS_FULLDYNAMIC)
+						||
+						((gamemode == GAME_TENEBRAE) && ((unsigned int)touch->fields.server->effects & (16 | 32)))
+					)
+			)
+				pitchsign = -1;
+		}
+		if (model)
+			Matrix4x4_CreateFromQuakeEntity(&matrix, touch->fields.server->origin[0], touch->fields.server->origin[1], touch->fields.server->origin[2], pitchsign * touch->fields.server->angles[0], touch->fields.server->angles[1], touch->fields.server->angles[2], 1);
+		else
+			Matrix4x4_CreateTranslate(&matrix, touch->fields.server->origin[0], touch->fields.server->origin[1], touch->fields.server->origin[2]);
+		Matrix4x4_Invert_Simple(&imatrix, &matrix);
+		if (type == MOVE_MISSILE && (int)touch->fields.server->flags & FL_MONSTER)
+			Collision_ClipToGenericEntity(&trace, model, (int) touch->fields.server->frame, touch->fields.server->mins, touch->fields.server->maxs, bodysupercontents, &matrix, &imatrix, clipstart, clipmins2, clipmaxs2, clipstart, hitsupercontentsmask);
+		else
+			Collision_ClipPointToGenericEntity(&trace, model, (int) touch->fields.server->frame, touch->fields.server->mins, touch->fields.server->maxs, bodysupercontents, &matrix, &imatrix, clipstart, hitsupercontentsmask);
+
+		Collision_CombineTraces(&cliptrace, &trace, (void *)touch, touch->fields.server->solid == SOLID_BSP);
+	}
+
+finished:
+	return cliptrace;
+}
+
+/*
+==================
+SV_TraceLine
+==================
+*/
+#ifdef COLLISION_STUPID_TRACE_ENDPOS_IN_SOLID_WORKAROUND
+trace_t SV_TraceLine(const vec3_t start, const vec3_t pEnd, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
+#else
+trace_t SV_TraceLine(const vec3_t start, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
+#endif
+{
+	int i, bodysupercontents;
+	int passedictprog;
+	float pitchsign = 1;
+	prvm_edict_t *traceowner, *touch;
+	trace_t trace;
+	// bounding box of entire move area
+	vec3_t clipboxmins, clipboxmaxs;
+	// size when clipping against monsters
+	vec3_t clipmins2, clipmaxs2;
+	// start and end origin of move
+	vec3_t clipstart, clipend;
+	// trace results
+	trace_t cliptrace;
+	// matrices to transform into/out of other entity's space
+	matrix4x4_t matrix, imatrix;
+	// model of other entity
+	dp_model_t *model;
+	// list of entities to test for collisions
+	int numtouchedicts;
+	prvm_edict_t *touchedicts[MAX_EDICTS];
+#ifdef COLLISION_STUPID_TRACE_ENDPOS_IN_SOLID_WORKAROUND
+	vec3_t end;
+	vec_t len = 0;
+
+	if(!VectorCompare(start, pEnd))
+	{
+		// TRICK: make the trace 1 qu longer!
+		VectorSubtract(pEnd, start, end);
+		len = VectorNormalizeLength(end);
+		VectorAdd(pEnd, end, end);
+	}
+	else
+		VectorCopy(pEnd, end);
+#endif
+
+	//return SV_TraceBox(start, vec3_origin, vec3_origin, end, type, passedict, hitsupercontentsmask);
+
+	if (VectorCompare(start, end))
+		return SV_TracePoint(start, type, passedict, hitsupercontentsmask);
+
+	VectorCopy(start, clipstart);
+	VectorCopy(end, clipend);
+	VectorClear(clipmins2);
+	VectorClear(clipmaxs2);
+#if COLLISIONPARANOID >= 3
+	Con_Printf("move(%f %f %f,%f %f %f)", clipstart[0], clipstart[1], clipstart[2], clipend[0], clipend[1], clipend[2]);
+#endif
+
+	// clip to world
+	Collision_ClipLineToWorld(&cliptrace, sv.worldmodel, clipstart, clipend, hitsupercontentsmask);
+	cliptrace.bmodelstartsolid = cliptrace.startsolid;
+	if (cliptrace.startsolid || cliptrace.fraction < 1)
+		cliptrace.ent = prog->edicts;
+	if (type == MOVE_WORLDONLY)
+		goto finished;
+
+	if (type == MOVE_MISSILE)
+	{
+		// LordHavoc: modified this, was = -15, now -= 15
+		for (i = 0;i < 3;i++)
+		{
+			clipmins2[i] -= 15;
+			clipmaxs2[i] += 15;
+		}
+	}
+
+	// create the bounding box of the entire move
+	for (i = 0;i < 3;i++)
+	{
+		clipboxmins[i] = min(clipstart[i], cliptrace.endpos[i]) + clipmins2[i] - 1;
+		clipboxmaxs[i] = max(clipstart[i], cliptrace.endpos[i]) + clipmaxs2[i] + 1;
+	}
+
+	// debug override to test against everything
+	if (sv_debugmove.integer)
+	{
+		clipboxmins[0] = clipboxmins[1] = clipboxmins[2] = -999999999;
+		clipboxmaxs[0] = clipboxmaxs[1] = clipboxmaxs[2] =  999999999;
+	}
+
+	// if the passedict is world, make it NULL (to avoid two checks each time)
+	if (passedict == prog->edicts)
+		passedict = NULL;
+	// precalculate prog value for passedict for comparisons
+	passedictprog = PRVM_EDICT_TO_PROG(passedict);
+	// precalculate passedict's owner edict pointer for comparisons
+	traceowner = passedict ? PRVM_PROG_TO_EDICT(passedict->fields.server->owner) : 0;
+
+	// clip to entities
+	// because this uses World_EntitiestoBox, we know all entity boxes overlap
+	// the clip region, so we can skip culling checks in the loop below
+	numtouchedicts = World_EntitiesInBox(&sv.world, clipboxmins, clipboxmaxs, MAX_EDICTS, touchedicts);
+	if (numtouchedicts > MAX_EDICTS)
+	{
+		// this never happens
+		Con_Printf("SV_EntitiesInBox returned %i edicts, max was %i\n", numtouchedicts, MAX_EDICTS);
+		numtouchedicts = MAX_EDICTS;
+	}
+	for (i = 0;i < numtouchedicts;i++)
+	{
+		touch = touchedicts[i];
+
+		if (touch->fields.server->solid < SOLID_BBOX)
+			continue;
+		if (type == MOVE_NOMONSTERS && touch->fields.server->solid != SOLID_BSP)
+			continue;
+
+		if (passedict)
+		{
+			// don't clip against self
+			if (passedict == touch)
+				continue;
+			// don't clip owned entities against owner
+			if (traceowner == touch)
+				continue;
+			// don't clip owner against owned entities
+			if (passedictprog == touch->fields.server->owner)
+				continue;
+			// don't clip points against points (they can't collide)
+			if (VectorCompare(touch->fields.server->mins, touch->fields.server->maxs) && (type != MOVE_MISSILE || !((int)touch->fields.server->flags & FL_MONSTER)))
+				continue;
+		}
+
+		bodysupercontents = touch->fields.server->solid == SOLID_CORPSE ? SUPERCONTENTS_CORPSE : SUPERCONTENTS_BODY;
+
+		// might interact, so do an exact clip
+		model = NULL;
+		if ((int) touch->fields.server->solid == SOLID_BSP || type == MOVE_HITMODEL)
+		{
+			unsigned int modelindex = (unsigned int)touch->fields.server->modelindex;
+			// if the modelindex is 0, it shouldn't be SOLID_BSP!
+			if (modelindex > 0 && modelindex < MAX_MODELS)
+				model = sv.models[(int)touch->fields.server->modelindex];
+			//pitchsign = 1;
+			if (
+				((modelindex = (int)touch->fields.server->modelindex) >= 1 && modelindex < MAX_MODELS && (model = sv.models[(int)touch->fields.server->modelindex]))
+				?
+					model->type == mod_alias
+				:
+					(
+						(((unsigned char)PRVM_EDICTFIELDVALUE(touch, prog->fieldoffsets.pflags)->_float) & PFLAGS_FULLDYNAMIC)
+						||
+						((gamemode == GAME_TENEBRAE) && ((unsigned int)touch->fields.server->effects & (16 | 32)))
+					)
+			)
+				pitchsign = -1;
+		}
+		if (model)
+			Matrix4x4_CreateFromQuakeEntity(&matrix, touch->fields.server->origin[0], touch->fields.server->origin[1], touch->fields.server->origin[2], pitchsign * touch->fields.server->angles[0], touch->fields.server->angles[1], touch->fields.server->angles[2], 1);
+		else
+			Matrix4x4_CreateTranslate(&matrix, touch->fields.server->origin[0], touch->fields.server->origin[1], touch->fields.server->origin[2]);
+		Matrix4x4_Invert_Simple(&imatrix, &matrix);
+		if (type == MOVE_MISSILE && (int)touch->fields.server->flags & FL_MONSTER)
+			Collision_ClipToGenericEntity(&trace, model, (int) touch->fields.server->frame, touch->fields.server->mins, touch->fields.server->maxs, bodysupercontents, &matrix, &imatrix, clipstart, clipmins2, clipmaxs2, clipend, hitsupercontentsmask);
+		else
+			Collision_ClipLineToGenericEntity(&trace, model, (int) touch->fields.server->frame, touch->fields.server->mins, touch->fields.server->maxs, bodysupercontents, &matrix, &imatrix, clipstart, clipend, hitsupercontentsmask);
+
+		Collision_CombineTraces(&cliptrace, &trace, (void *)touch, touch->fields.server->solid == SOLID_BSP);
+	}
+
+finished:
+#ifdef COLLISION_STUPID_TRACE_ENDPOS_IN_SOLID_WORKAROUND
+	if(!VectorCompare(start, pEnd))
+		Collision_ShortenTrace(&cliptrace, len / (len + 1), pEnd);
+#endif
+	return cliptrace;
+}
+
+/*
+==================
 SV_Move
 ==================
 */
 #ifdef COLLISION_STUPID_TRACE_ENDPOS_IN_SOLID_WORKAROUND
 #if COLLISIONPARANOID >= 1
-trace_t SV_Move_(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t pEnd, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
+trace_t SV_TraceBox_(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t pEnd, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
 #else
-trace_t SV_Move(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t pEnd, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
+trace_t SV_TraceBox(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t pEnd, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
 #endif
 #else
 #if COLLISIONPARANOID >= 1
-trace_t SV_Move_(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
+trace_t SV_TraceBox_(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
 #else
-trace_t SV_Move(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
+trace_t SV_TraceBox(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
 #endif
 #endif
 {
@@ -134,6 +466,19 @@ trace_t SV_Move(const vec3_t start, const vec3_t mins, const vec3_t maxs, const 
 	else
 		VectorCopy(pEnd, end);
 #endif
+
+	if (VectorCompare(mins, maxs))
+	{
+		vec3_t shiftstart, shiftend;
+		VectorAdd(start, mins, shiftstart);
+		VectorAdd(end, mins, shiftend);
+		if (VectorCompare(start, end))
+			trace = SV_TracePoint(shiftstart, type, passedict, hitsupercontentsmask);
+		else
+			trace = SV_TraceLine(shiftstart, shiftend, type, passedict, hitsupercontentsmask);
+		VectorSubtract(trace.endpos, mins, trace.endpos);
+		return trace;
+	}
 
 	VectorCopy(start, clipstart);
 	VectorCopy(end, clipend);
@@ -260,7 +605,7 @@ trace_t SV_Move(const vec3_t start, const vec3_t mins, const vec3_t maxs, const 
 		else
 			Matrix4x4_CreateTranslate(&matrix, touch->fields.server->origin[0], touch->fields.server->origin[1], touch->fields.server->origin[2]);
 		Matrix4x4_Invert_Simple(&imatrix, &matrix);
-		if ((int)touch->fields.server->flags & FL_MONSTER)
+		if (type == MOVE_MISSILE && (int)touch->fields.server->flags & FL_MONSTER)
 			Collision_ClipToGenericEntity(&trace, model, (int) touch->fields.server->frame, touch->fields.server->mins, touch->fields.server->maxs, bodysupercontents, &matrix, &imatrix, clipstart, clipmins2, clipmaxs2, clipend, hitsupercontentsmask);
 		else
 			Collision_ClipToGenericEntity(&trace, model, (int) touch->fields.server->frame, touch->fields.server->mins, touch->fields.server->maxs, bodysupercontents, &matrix, &imatrix, clipstart, clipmins, clipmaxs, clipend, hitsupercontentsmask);
@@ -277,16 +622,16 @@ finished:
 }
 
 #if COLLISIONPARANOID >= 1
-trace_t SV_Move(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
+trace_t SV_TraceBox(const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask)
 {
 	int endstuck;
 	trace_t trace;
 	vec3_t temp;
-	trace = SV_Move_(start, mins, maxs, end, type, passedict, hitsupercontentsmask);
+	trace = SV_TraceBox_(start, mins, maxs, end, type, passedict, hitsupercontentsmask);
 	if (passedict)
 	{
 		VectorCopy(trace.endpos, temp);
-		endstuck = SV_Move_(temp, mins, maxs, temp, type, passedict, hitsupercontentsmask).startsolid;
+		endstuck = SV_TraceBox_(temp, mins, maxs, temp, type, passedict, hitsupercontentsmask).startsolid;
 #if COLLISIONPARANOID < 3
 		if (trace.startsolid || endstuck)
 #endif
@@ -366,6 +711,15 @@ void SV_LinkEdict_TouchAreaGrid(prvm_edict_t *ent)
 	int i, numtouchedicts, old_self, old_other;
 	prvm_edict_t *touch, *touchedicts[MAX_EDICTS];
 
+	if (ent == prog->edicts)
+		return;		// don't add the world
+
+	if (ent->priv.server->free)
+		return;
+
+	if (ent->fields.server->solid == SOLID_NOT)
+		return;
+
 	// build a list of edicts to touch, because the link loop can be corrupted
 	// by IncreaseEdicts called during touch functions
 	numtouchedicts = World_EntitiesInBox(&sv.world, ent->priv.server->areamins, ent->priv.server->areamaxs, MAX_EDICTS, touchedicts);
@@ -417,7 +771,7 @@ SV_LinkEdict
 
 ===============
 */
-void SV_LinkEdict (prvm_edict_t *ent, qboolean touch_triggers)
+void SV_LinkEdict (prvm_edict_t *ent)
 {
 	dp_model_t *model;
 	vec3_t mins, maxs;
@@ -502,10 +856,6 @@ void SV_LinkEdict (prvm_edict_t *ent, qboolean touch_triggers)
 	VectorCopy(maxs, ent->fields.server->absmax);
 
 	World_LinkEdict(&sv.world, ent, mins, maxs);
-
-	// if touch_triggers, call touch on all entities overlapping this box
-	if (touch_triggers && ent->fields.server->solid != SOLID_NOT)
-		SV_LinkEdict_TouchAreaGrid(ent);
 }
 
 /*
@@ -530,7 +880,7 @@ static int SV_TestEntityPosition (prvm_edict_t *ent, vec3_t offset)
 	trace_t trace;
 	contents = SV_GenericHitSuperContentsMask(ent);
 	VectorAdd(ent->fields.server->origin, offset, org);
-	trace = SV_Move (org, ent->fields.server->mins, ent->fields.server->maxs, ent->fields.server->origin, MOVE_NOMONSTERS, ent, contents);
+	trace = SV_TraceBox(org, ent->fields.server->mins, ent->fields.server->maxs, ent->fields.server->origin, MOVE_NOMONSTERS, ent, contents);
 	if (trace.startsupercontents & contents)
 		return true;
 	else
@@ -569,7 +919,7 @@ static int SV_TestEntityPosition (prvm_edict_t *ent, vec3_t offset)
 #else
 		// verify if the endpos is REALLY outside solid
 		VectorCopy(trace.endpos, org);
-		trace = SV_Move (org, ent->fields.server->mins, ent->fields.server->maxs, org, MOVE_NOMONSTERS, ent, contents);
+		trace = SV_TraceBox(org, ent->fields.server->mins, ent->fields.server->maxs, org, MOVE_NOMONSTERS, ent, contents);
 		if(trace.startsolid)
 			Con_Printf("SV_TestEntityPosition: trace.endpos detected to be in solid. NOT using it.\n");
 		else
@@ -674,6 +1024,12 @@ void SV_CheckVelocity (prvm_edict_t *ent)
 			ent->fields.server->origin[i] = 0;
 		}
 	}
+
+	// LordHavoc: a hack to ensure that the (rather silly) id1 quakec
+	// player_run/player_stand1 does not horribly malfunction if the
+	// velocity becomes a denormalized float
+	if (VectorLength2(ent->fields.server->velocity) < 0.0001)
+		VectorClear(ent->fields.server->velocity);
 
 	// LordHavoc: max velocity fix, inspired by Maddes's source fixes, but this is faster
 	wishspeed = DotProduct(ent->fields.server->velocity, ent->fields.server->velocity);
@@ -880,7 +1236,7 @@ static int SV_FlyMove (prvm_edict_t *ent, float time, qboolean applygravity, flo
 			start[2] += 3;//0.03125;
 			VectorMA(ent->fields.server->origin, time_left, ent->fields.server->velocity, end);
 			end[2] += 3;//0.03125;
-			testtrace = SV_Move(start, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, hitsupercontentsmask);
+			testtrace = SV_TraceBox(start, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, hitsupercontentsmask);
 			if (trace.fraction < testtrace.fraction && !testtrace.startsolid && (testtrace.fraction == 1 || DotProduct(trace.plane.normal, ent->fields.server->velocity) < DotProduct(testtrace.plane.normal, ent->fields.server->velocity)))
 			{
 				Con_Printf("got further (new %f > old %f)\n", testtrace.fraction, trace.fraction);
@@ -895,7 +1251,7 @@ static int SV_FlyMove (prvm_edict_t *ent, float time, qboolean applygravity, flo
 				VectorMA(ent->fields.server->origin, time_left, ent->fields.server->velocity, end);
 				VectorMA(start, 3, planes[i], start);
 				VectorMA(end, 3, planes[i], end);
-				testtrace = SV_Move(start, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, hitsupercontentsmask);
+				testtrace = SV_TraceBox(start, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, hitsupercontentsmask);
 				if (trace.fraction < testtrace.fraction)
 				{
 					trace = testtrace;
@@ -1046,7 +1402,7 @@ static int SV_FlyMove (prvm_edict_t *ent, float time, qboolean applygravity, flo
 	{
 		// LordHavoc: fix the 'fall to your death in a wedge corner' glitch
 		// flag ONGROUND if there's ground under it
-		trace = SV_Move(ent->fields.server->origin, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, hitsupercontentsmask);
+		trace = SV_TraceBox(ent->fields.server->origin, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, hitsupercontentsmask);
 	}
 	*/
 
@@ -1099,7 +1455,6 @@ static qboolean SV_PushEntity (trace_t *trace, prvm_edict_t *ent, vec3_t push, q
 {
 	int type;
 	vec3_t end;
-	qboolean impact;
 
 	VectorAdd (ent->fields.server->origin, push, end);
 
@@ -1110,29 +1465,26 @@ static qboolean SV_PushEntity (trace_t *trace, prvm_edict_t *ent, vec3_t push, q
 	else
 		type = MOVE_NORMAL;
 
-	*trace = SV_Move (ent->fields.server->origin, ent->fields.server->mins, ent->fields.server->maxs, end, type, ent, SV_GenericHitSuperContentsMask(ent));
+	*trace = SV_TraceBox(ent->fields.server->origin, ent->fields.server->mins, ent->fields.server->maxs, end, type, ent, SV_GenericHitSuperContentsMask(ent));
 	if (trace->bmodelstartsolid && failonbmodelstartsolid)
 		return true;
 
 	VectorCopy (trace->endpos, ent->fields.server->origin);
+	SV_LinkEdict(ent);
 
 #if 0
 	if(!trace->startsolid)
-	if(SV_Move (ent->fields.server->origin, ent->fields.server->mins, ent->fields.server->maxs, ent->fields.server->origin, type, ent, SV_GenericHitSuperContentsMask(ent)).startsolid)
+	if(SV_TraceBox(ent->fields.server->origin, ent->fields.server->mins, ent->fields.server->maxs, ent->fields.server->origin, type, ent, SV_GenericHitSuperContentsMask(ent)).startsolid)
 	{
 		Con_Printf("something eeeeevil happened\n");
 	}
 #endif
 
-	impact = (ent->fields.server->solid >= SOLID_TRIGGER && trace->ent && (!((int)ent->fields.server->flags & FL_ONGROUND) || ent->fields.server->groundentity != PRVM_EDICT_TO_PROG(trace->ent)));
+	if (dolink)
+		SV_LinkEdict_TouchAreaGrid(ent);
 
-	if(impact)
-	{
-		SV_LinkEdict (ent, dolink);
+	if((ent->fields.server->solid >= SOLID_TRIGGER && trace->ent && (!((int)ent->fields.server->flags & FL_ONGROUND) || ent->fields.server->groundentity != PRVM_EDICT_TO_PROG(trace->ent))))
 		return SV_Impact (ent, trace);
-	}
-	else if(dolink)
-		SV_LinkEdict (ent, true);
 
 	return true;
 }
@@ -1183,7 +1535,7 @@ void SV_PushMove (prvm_edict_t *pusher, float movetime)
 		pusher->fields.server->angles[1] -= 360.0 * floor(pusher->fields.server->angles[1] * (1.0 / 360.0));
 		pusher->fields.server->angles[2] -= 360.0 * floor(pusher->fields.server->angles[2] * (1.0 / 360.0));
 		pusher->fields.server->ltime += movetime;
-		SV_LinkEdict (pusher, false);
+		SV_LinkEdict(pusher);
 		return;
 	default:
 		Con_Printf("SV_PushMove: entity #%i, unrecognized solid type %f\n", PRVM_NUM_FOR_EDICT(pusher), pusher->fields.server->solid);
@@ -1265,7 +1617,7 @@ void SV_PushMove (prvm_edict_t *pusher, float movetime)
 	VectorMA (pusher->fields.server->origin, movetime, pusher->fields.server->velocity, pusher->fields.server->origin);
 	VectorMA (pusher->fields.server->angles, movetime, pusher->fields.server->avelocity, pusher->fields.server->angles);
 	pusher->fields.server->ltime += movetime;
-	SV_LinkEdict (pusher, false);
+	SV_LinkEdict(pusher);
 
 	pushermodel = NULL;
 	if (pusher->fields.server->modelindex >= 1 && pusher->fields.server->modelindex < MAX_MODELS)
@@ -1308,7 +1660,7 @@ void SV_PushMove (prvm_edict_t *pusher, float movetime)
 		if (!((int)check->fields.server->flags & FL_ONGROUND) || PRVM_PROG_TO_EDICT(check->fields.server->groundentity) != pusher)
 		{
 			Collision_ClipToGenericEntity(&trace, pushermodel, (int) pusher->fields.server->frame, pusher->fields.server->mins, pusher->fields.server->maxs, SUPERCONTENTS_BODY, &pusherfinalmatrix, &pusherfinalimatrix, check->fields.server->origin, check->fields.server->mins, check->fields.server->maxs, check->fields.server->origin, checkcontents);
-			//trace = SV_Move(check->fields.server->origin, check->fields.server->mins, check->fields.server->maxs, check->fields.server->origin, MOVE_NOMONSTERS, check, checkcontents);
+			//trace = SV_TraceBox(check->fields.server->origin, check->fields.server->mins, check->fields.server->maxs, check->fields.server->origin, MOVE_NOMONSTERS, check, checkcontents);
 			if (!trace.startsolid)
 			{
 				//Con_Printf("- not in solid\n");
@@ -1404,7 +1756,7 @@ void SV_PushMove (prvm_edict_t *pusher, float movetime)
 					VectorCopy (pushorig, pusher->fields.server->origin);
 					VectorCopy (pushang, pusher->fields.server->angles);
 					pusher->fields.server->ltime = pushltime;
-					SV_LinkEdict (pusher, false);
+					SV_LinkEdict(pusher);
 
 					// move back any entities we already moved
 					for (i = 0;i < num_moved;i++)
@@ -1412,7 +1764,7 @@ void SV_PushMove (prvm_edict_t *pusher, float movetime)
 						prvm_edict_t *ed = PRVM_EDICT_NUM(moved_edicts[i]);
 						VectorCopy (ed->priv.server->moved_from, ed->fields.server->origin);
 						VectorCopy (ed->priv.server->moved_fromangles, ed->fields.server->angles);
-						SV_LinkEdict (ed, false);
+						SV_LinkEdict(ed);
 					}
 
 					// if the pusher has a "blocked" function, call it, otherwise just stay in place until the obstacle is gone
@@ -1515,7 +1867,8 @@ unstickresult_t SV_UnstickEntityReturnOffset (prvm_edict_t *ent, vec3_t offset)
 		if (!SV_TestEntityPosition(ent, unstickoffsets + i))
 		{
 			VectorCopy(unstickoffsets + i, offset);
-			SV_LinkEdict (ent, true);
+			SV_LinkEdict(ent);
+			//SV_LinkEdict_TouchAreaGrid(ent);
 			return UNSTICK_UNSTUCK;
 		}
 	}
@@ -1529,13 +1882,15 @@ unstickresult_t SV_UnstickEntityReturnOffset (prvm_edict_t *ent, vec3_t offset)
 		offset[2] = -i;
 		if (!SV_TestEntityPosition(ent, offset))
 		{
-			SV_LinkEdict (ent, true);
+			SV_LinkEdict(ent);
+			//SV_LinkEdict_TouchAreaGrid(ent);
 			return UNSTICK_UNSTUCK;
 		}
 		offset[2] = i;
 		if (!SV_TestEntityPosition(ent, offset))
 		{
-			SV_LinkEdict (ent, true);
+			SV_LinkEdict(ent);
+			//SV_LinkEdict_TouchAreaGrid(ent);
 			return UNSTICK_UNSTUCK;
 		}
 	}
@@ -1588,7 +1943,8 @@ void SV_CheckStuck (prvm_edict_t *ent)
 			if (!SV_TestEntityPosition(ent, offset))
 			{
 				Con_DPrintf("Unstuck player entity %i (classname \"%s\") by restoring oldorigin.\n", (int)PRVM_EDICT_TO_PROG(ent), PRVM_GetString(ent->fields.server->classname));
-				SV_LinkEdict (ent, true);
+				SV_LinkEdict(ent);
+				//SV_LinkEdict_TouchAreaGrid(ent);
 			}
 			else
 				Con_DPrintf("Stuck player entity %i (classname \"%s\").\n", (int)PRVM_EDICT_TO_PROG(ent), PRVM_GetString(ent->fields.server->classname));
@@ -1774,7 +2130,8 @@ void SV_WalkMove (prvm_edict_t *ent)
 		ent->fields.server->flags = (int)ent->fields.server->flags & ~FL_ONGROUND;
 
 	SV_CheckVelocity(ent);
-	SV_LinkEdict (ent, true);
+	SV_LinkEdict(ent);
+	SV_LinkEdict_TouchAreaGrid(ent);
 
 	if(clip & 8) // teleport
 		return;
@@ -1836,7 +2193,8 @@ void SV_WalkMove (prvm_edict_t *ent)
 		}
 
 		SV_CheckVelocity(ent);
-		SV_LinkEdict (ent, true);
+		SV_LinkEdict(ent);
+		SV_LinkEdict_TouchAreaGrid(ent);
 
 		// check for stuckness, possibly due to the limited precision of floats
 		// in the clipping hulls
@@ -1903,7 +2261,8 @@ void SV_WalkMove (prvm_edict_t *ent)
 	}
 
 	SV_CheckVelocity(ent);
-	SV_LinkEdict (ent, true);
+	SV_LinkEdict(ent);
+	SV_LinkEdict_TouchAreaGrid(ent);
 }
 
 //============================================================================
@@ -1949,7 +2308,8 @@ void SV_Physics_Follow (prvm_edict_t *ent)
 		ent->fields.server->origin[2] = v[0] * vu[0] + v[1] * vu[1] + v[2] * vu[2] + e->fields.server->origin[2];
 	}
 	VectorAdd (e->fields.server->angles, ent->fields.server->v_angle, ent->fields.server->angles);
-	SV_LinkEdict (ent, true);
+	SV_LinkEdict(ent);
+	//SV_LinkEdict_TouchAreaGrid(ent);
 }
 
 /*
@@ -2187,7 +2547,8 @@ void SV_Physics_Step (prvm_edict_t *ent)
 				ent->fields.server->flags -= FL_ONGROUND;
 				SV_CheckVelocity(ent);
 				SV_FlyMove(ent, sv.frametime, true, NULL, SV_GenericHitSuperContentsMask(ent));
-				SV_LinkEdict(ent, true);
+				SV_LinkEdict(ent);
+				SV_LinkEdict_TouchAreaGrid(ent);
 				ent->priv.server->waterposition_forceupdate = true;
 			}
 		}
@@ -2198,7 +2559,8 @@ void SV_Physics_Step (prvm_edict_t *ent)
 
 			SV_CheckVelocity(ent);
 			SV_FlyMove(ent, sv.frametime, true, NULL, SV_GenericHitSuperContentsMask(ent));
-			SV_LinkEdict(ent, true);
+			SV_LinkEdict(ent);
+			SV_LinkEdict_TouchAreaGrid(ent);
 
 			// just hit ground
 			if (hitsound && (int)ent->fields.server->flags & FL_ONGROUND)
@@ -2274,7 +2636,7 @@ static void SV_Physics_Entity (prvm_edict_t *ent)
 			VectorMA(ent->fields.server->origin, sv.frametime, ent->fields.server->velocity, ent->fields.server->origin);
 			VectorMA(ent->fields.server->angles, sv.frametime, ent->fields.server->avelocity, ent->fields.server->angles);
 		}
-		SV_LinkEdict(ent, false);
+		SV_LinkEdict(ent);
 		break;
 	case MOVETYPE_STEP:
 		SV_Physics_Step (ent);
@@ -2316,12 +2678,6 @@ void SV_Physics_ClientMove(void)
 
 	// make sure the velocity is sane (not a NaN)
 	SV_CheckVelocity(ent);
-	// LordHavoc: a hack to ensure that the (rather silly) id1 quakec
-	// player_run/player_stand1 does not horribly malfunction if the
-	// velocity becomes a number that is both == 0 and != 0
-	// (sounds to me like NaN but to be absolutely safe...)
-	if (DotProduct(ent->fields.server->velocity, ent->fields.server->velocity) < 0.0001)
-		VectorClear(ent->fields.server->velocity);
 
 	// perform MOVETYPE_WALK behavior
 	SV_WalkMove (ent);
@@ -2345,14 +2701,14 @@ void SV_Physics_ClientMove(void)
 	}
 }
 
-void SV_Physics_ClientEntity(prvm_edict_t *ent)
+static void SV_Physics_ClientEntity_PreThink(prvm_edict_t *ent)
 {
 	// don't do physics on disconnected clients, FrikBot relies on this
 	if (!host_client->spawned)
-	{
-		memset(&host_client->cmd, 0, sizeof(host_client->cmd));
 		return;
-	}
+
+	// make sure the velocity is sane (not a NaN)
+	SV_CheckVelocity(ent);
 
 	// don't run physics here if running asynchronously
 	if (host_client->clmovement_inputtimeout <= 0)
@@ -2361,20 +2717,65 @@ void SV_Physics_ClientEntity(prvm_edict_t *ent)
 		//host_client->cmd.time = max(host_client->cmd.time, sv.time);
 	}
 
-	// make sure the velocity is sane (not a NaN)
+	// make sure the velocity is still sane (not a NaN)
 	SV_CheckVelocity(ent);
-	// LordHavoc: a hack to ensure that the (rather silly) id1 quakec
-	// player_run/player_stand1 does not horribly malfunction if the
-	// velocity becomes a number that is both == 0 and != 0
-	// (sounds to me like NaN but to be absolutely safe...)
-	if (DotProduct(ent->fields.server->velocity, ent->fields.server->velocity) < 0.0001)
-		VectorClear(ent->fields.server->velocity);
 
 	// call standard client pre-think
 	prog->globals.server->time = sv.time;
 	prog->globals.server->self = PRVM_EDICT_TO_PROG(ent);
-	PRVM_ExecuteProgram (prog->globals.server->PlayerPreThink, "QC function PlayerPreThink is missing");
-	SV_CheckVelocity (ent);
+	PRVM_ExecuteProgram(prog->globals.server->PlayerPreThink, "QC function PlayerPreThink is missing");
+
+	// make sure the velocity is still sane (not a NaN)
+	SV_CheckVelocity(ent);
+}
+
+static void SV_Physics_ClientEntity_PostThink(prvm_edict_t *ent)
+{
+	// don't do physics on disconnected clients, FrikBot relies on this
+	if (!host_client->spawned)
+		return;
+
+	// make sure the velocity is sane (not a NaN)
+	SV_CheckVelocity(ent);
+
+	// call standard player post-think
+	prog->globals.server->time = sv.time;
+	prog->globals.server->self = PRVM_EDICT_TO_PROG(ent);
+	PRVM_ExecuteProgram(prog->globals.server->PlayerPostThink, "QC function PlayerPostThink is missing");
+
+	// make sure the velocity is still sane (not a NaN)
+	SV_CheckVelocity(ent);
+
+	if(ent->fields.server->fixangle)
+	{
+		// angle fixing was requested by physics code...
+		// so store the current angles for later use
+		memcpy(host_client->fixangle_angles, ent->fields.server->angles, sizeof(host_client->fixangle_angles));
+		host_client->fixangle_angles_set = TRUE;
+
+		// and clear fixangle for the next frame
+		ent->fields.server->fixangle = 0;
+	}
+
+	// decrement the countdown variable used to decide when to go back to
+	// synchronous physics
+	if (host_client->clmovement_inputtimeout > sv.frametime)
+		host_client->clmovement_inputtimeout -= sv.frametime;
+	else
+		host_client->clmovement_inputtimeout = 0;
+}
+
+static void SV_Physics_ClientEntity(prvm_edict_t *ent)
+{
+	// don't do physics on disconnected clients, FrikBot relies on this
+	if (!host_client->spawned)
+	{
+		memset(&host_client->cmd, 0, sizeof(host_client->cmd));
+		return;
+	}
+
+	// make sure the velocity is sane (not a NaN)
+	SV_CheckVelocity(ent);
 
 	switch ((int) ent->fields.server->movetype)
 	{
@@ -2422,34 +2823,12 @@ void SV_Physics_ClientEntity(prvm_edict_t *ent)
 		break;
 	}
 
-	// decrement the countdown variable used to decide when to go back to
-	// synchronous physics
-	if (host_client->clmovement_inputtimeout > sv.frametime)
-		host_client->clmovement_inputtimeout -= sv.frametime;
-	else
-		host_client->clmovement_inputtimeout = 0;
-
 	SV_CheckVelocity (ent);
 
-	SV_LinkEdict (ent, true);
+	SV_LinkEdict(ent);
+	SV_LinkEdict_TouchAreaGrid(ent);
 
 	SV_CheckVelocity (ent);
-
-	// call standard player post-think
-	prog->globals.server->time = sv.time;
-	prog->globals.server->self = PRVM_EDICT_TO_PROG(ent);
-	PRVM_ExecuteProgram (prog->globals.server->PlayerPostThink, "QC function PlayerPostThink is missing");
-
-	if(ent->fields.server->fixangle)
-	{
-		// angle fixing was requested by physics code...
-		// so store the current angles for later use
-		memcpy(host_client->fixangle_angles, ent->fields.server->angles, sizeof(host_client->fixangle_angles));
-		host_client->fixangle_angles_set = TRUE;
-
-		// and clear fixangle for the next frame
-		ent->fields.server->fixangle = 0;
-	}
 }
 
 /*
@@ -2478,12 +2857,36 @@ void SV_Physics (void)
 	if (prog->globals.server->force_retouch > 0)
 		for (i = 1, ent = PRVM_EDICT_NUM(i);i < prog->num_edicts;i++, ent = PRVM_NEXT_EDICT(ent))
 			if (!ent->priv.server->free)
-				SV_LinkEdict (ent, true);	// force retouch even for stationary
+				SV_LinkEdict_TouchAreaGrid(ent); // force retouch even for stationary
 
-	// run physics on the client entities
-	for (i = 1, ent = PRVM_EDICT_NUM(i), host_client = svs.clients;i <= svs.maxclients;i++, ent = PRVM_NEXT_EDICT(ent), host_client++)
-		if (!ent->priv.server->free)
+	if (sv_gameplayfix_consistentplayerprethink.integer)
+	{
+		// run physics on the client entities in 3 stages
+		for (i = 1, ent = PRVM_EDICT_NUM(i), host_client = svs.clients;i <= svs.maxclients;i++, ent = PRVM_NEXT_EDICT(ent), host_client++)
+			if (!ent->priv.server->free)
+				SV_Physics_ClientEntity_PreThink(ent);
+
+		for (i = 1, ent = PRVM_EDICT_NUM(i), host_client = svs.clients;i <= svs.maxclients;i++, ent = PRVM_NEXT_EDICT(ent), host_client++)
+			if (!ent->priv.server->free)
 				SV_Physics_ClientEntity(ent);
+
+		for (i = 1, ent = PRVM_EDICT_NUM(i), host_client = svs.clients;i <= svs.maxclients;i++, ent = PRVM_NEXT_EDICT(ent), host_client++)
+			if (!ent->priv.server->free)
+				SV_Physics_ClientEntity_PostThink(ent);
+	}
+	else
+	{
+		// run physics on the client entities
+		for (i = 1, ent = PRVM_EDICT_NUM(i), host_client = svs.clients;i <= svs.maxclients;i++, ent = PRVM_NEXT_EDICT(ent), host_client++)
+		{
+			if (!ent->priv.server->free)
+			{
+				SV_Physics_ClientEntity_PreThink(ent);
+				SV_Physics_ClientEntity(ent);
+				SV_Physics_ClientEntity_PostThink(ent);
+			}
+		}
+	}
 
 	// run physics on all the non-client entities
 	if (!sv_freezenonclients.integer)
