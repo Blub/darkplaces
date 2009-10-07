@@ -965,6 +965,8 @@ shadowmesh_t *Mod_ShadowMesh_Alloc(mempool_t *mempool, int maxverts, int maxtria
 	newmesh->maxtriangles = maxtriangles;
 	newmesh->numverts = 0;
 	newmesh->numtriangles = 0;
+	memset(newmesh->sideoffsets, 0, sizeof(newmesh->sideoffsets));
+	memset(newmesh->sidetotals, 0, sizeof(newmesh->sidetotals));
 
 	newmesh->vertex3f = (float *)data;data += maxverts * sizeof(float[3]);
 	if (light)
@@ -995,6 +997,8 @@ shadowmesh_t *Mod_ShadowMesh_ReAlloc(mempool_t *mempool, shadowmesh_t *oldmesh, 
 	newmesh = Mod_ShadowMesh_Alloc(mempool, oldmesh->numverts, oldmesh->numtriangles, oldmesh->map_diffuse, oldmesh->map_specular, oldmesh->map_normal, light, neighbors, false);
 	newmesh->numverts = oldmesh->numverts;
 	newmesh->numtriangles = oldmesh->numtriangles;
+	memcpy(newmesh->sideoffsets, oldmesh->sideoffsets, sizeof(oldmesh->sideoffsets));
+	memcpy(newmesh->sidetotals, oldmesh->sidetotals, sizeof(oldmesh->sidetotals));
 
 	memcpy(newmesh->vertex3f, oldmesh->vertex3f, oldmesh->numverts * sizeof(float[3]));
 	if (newmesh->svector3f && oldmesh->svector3f)
@@ -1412,6 +1416,8 @@ void Mod_LoadQ3Shaders(void)
 			shader.reflectfactor = 1;
 			Vector4Set(shader.reflectcolor4f, 1, 1, 1, 1);
 			shader.r_water_wateralpha = 1;
+			shader.specularscalemod = 1;
+			shader.specularpowermod = 1;
 
 			strlcpy(shader.name, com_token, sizeof(shader.name));
 			if (!COM_ParseToken_QuakeC(&text, false) || strcasecmp(com_token, "{"))
@@ -1458,8 +1464,8 @@ void Mod_LoadQ3Shaders(void)
 							if (!COM_ParseToken_QuakeC(&text, true))
 								break;
 						}
-						for (j = numparameters;j < TEXTURE_MAXFRAMES + 4;j++)
-							parameter[j][0] = 0;
+						//for (j = numparameters;j < TEXTURE_MAXFRAMES + 4;j++)
+						//	parameter[j][0] = 0;
 						if (developer.integer >= 100)
 						{
 							Con_Printf("%s %i: ", shader.name, shader.numlayers - 1);
@@ -1677,8 +1683,8 @@ void Mod_LoadQ3Shaders(void)
 					if (!COM_ParseToken_QuakeC(&text, true))
 						break;
 				}
-				for (j = numparameters;j < TEXTURE_MAXFRAMES + 4;j++)
-					parameter[j][0] = 0;
+				//for (j = numparameters;j < TEXTURE_MAXFRAMES + 4;j++)
+				//	parameter[j][0] = 0;
 				if (fileindex == 0 && !strcasecmp(com_token, "}"))
 					break;
 				if (developer.integer >= 100)
@@ -1810,6 +1816,14 @@ void Mod_LoadQ3Shaders(void)
 					Vector4Set(shader.reflectcolor4f, atof(parameter[8]), atof(parameter[9]), atof(parameter[10]), 1);
 					shader.r_water_wateralpha = atof(parameter[11]);
 				}
+				else if (!strcasecmp(parameter[0], "dp_glossintensitymod") && numparameters >= 2)
+				{
+					shader.specularscalemod = atof(parameter[1]);
+				}
+				else if (!strcasecmp(parameter[0], "dp_glossexponentmod") && numparameters >= 2)
+				{
+					shader.specularpowermod = atof(parameter[1]);
+				}
 				else if (!strcasecmp(parameter[0], "deformvertexes") && numparameters >= 2)
 				{
 					int i, deformindex;
@@ -1882,6 +1896,7 @@ void Mod_LoadQ3Shaders(void)
 		}
 		Mem_Free(f);
 	}
+	FS_FreeSearch(search);
 }
 
 q3shaderinfo_t *Mod_LookupQ3Shader(const char *name)
@@ -1917,6 +1932,8 @@ qboolean Mod_LoadTextureFromQ3Shader(texture_t *texture, const char *name, qbool
 		texflagsmask &= ~TEXF_PICMIP;
 	if(!(defaulttexflags & TEXF_COMPRESS))
 		texflagsmask &= ~TEXF_COMPRESS;
+	texture->specularscalemod = 1; // unless later loaded from the shader
+	texture->specularpowermod = 1; // unless later loaded from the shader
 
 	if (shader)
 	{
@@ -2051,6 +2068,8 @@ nothing                GL_ZERO GL_ONE
 		texture->reflectfactor = shader->reflectfactor;
 		Vector4Copy(shader->reflectcolor4f, texture->reflectcolor4f);
 		texture->r_water_wateralpha = shader->r_water_wateralpha;
+		texture->specularscalemod = shader->specularscalemod;
+		texture->specularpowermod = shader->specularpowermod;
 	}
 	else if (!strcmp(texture->name, "noshader") || !texture->name[0])
 	{

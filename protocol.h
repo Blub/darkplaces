@@ -332,6 +332,8 @@ void Protocol_Names(char *buffer, size_t buffersize);
 #define RENDER_EXTERIORMODEL 8
 #define RENDER_LOWPRECISION 16 // send as low precision coordinates to save bandwidth
 #define RENDER_COLORMAPPED 32
+#define RENDER_NOCULL 64 // do not cull this entity with r_cullentities
+
 #define RENDER_SHADOW 65536 // cast shadow
 #define RENDER_LIGHT 131072 // receive light
 #define RENDER_NOSELFSHADOW 262144 // render lighting on this entity before its own shadow is added to the scene
@@ -378,8 +380,9 @@ typedef struct entity_state_s
 	unsigned char internaleffects; // INTEF_FLAG1QW and so on
 	unsigned char tagindex;
 	unsigned char colormod[3];
+	unsigned char glowmod[3];
 	// padding to a multiple of 8 bytes (to align the double time)
-	unsigned char unused[5];
+	unsigned char unused[2];
 }
 entity_state_t;
 
@@ -705,8 +708,8 @@ void EntityFrame4_CL_ReadFrame(void);
 // bits >= (1<<24)
 #define E5_EXTEND3 (1<<23)
 
-// unused
-#define E5_UNUSED24 (1<<24)
+// byte[3] = s->glowmod[0], s->glowmod[1], s->glowmod[2]
+#define E5_GLOWMOD (1<<24)
 // unused
 #define E5_UNUSED25 (1<<25)
 // unused

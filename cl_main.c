@@ -595,6 +595,7 @@ entity_render_t *CL_NewTempEntity(double shadertime)
 	render->shadertime = shadertime;
 	render->alpha = 1;
 	VectorSet(render->colormod, 1, 1, 1);
+	VectorSet(render->glowmod, 1, 1, 1);
 	return render;
 }
 
@@ -740,6 +741,16 @@ void CL_RelinkLightFlashes(void)
 		}
 	}
 
+	if (!cl.lightstyle)
+	{
+		for (j = 0;j < cl.max_lightstyle;j++)
+		{
+			r_refdef.scene.rtlightstylevalue[j] = 1;
+			r_refdef.scene.lightstylevalue[j] = 256;
+		}
+		return;
+	}
+
 // light animations
 // 'm' is normal light, 'a' is no light, 'z' is double bright
 	f = cl.time * 10;
@@ -747,7 +758,7 @@ void CL_RelinkLightFlashes(void)
 	frac = f - i;
 	for (j = 0;j < cl.max_lightstyle;j++)
 	{
-		if (!cl.lightstyle || !cl.lightstyle[j].length)
+		if (!cl.lightstyle[j].length)
 		{
 			r_refdef.scene.rtlightstylevalue[j] = 1;
 			r_refdef.scene.lightstylevalue[j] = 256;
@@ -814,6 +825,7 @@ void CL_AddQWCTFFlagModel(entity_t *player, int skin)
 	flagrender->skinnum = skin;
 	flagrender->alpha = 1;
 	VectorSet(flagrender->colormod, 1, 1, 1);
+	VectorSet(flagrender->glowmod, 1, 1, 1);
 	// attach the flag to the player matrix
 	Matrix4x4_CreateFromQuakeEntity(&flagmatrix, -f, -22, 0, 0, 0, -45, 1);
 	Matrix4x4_Concat(&flagrender->matrix, &player->render.matrix, &flagmatrix);
@@ -867,6 +879,7 @@ void CL_UpdateNetworkEntity(entity_t *e, int recursionlimit, qboolean interpolat
 	e->render.flags = e->state_current.flags;
 	e->render.effects = e->state_current.effects;
 	VectorScale(e->state_current.colormod, (1.0f / 32.0f), e->render.colormod);
+	VectorScale(e->state_current.glowmod, (1.0f / 32.0f), e->render.glowmod);
 	if(e >= cl.entities && e < cl.entities + cl.num_entities)
 		e->render.entitynumber = e - cl.entities;
 	else
@@ -980,7 +993,10 @@ void CL_UpdateNetworkEntity(entity_t *e, int recursionlimit, qboolean interpolat
 		if (e->render.model->type == mod_alias)
 			angles[0] = -angles[0];
 		if ((e->render.effects & EF_SELECTABLE) && cl.cmd.cursor_entitynumber == e->state_current.number)
+		{
 			VectorScale(e->render.colormod, 2, e->render.colormod);
+			VectorScale(e->render.glowmod, 2, e->render.glowmod);
+		}
 	}
 	// if model is alias or this is a tenebrae-like dlight, reverse pitch direction
 	else if (e->state_current.lightpflags & PFLAGS_FULLDYNAMIC)
@@ -1344,7 +1360,7 @@ void CL_LinkNetworkEntity(entity_t *e)
 		trace_t trace;
 		matrix4x4_t tempmatrix;
 		Matrix4x4_Transform(&e->render.matrix, muzzleflashorigin, v2);
-		trace = CL_Move(origin, vec3_origin, vec3_origin, v2, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID | SUPERCONTENTS_SKY, true, false, NULL, false);
+		trace = CL_TraceLine(origin, v2, MOVE_NOMONSTERS, NULL, SUPERCONTENTS_SOLID | SUPERCONTENTS_SKY, true, false, NULL, false);
 		Matrix4x4_Normalize(&tempmatrix, &e->render.matrix);
 		Matrix4x4_SetOrigin(&tempmatrix, trace.endpos[0], trace.endpos[1], trace.endpos[2]);
 		Matrix4x4_Scale(&tempmatrix, 150, 1);
@@ -1437,6 +1453,7 @@ void CL_RelinkWorld(void)
 	if (!r_fullbright.integer)
 		ent->render.flags |= RENDER_LIGHT;
 	VectorSet(ent->render.colormod, 1, 1, 1);
+	VectorSet(ent->render.glowmod, 1, 1, 1);
 	CL_UpdateRenderEntity(&ent->render);
 	r_refdef.scene.worldentity = &ent->render;
 	r_refdef.scene.worldmodel = cl.worldmodel;
@@ -1459,6 +1476,7 @@ static void CL_RelinkStaticEntities(void)
 		if (!(e->render.effects & (EF_NOSHADOW | EF_ADDITIVE | EF_NODEPTHTEST)) && (e->render.alpha >= 1))
 			e->render.flags |= RENDER_SHADOW;
 		VectorSet(e->render.colormod, 1, 1, 1);
+		VectorSet(e->render.glowmod, 1, 1, 1);
 		R_LerpAnimation(&e->render);
 		CL_UpdateRenderEntity(&e->render);
 		r_refdef.scene.entities[r_refdef.scene.numentities++] = &e->render;
@@ -1545,6 +1563,7 @@ static void CL_RelinkEffects(void)
 					entrender->model = cl.csqc_model_precache[-(e->modelindex+1)];
 				entrender->alpha = 1;
 				VectorSet(entrender->colormod, 1, 1, 1);
+				VectorSet(entrender->glowmod, 1, 1, 1);
 
 				Matrix4x4_CreateFromQuakeEntity(&entrender->matrix, e->origin[0], e->origin[1], e->origin[2], 0, 0, 0, 1);
 				CL_UpdateRenderEntity(entrender);
@@ -1691,6 +1710,7 @@ static void CL_RelinkQWNails(void)
 		entrender->model = cl.model_precache[cl.qw_modelindex_spike];
 		entrender->alpha = 1;
 		VectorSet(entrender->colormod, 1, 1, 1);
+		VectorSet(entrender->glowmod, 1, 1, 1);
 
 		Matrix4x4_CreateFromQuakeEntity(&entrender->matrix, v[0], v[1], v[2], v[3], v[4], v[5], 1);
 		CL_UpdateRenderEntity(entrender);

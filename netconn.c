@@ -88,6 +88,7 @@ static cvar_t rcon_restricted_password = {CVAR_PRIVATE, "rcon_restricted_passwor
 static cvar_t rcon_restricted_commands = {0, "rcon_restricted_commands", "", "allowed commands for rcon when the restricted mode password was used"};
 static cvar_t rcon_secure_maxdiff = {0, "rcon_secure_maxdiff", "5", "maximum time difference between rcon request and server system clock (to protect against replay attack)"};
 extern cvar_t rcon_secure;
+extern cvar_t rcon_secure_challengetimeout;
 
 /* statistic counters */
 static int packetsSent = 0;
@@ -1022,6 +1023,8 @@ static int clientport2 = -1;
 static int hostport = -1;
 void NetConn_UpdateSockets(void)
 {
+	int i, j;
+
 	if (cls.state != ca_dedicated)
 	{
 		if (clientport2 != cl_netport.integer)
@@ -1044,6 +1047,23 @@ void NetConn_UpdateSockets(void)
 		hostport = sv_netport.integer;
 		if (sv.active)
 			Con_Print("Changing \"port\" will not take effect until \"map\" command is executed.\n");
+	}
+
+	for (j = 0;j < MAX_RCONS;j++)
+	{
+		i = (cls.rcon_ringpos + j + 1) % MAX_RCONS;
+		if(cls.rcon_commands[i][0])
+		{
+			if(realtime > cls.rcon_timeout[i])
+			{
+				char s[128];
+				LHNETADDRESS_ToString(&cls.rcon_addresses[i], s, sizeof(s), true);
+				Con_Printf("rcon to %s (for command %s) failed: challenge request timed out\n", s, cls.rcon_commands[i]);
+				cls.rcon_commands[i][0] = 0;
+				--cls.rcon_trying;
+				break;
+			}
+		}
 	}
 }
 
@@ -1554,6 +1574,48 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			Com_HexDumpToConsole(data, length);
 		}
 
+		if (length > 10 && !memcmp(string, "challenge ", 10) && cls.rcon_trying)
+		{
+			int i, j;
+			for (j = 0;j < MAX_RCONS;j++)
+			{
+				i = (cls.rcon_ringpos + j) % MAX_RCONS;
+				if(cls.rcon_commands[i][0])
+					if (!LHNETADDRESS_Compare(peeraddress, &cls.rcon_addresses[i]))
+						break;
+			}
+			if (j < MAX_RCONS)
+			{
+				char buf[1500];
+				char argbuf[1500];
+				dpsnprintf(argbuf, sizeof(argbuf), "%s %s", string + 10, cls.rcon_commands[i]);
+				memcpy(buf, "\377\377\377\377srcon HMAC-MD4 CHALLENGE ", 29);
+				if(HMAC_MDFOUR_16BYTES((unsigned char *) (buf + 29), (unsigned char *) argbuf, strlen(argbuf), (unsigned char *) rcon_password.string, strlen(rcon_password.string)))
+				{
+					buf[45] = ' ';
+					strlcpy(buf + 46, argbuf, sizeof(buf) - 46);
+					NetConn_Write(mysocket, buf, 46 + strlen(buf + 46), peeraddress);
+					cls.rcon_commands[i][0] = 0;
+					--cls.rcon_trying;
+
+					for (i = 0;i < MAX_RCONS;i++)
+						if(cls.rcon_commands[i][0])
+							if (!LHNETADDRESS_Compare(peeraddress, &cls.rcon_addresses[i]))
+								break;
+					if(i < MAX_RCONS)
+					{
+						NetConn_WriteString(mysocket, "\377\377\377\377getchallenge", peeraddress);
+						// extend the timeout on other requests as we asked for a challenge
+						for (i = 0;i < MAX_RCONS;i++)
+							if(cls.rcon_commands[i][0])
+								if (!LHNETADDRESS_Compare(peeraddress, &cls.rcon_addresses[i]))
+									cls.rcon_timeout[i] = realtime + rcon_secure_challengetimeout.value;
+					}
+
+					return true; // we used up the challenge, so we can't use this oen for connecting now anyway
+				}
+			}
+		}
 		if (length > 10 && !memcmp(string, "challenge ", 10) && cls.connect_trying)
 		{
 			// darkplaces or quake3
@@ -2292,9 +2354,9 @@ void NetConn_ClearConnectFlood(lhnetaddress_t *peeraddress)
 	}
 }
 
-typedef qboolean (*rcon_matchfunc_t) (const char *password, const char *hash, const char *s, int slen);
+typedef qboolean (*rcon_matchfunc_t) (lhnetaddress_t *peeraddress, const char *password, const char *hash, const char *s, int slen);
 
-qboolean hmac_mdfour_matching(const char *password, const char *hash, const char *s, int slen)
+qboolean hmac_mdfour_time_matching(lhnetaddress_t *peeraddress, const char *password, const char *hash, const char *s, int slen)
 {
 	char mdfourbuf[16];
 	long t1, t2;
@@ -2310,21 +2372,50 @@ qboolean hmac_mdfour_matching(const char *password, const char *hash, const char
 	return !memcmp(mdfourbuf, hash, 16);
 }
 
-qboolean plaintext_matching(const char *password, const char *hash, const char *s, int slen)
+qboolean hmac_mdfour_challenge_matching(lhnetaddress_t *peeraddress, const char *password, const char *hash, const char *s, int slen)
+{
+	char mdfourbuf[16];
+	int i;
+
+	if(slen < (int)(sizeof(challenge[0].string)) - 1)
+		return false;
+
+	// validate the challenge
+	for (i = 0;i < MAX_CHALLENGES;i++)
+		if(challenge[i].time > 0)
+			if (!LHNETADDRESS_Compare(peeraddress, &challenge[i].address) && !strncmp(challenge[i].string, s, sizeof(challenge[0].string) - 1))
+				break;
+	// if the challenge is not recognized, drop the packet
+	if (i == MAX_CHALLENGES)
+		return false;
+
+	if(!HMAC_MDFOUR_16BYTES((unsigned char *) mdfourbuf, (unsigned char *) s, slen, (unsigned char *) password, strlen(password)))
+		return false;
+
+	if(memcmp(mdfourbuf, hash, 16))
+		return false;
+
+	// unmark challenge to prevent replay attacks
+	challenge[i].time = 0;
+
+	return true;
+}
+
+qboolean plaintext_matching(lhnetaddress_t *peeraddress, const char *password, const char *hash, const char *s, int slen)
 {
 	return !strcmp(password, hash);
 }
 
 /// returns a string describing the user level, or NULL for auth failure
-const char *RCon_Authenticate(const char *password, const char *s, const char *endpos, rcon_matchfunc_t comparator, const char *cs, int cslen)
+const char *RCon_Authenticate(lhnetaddress_t *peeraddress, const char *password, const char *s, const char *endpos, rcon_matchfunc_t comparator, const char *cs, int cslen)
 {
 	const char *text;
 	qboolean hasquotes;
 
-	if(comparator(rcon_password.string, password, cs, cslen))
+	if(comparator(peeraddress, rcon_password.string, password, cs, cslen))
 		return "rcon";
 	
-	if(!comparator(rcon_restricted_password.string, password, cs, cslen))
+	if(!comparator(peeraddress, rcon_restricted_password.string, password, cs, cslen))
 		return NULL;
 
 	for(text = s; text != endpos; ++text)
@@ -2455,8 +2546,9 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 		{
 			for (i = 0, best = 0, besttime = realtime;i < MAX_CHALLENGES;i++)
 			{
-				if (!LHNETADDRESS_Compare(peeraddress, &challenge[i].address))
-					break;
+				if(challenge[i].time > 0)
+					if (!LHNETADDRESS_Compare(peeraddress, &challenge[i].address))
+						break;
 				if (besttime > challenge[i].time)
 					besttime = challenge[best = i].time;
 			}
@@ -2482,8 +2574,9 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 				return true;
 			// validate the challenge
 			for (i = 0;i < MAX_CHALLENGES;i++)
-				if (!LHNETADDRESS_Compare(peeraddress, &challenge[i].address) && !strcmp(challenge[i].string, s))
-					break;
+				if(challenge[i].time > 0)
+					if (!LHNETADDRESS_Compare(peeraddress, &challenge[i].address) && !strcmp(challenge[i].string, s))
+						break;
 			// if the challenge is not recognized, drop the packet
 			if (i == MAX_CHALLENGES)
 				return true;
@@ -2595,11 +2688,30 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			char *s = strchr(timeval, ' ');
 			char *endpos = string + length + 1; // one behind the NUL, so adding strlen+1 will eventually reach it
 			const char *userlevel;
+
+			if(rcon_secure.integer > 1)
+				return true;
+
 			if(!s)
 				return true; // invalid packet
 			++s;
 
-			userlevel = RCon_Authenticate(password, s, endpos, hmac_mdfour_matching, timeval, endpos - timeval - 1); // not including the appended \0 into the HMAC
+			userlevel = RCon_Authenticate(peeraddress, password, s, endpos, hmac_mdfour_time_matching, timeval, endpos - timeval - 1); // not including the appended \0 into the HMAC
+			RCon_Execute(mysocket, peeraddress, addressstring2, userlevel, s, endpos);
+			return true;
+		}
+		if (length >= 42 && !memcmp(string, "srcon HMAC-MD4 CHALLENGE ", 25))
+		{
+			char *password = string + 25;
+			char *challenge = string + 42;
+			char *s = strchr(challenge, ' ');
+			char *endpos = string + length + 1; // one behind the NUL, so adding strlen+1 will eventually reach it
+			const char *userlevel;
+			if(!s)
+				return true; // invalid packet
+			++s;
+
+			userlevel = RCon_Authenticate(peeraddress, password, s, endpos, hmac_mdfour_challenge_matching, challenge, endpos - challenge - 1); // not including the appended \0 into the HMAC
 			RCon_Execute(mysocket, peeraddress, addressstring2, userlevel, s, endpos);
 			return true;
 		}
@@ -2621,7 +2733,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			password[i] = 0;
 			if (!ISWHITESPACE(password[0]))
 			{
-				const char *userlevel = RCon_Authenticate(password, s, endpos, plaintext_matching, NULL, 0);
+				const char *userlevel = RCon_Authenticate(peeraddress, password, s, endpos, plaintext_matching, NULL, 0);
 				RCon_Execute(mysocket, peeraddress, addressstring2, userlevel, s, endpos);
 			}
 			return true;

@@ -38,6 +38,7 @@ char *vm_sv_extensions =
 "DP_ENT_CUSTOMCOLORMAP "
 "DP_ENT_EXTERIORMODELTOCLIENT "
 "DP_ENT_GLOW "
+"DP_ENT_GLOWMOD "
 "DP_ENT_LOWPRECISION "
 "DP_ENT_SCALE "
 "DP_ENT_VIEWMODEL "
@@ -179,6 +180,9 @@ char *vm_sv_extensions =
 "TENEBRAE_GFX_DLIGHTS "
 "TW_SV_STEPCONTROL "
 "ZQ_PAUSE "
+"DP_CSQC_SPAWNPARTICLE "
+"DP_CSQC_ENTITYTRANSPARENTSORTING_OFFSET "
+"DP_CSQC_ENTITYNOCULL "
 //"EXT_CSQC " // not ready yet
 ;
 
@@ -211,7 +215,7 @@ static void VM_SV_setorigin (void)
 	}
 	org = PRVM_G_VECTOR(OFS_PARM1);
 	VectorCopy (org, e->fields.server->origin);
-	SV_LinkEdict (e, false);
+	SV_LinkEdict(e);
 }
 
 // TODO: rotate param isnt used.. could be a bug. please check this and remove it if possible [1/10/2008 Black]
@@ -228,7 +232,7 @@ static void SetMinMaxSize (prvm_edict_t *e, float *min, float *max, qboolean rot
 	VectorCopy (max, e->fields.server->maxs);
 	VectorSubtract (max, min, e->fields.server->size);
 
-	SV_LinkEdict (e, false);
+	SV_LinkEdict(e);
 }
 
 /*
@@ -582,7 +586,7 @@ static void VM_SV_traceline (void)
 	if (IS_NAN(v1[0]) || IS_NAN(v1[1]) || IS_NAN(v1[2]) || IS_NAN(v2[0]) || IS_NAN(v2[1]) || IS_NAN(v2[2]))
 		PRVM_ERROR("%s: NAN errors detected in traceline('%f %f %f', '%f %f %f', %i, entity %i)\n", PRVM_NAME, v1[0], v1[1], v1[2], v2[0], v2[1], v2[2], move, PRVM_EDICT_TO_PROG(ent));
 
-	trace = SV_Move (v1, vec3_origin, vec3_origin, v2, move, ent, SV_GenericHitSuperContentsMask(ent));
+	trace = SV_TraceLine(v1, v2, move, ent, SV_GenericHitSuperContentsMask(ent));
 
 	VM_SetTraceGlobals(&trace);
 }
@@ -621,7 +625,7 @@ static void VM_SV_tracebox (void)
 	if (IS_NAN(v1[0]) || IS_NAN(v1[1]) || IS_NAN(v1[2]) || IS_NAN(v2[0]) || IS_NAN(v2[1]) || IS_NAN(v2[2]))
 		PRVM_ERROR("%s: NAN errors detected in tracebox('%f %f %f', '%f %f %f', '%f %f %f', '%f %f %f', %i, entity %i)\n", PRVM_NAME, v1[0], v1[1], v1[2], m1[0], m1[1], m1[2], m2[0], m2[1], m2[2], v2[0], v2[1], v2[2], move, PRVM_EDICT_TO_PROG(ent));
 
-	trace = SV_Move (v1, m1, m2, v2, move, ent, SV_GenericHitSuperContentsMask(ent));
+	trace = SV_TraceBox(v1, m1, m2, v2, move, ent, SV_GenericHitSuperContentsMask(ent));
 
 	VM_SetTraceGlobals(&trace);
 }
@@ -657,7 +661,7 @@ static trace_t SV_Trace_Toss (prvm_edict_t *tossent, prvm_edict_t *ignore)
 		VectorMA (tossent->fields.server->angles, 0.05, tossent->fields.server->avelocity, tossent->fields.server->angles);
 		VectorScale (tossent->fields.server->velocity, 0.05, move);
 		VectorAdd (tossent->fields.server->origin, move, end);
-		trace = SV_Move (tossent->fields.server->origin, tossent->fields.server->mins, tossent->fields.server->maxs, end, MOVE_NORMAL, tossent, SV_GenericHitSuperContentsMask(tossent));
+		trace = SV_TraceBox(tossent->fields.server->origin, tossent->fields.server->mins, tossent->fields.server->maxs, end, MOVE_NORMAL, tossent, SV_GenericHitSuperContentsMask(tossent));
 		VectorCopy (trace.endpos, tossent->fields.server->origin);
 		tossent->fields.server->velocity[2] -= gravity;
 
@@ -1077,19 +1081,19 @@ static void VM_SV_droptofloor (void)
 	if (sv_gameplayfix_droptofloorstartsolid_nudgetocorrect.integer)
 		SV_UnstickEntity(ent);
 
-	trace = SV_Move (ent->fields.server->origin, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, SV_GenericHitSuperContentsMask(ent));
+	trace = SV_TraceBox(ent->fields.server->origin, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, SV_GenericHitSuperContentsMask(ent));
 	if (trace.startsolid && sv_gameplayfix_droptofloorstartsolid.integer)
 	{
 		vec3_t offset, org;
 		VectorSet(offset, 0.5f * (ent->fields.server->mins[0] + ent->fields.server->maxs[0]), 0.5f * (ent->fields.server->mins[1] + ent->fields.server->maxs[1]), ent->fields.server->mins[2]);
 		VectorAdd(ent->fields.server->origin, offset, org);
-		trace = SV_Move (org, vec3_origin, vec3_origin, end, MOVE_NORMAL, ent, SV_GenericHitSuperContentsMask(ent));
+		trace = SV_TraceLine(org, end, MOVE_NORMAL, ent, SV_GenericHitSuperContentsMask(ent));
 		VectorSubtract(trace.endpos, offset, trace.endpos);
 		if (trace.startsolid)
 		{
 			Con_DPrintf("droptofloor at %f %f %f - COULD NOT FIX BADLY PLACED ENTITY\n", ent->fields.server->origin[0], ent->fields.server->origin[1], ent->fields.server->origin[2]);
 			SV_UnstickEntity(ent);
-			SV_LinkEdict (ent, false);
+			SV_LinkEdict(ent);
 			ent->fields.server->flags = (int)ent->fields.server->flags | FL_ONGROUND;
 			ent->fields.server->groundentity = 0;
 			PRVM_G_FLOAT(OFS_RETURN) = 1;
@@ -1099,7 +1103,7 @@ static void VM_SV_droptofloor (void)
 			Con_DPrintf("droptofloor at %f %f %f - FIXED BADLY PLACED ENTITY\n", ent->fields.server->origin[0], ent->fields.server->origin[1], ent->fields.server->origin[2]);
 			VectorCopy (trace.endpos, ent->fields.server->origin);
 			SV_UnstickEntity(ent);
-			SV_LinkEdict (ent, false);
+			SV_LinkEdict(ent);
 			ent->fields.server->flags = (int)ent->fields.server->flags | FL_ONGROUND;
 			ent->fields.server->groundentity = PRVM_EDICT_TO_PROG(trace.ent);
 			PRVM_G_FLOAT(OFS_RETURN) = 1;
@@ -1113,7 +1117,7 @@ static void VM_SV_droptofloor (void)
 		{
 			if (trace.fraction < 1)
 				VectorCopy (trace.endpos, ent->fields.server->origin);
-			SV_LinkEdict (ent, false);
+			SV_LinkEdict(ent);
 			ent->fields.server->flags = (int)ent->fields.server->flags | FL_ONGROUND;
 			ent->fields.server->groundentity = PRVM_EDICT_TO_PROG(trace.ent);
 			PRVM_G_FLOAT(OFS_RETURN) = 1;
@@ -1230,7 +1234,7 @@ static void VM_SV_aim (void)
 // try sending a trace straight
 	VectorCopy (prog->globals.server->v_forward, dir);
 	VectorMA (start, 2048, dir, end);
-	tr = SV_Move (start, vec3_origin, vec3_origin, end, MOVE_NORMAL, ent, SUPERCONTENTS_SOLID | SUPERCONTENTS_BODY);
+	tr = SV_TraceLine(start, end, MOVE_NORMAL, ent, SUPERCONTENTS_SOLID | SUPERCONTENTS_BODY);
 	if (tr.ent && ((prvm_edict_t *)tr.ent)->fields.server->takedamage == DAMAGE_AIM
 	&& (!teamplay.integer || ent->fields.server->team <=0 || ent->fields.server->team != ((prvm_edict_t *)tr.ent)->fields.server->team) )
 	{
@@ -1262,7 +1266,7 @@ static void VM_SV_aim (void)
 		dist = DotProduct (dir, prog->globals.server->v_forward);
 		if (dist < bestdist)
 			continue;	// to far to turn
-		tr = SV_Move (start, vec3_origin, vec3_origin, end, MOVE_NORMAL, ent, SUPERCONTENTS_SOLID | SUPERCONTENTS_BODY);
+		tr = SV_TraceLine(start, end, MOVE_NORMAL, ent, SUPERCONTENTS_SOLID | SUPERCONTENTS_BODY);
 		if (tr.ent == check)
 		{	// can shoot at this one
 			bestdist = dist;
@@ -1682,7 +1686,7 @@ static void VM_SV_copyentity (void)
 		return;
 	}
 	memcpy(out->fields.vp, in->fields.vp, prog->progs->entityfields * 4);
-	SV_LinkEdict(out, false);
+	SV_LinkEdict(out);
 }
 
 

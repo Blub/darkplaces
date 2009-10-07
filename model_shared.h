@@ -161,6 +161,8 @@ typedef struct shadowmesh_s
 	// used always
 	int *element3i;
 	unsigned short *element3s;
+	// used for shadow mapping cubemap side partitioning
+	int sideoffsets[6], sidetotals[6];
 	// used for shadow mesh (NULL on light mesh)
 	int *neighbor3i;
 	// these are NULL after Mod_ShadowMesh_Finish is performed, only used
@@ -382,7 +384,11 @@ typedef struct q3shaderinfo_s
 	float reflectfactor; // amount of reflection distort (1.0 = like the cvar specifies)
 	vec4_t reflectcolor4f; // color tint of reflection (including alpha factor)
 	float r_water_wateralpha; // additional wateralpha to apply when r_water is active
-#define Q3SHADERINFO_COMPARE_END r_water_wateralpha
+
+	// gloss
+	float specularscalemod;
+	float specularpowermod;
+#define Q3SHADERINFO_COMPARE_END specularpowermod
 }
 q3shaderinfo_t;
 
@@ -512,6 +518,10 @@ typedef struct texture_s
 	float reflectfactor; // amount of reflection distort (1.0 = like the cvar specifies)
 	vec4_t reflectcolor4f; // color tint of reflection (including alpha factor)
 	float r_water_wateralpha; // additional wateralpha to apply when r_water is active
+
+	// gloss
+	float specularscalemod;
+	float specularpowermod;
 }
 texture_t;
 
@@ -880,8 +890,10 @@ typedef struct model_s
 	void(*DrawDepth)(struct entity_render_s *ent);
 	// draw any enabled debugging effects on this model (such as showing triangles, normals, collision brushes...)
 	void(*DrawDebug)(struct entity_render_s *ent);
+    // compile an optimized shadowmap mesh for the model based on light source
+	void(*CompileShadowMap)(struct entity_render_s *ent, vec3_t relativelightorigin, vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist);
 	// draw depth into a shadowmap
-	void(*DrawShadowMap)(struct entity_render_s *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist, const vec3_t lightmins, const vec3_t lightmaxs);
+	void(*DrawShadowMap)(int side, struct entity_render_s *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist, const unsigned char *surfacesides, const vec3_t lightmins, const vec3_t lightmaxs);
 	// gathers info on which clusters and surfaces are lit by light, as well as calculating a bounding box
 	void(*GetLightInfo)(struct entity_render_s *ent, vec3_t relativelightorigin, float lightradius, vec3_t outmins, vec3_t outmaxs, int *outleaflist, unsigned char *outleafpvs, int *outnumleafspointer, int *outsurfacelist, unsigned char *outsurfacepvs, int *outnumsurfacespointer, unsigned char *outshadowtrispvs, unsigned char *outlighttrispvs, unsigned char *visitingleafpvs);
 	// compile a shadow volume for the model based on light source
@@ -892,6 +904,10 @@ typedef struct model_s
 	void(*DrawLight)(struct entity_render_s *ent, int numsurfaces, const int *surfacelist, const unsigned char *trispvs);
 	// trace a box against this model
 	void (*TraceBox)(struct model_s *model, int frame, struct trace_s *trace, const vec3_t start, const vec3_t boxmins, const vec3_t boxmaxs, const vec3_t end, int hitsupercontentsmask);
+	// trace a box against this model
+	void (*TraceLine)(struct model_s *model, int frame, struct trace_s *trace, const vec3_t start, const vec3_t end, int hitsupercontentsmask);
+	// trace a point against this model (like PointSuperContents)
+	void (*TracePoint)(struct model_s *model, int frame, struct trace_s *trace, const vec3_t start, int hitsupercontentsmask);
 	// find the supercontents value at a point in this model
 	int (*PointSuperContents)(struct model_s *model, int frame, const vec3_t point);
 	// fields belonging to some types of model
@@ -994,7 +1010,8 @@ void R_Q1BSP_Draw(struct entity_render_s *ent);
 void R_Q1BSP_DrawDepth(struct entity_render_s *ent);
 void R_Q1BSP_DrawDebug(struct entity_render_s *ent);
 void R_Q1BSP_GetLightInfo(struct entity_render_s *ent, vec3_t relativelightorigin, float lightradius, vec3_t outmins, vec3_t outmaxs, int *outleaflist, unsigned char *outleafpvs, int *outnumleafspointer, int *outsurfacelist, unsigned char *outsurfacepvs, int *outnumsurfacespointer, unsigned char *outshadowtrispvs, unsigned char *outlighttrispvs, unsigned char *visitingleafpvs);
-void R_Q1BSP_DrawShadowMap(struct entity_render_s *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int modelnumsurfaces, const int *modelsurfacelist, const vec3_t lightmins, const vec3_t lightmaxs);
+void R_Q1BSP_CompileShadowMap(struct entity_render_s *ent, vec3_t relativelightorigin, vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist);
+void R_Q1BSP_DrawShadowMap(int side, struct entity_render_s *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int modelnumsurfaces, const int *modelsurfacelist, const unsigned char *surfacesides, const vec3_t lightmins, const vec3_t lightmaxs);
 void R_Q1BSP_CompileShadowVolume(struct entity_render_s *ent, vec3_t relativelightorigin, vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist);
 void R_Q1BSP_DrawShadowVolume(struct entity_render_s *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist, const vec3_t lightmins, const vec3_t lightmaxs);
 void R_Q1BSP_DrawLight(struct entity_render_s *ent, int numsurfaces, const int *surfacelist, const unsigned char *trispvs);
