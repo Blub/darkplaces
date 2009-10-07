@@ -163,6 +163,7 @@ int R_CullBoxCustomPlanes(const vec3_t mins, const vec3_t maxs, int numplanes, c
 #include "r_lerpanim.h"
 
 extern cvar_t r_render;
+extern cvar_t r_renderview;
 extern cvar_t r_waterwarp;
 
 extern cvar_t r_textureunits;
@@ -311,6 +312,8 @@ typedef struct rsurfacestate_s
 	// colormapping state from entity (these are black if colormapping is off)
 	vec3_t colormap_pantscolor;
 	vec3_t colormap_shirtcolor;
+	// special coloring of glow textures
+	vec3_t glowmod;
 	// view location in model space
 	vec3_t modelorg; // TODO: rename this
 	// polygon offset data for submodels

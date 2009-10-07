@@ -70,7 +70,7 @@ realcheck:
 	start[0] = stop[0] = (mins[0] + maxs[0])*0.5;
 	start[1] = stop[1] = (mins[1] + maxs[1])*0.5;
 	stop[2] = start[2] - 2*sv_stepheight.value;
-	trace = SV_Move (start, vec3_origin, vec3_origin, stop, MOVE_NOMONSTERS, ent, SV_GenericHitSuperContentsMask(ent));
+	trace = SV_TraceLine(start, stop, MOVE_NOMONSTERS, ent, SV_GenericHitSuperContentsMask(ent));
 
 	if (trace.fraction == 1.0)
 		return false;
@@ -83,7 +83,7 @@ realcheck:
 			start[0] = stop[0] = x ? maxs[0] : mins[0];
 			start[1] = stop[1] = y ? maxs[1] : mins[1];
 
-			trace = SV_Move (start, vec3_origin, vec3_origin, stop, MOVE_NOMONSTERS, ent, SV_GenericHitSuperContentsMask(ent));
+			trace = SV_TraceLine(start, stop, MOVE_NOMONSTERS, ent, SV_GenericHitSuperContentsMask(ent));
 
 			if (trace.fraction != 1.0 && trace.endpos[2] > bottom)
 				bottom = trace.endpos[2];
@@ -138,7 +138,7 @@ qboolean SV_movestep (prvm_edict_t *ent, vec3_t move, qboolean relink, qboolean 
 						neworg[2] += 8;
 				}
 			}
-			trace = SV_Move (ent->fields.server->origin, ent->fields.server->mins, ent->fields.server->maxs, neworg, MOVE_NORMAL, ent, SV_GenericHitSuperContentsMask(ent));
+			trace = SV_TraceBox(ent->fields.server->origin, ent->fields.server->mins, ent->fields.server->maxs, neworg, MOVE_NORMAL, ent, SV_GenericHitSuperContentsMask(ent));
 
 			if (trace.fraction == 1)
 			{
@@ -148,7 +148,10 @@ qboolean SV_movestep (prvm_edict_t *ent, vec3_t move, qboolean relink, qboolean 
 
 				VectorCopy (traceendpos, ent->fields.server->origin);
 				if (relink)
-					SV_LinkEdict (ent, true);
+				{
+					SV_LinkEdict(ent);
+					SV_LinkEdict_TouchAreaGrid(ent);
+				}
 				return true;
 			}
 
@@ -164,12 +167,12 @@ qboolean SV_movestep (prvm_edict_t *ent, vec3_t move, qboolean relink, qboolean 
 	VectorCopy (neworg, end);
 	end[2] -= sv_stepheight.value*2;
 
-	trace = SV_Move (neworg, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, SV_GenericHitSuperContentsMask(ent));
+	trace = SV_TraceBox(neworg, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, SV_GenericHitSuperContentsMask(ent));
 
 	if (trace.startsolid)
 	{
 		neworg[2] -= sv_stepheight.value;
-		trace = SV_Move (neworg, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, SV_GenericHitSuperContentsMask(ent));
+		trace = SV_TraceBox(neworg, ent->fields.server->mins, ent->fields.server->maxs, end, MOVE_NORMAL, ent, SV_GenericHitSuperContentsMask(ent));
 		if (trace.startsolid)
 			return false;
 	}
@@ -180,7 +183,10 @@ qboolean SV_movestep (prvm_edict_t *ent, vec3_t move, qboolean relink, qboolean 
 		{
 			VectorAdd (ent->fields.server->origin, move, ent->fields.server->origin);
 			if (relink)
-				SV_LinkEdict (ent, true);
+			{
+				SV_LinkEdict(ent);
+				SV_LinkEdict_TouchAreaGrid(ent);
+			}
 			ent->fields.server->flags = (int)ent->fields.server->flags & ~FL_ONGROUND;
 			return true;
 		}
@@ -197,7 +203,10 @@ qboolean SV_movestep (prvm_edict_t *ent, vec3_t move, qboolean relink, qboolean 
 		{	// entity had floor mostly pulled out from underneath it
 			// and is trying to correct
 			if (relink)
-				SV_LinkEdict (ent, true);
+			{
+				SV_LinkEdict(ent);
+				SV_LinkEdict_TouchAreaGrid(ent);
+			}
 			return true;
 		}
 		VectorCopy (oldorg, ent->fields.server->origin);
@@ -211,7 +220,10 @@ qboolean SV_movestep (prvm_edict_t *ent, vec3_t move, qboolean relink, qboolean 
 
 // the move is ok
 	if (relink)
-		SV_LinkEdict (ent, true);
+	{
+		SV_LinkEdict(ent);
+		SV_LinkEdict_TouchAreaGrid(ent);
+	}
 	return true;
 }
 
@@ -249,10 +261,12 @@ qboolean SV_StepDirection (prvm_edict_t *ent, float yaw, float dist)
 		{		// not turned far enough, so don't take the step
 			VectorCopy (oldorigin, ent->fields.server->origin);
 		}
-		SV_LinkEdict (ent, true);
+		SV_LinkEdict(ent);
+		SV_LinkEdict_TouchAreaGrid(ent);
 		return true;
 	}
-	SV_LinkEdict (ent, true);
+	SV_LinkEdict(ent);
+	SV_LinkEdict_TouchAreaGrid(ent);
 
 	return false;
 }
