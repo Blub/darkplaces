@@ -102,7 +102,7 @@
 		}							\
 		ptr = (prvm_eval_t*)((int *)prog->edictsfields + p);	\
 		if (p < prog->progs->entityfields && !prog->allowworldwrites) \
-			Con_DPrintf("WARNING: assignment to world.%s (field %i) in %s\n", PRVM_GetString(PRVM_ED_FieldAtOfs(p)->s_name), p, PRVM_NAME); \
+			Con_DPrintf("WARNING: assignment to world.%s (field %i) in %s\n", PRVM_GetString(PRVM_ED_FieldAtOfs(p)->s_name), (int)p, PRVM_NAME); \
 	}
 #else
 
