@@ -25,6 +25,12 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define ENTITYGRIDAREAS 16
 #define MAX_ENTITYCLUSTERS 16
 
+#define JOINTTYPE_POINT 1
+#define JOINTTYPE_HINGE 2
+#define JOINTTYPE_SLIDER 3
+#define JOINTTYPE_UNIVERSAL 4
+#define JOINTTYPE_HINGE2 5
+
 typedef struct edict_engineprivate_s
 {
 	// true if this edict is unused
@@ -68,6 +74,35 @@ typedef struct edict_engineprivate_s
 	// moved, in case they need to be moved back
 	vec3_t moved_from;
 	vec3_t moved_fromangles;
+
+	// physics parameters
+	qboolean ode_physics;
+	void *ode_body;
+	void *ode_geom;
+	void *ode_joint;
+	float *ode_vertex3f;
+	int *ode_element3i;
+	int ode_numvertices;
+	int ode_numtriangles;
+	vec3_t ode_mins;
+	vec3_t ode_maxs;
+	vec_t ode_mass;
+	vec3_t ode_origin;
+	vec3_t ode_velocity;
+	vec3_t ode_angles;
+	vec3_t ode_avelocity;
+	qboolean ode_gravity;
+	int ode_modelindex;
+	vec_t ode_movelimit; // smallest component of (maxs[]-mins[])
+	matrix4x4_t ode_offsetmatrix;
+	matrix4x4_t ode_offsetimatrix;
+	int ode_joint_type;
+	int ode_joint_enemy;
+	int ode_joint_aiment;
+	vec3_t ode_joint_origin; // joint anchor
+	vec3_t ode_joint_angles; // joint axis
+	vec3_t ode_joint_velocity; // second joint axis
+	vec3_t ode_joint_movedir; // parameters
 }
 edict_engineprivate_t;
 

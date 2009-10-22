@@ -1254,6 +1254,34 @@ void Mod_ShadowMesh_Free(shadowmesh_t *mesh)
 	}
 }
 
+void Mod_CreateCollisionMesh(dp_model_t *mod)
+{
+	int k;
+	int numcollisionmeshtriangles;
+	const msurface_t *surface;
+	mempool_t *mempool = mod->mempool;
+	if (!mempool && mod->brush.parentmodel)
+		mempool = mod->brush.parentmodel->mempool;
+	// make a single combined collision mesh for physics engine use
+	numcollisionmeshtriangles = 0;
+	for (k = 0;k < mod->nummodelsurfaces;k++)
+	{
+		surface = mod->data_surfaces + mod->firstmodelsurface + k;
+		if (!(surface->texture->supercontents & SUPERCONTENTS_SOLID))
+			continue;
+		numcollisionmeshtriangles += surface->num_triangles;
+	}
+	mod->brush.collisionmesh = Mod_ShadowMesh_Begin(mempool, numcollisionmeshtriangles * 3, numcollisionmeshtriangles, NULL, NULL, NULL, false, false, true);
+	for (k = 0;k < mod->nummodelsurfaces;k++)
+	{
+		surface = mod->data_surfaces + mod->firstmodelsurface + k;
+		if (!(surface->texture->supercontents & SUPERCONTENTS_SOLID))
+			continue;
+		Mod_ShadowMesh_AddMesh(mempool, mod->brush.collisionmesh, NULL, NULL, NULL, mod->surfmesh.data_vertex3f, NULL, NULL, NULL, NULL, surface->num_triangles, (mod->surfmesh.data_element3i + 3 * surface->num_firsttriangle));
+	}
+	mod->brush.collisionmesh = Mod_ShadowMesh_Finish(mempool, mod->brush.collisionmesh, false, true, false);
+}
+
 void Mod_GetTerrainVertex3fTexCoord2fFromBGRA(const unsigned char *imagepixels, int imagewidth, int imageheight, int ix, int iy, float *vertex3f, float *texcoord2f, matrix4x4_t *pixelstepmatrix, matrix4x4_t *pixeltexturestepmatrix)
 {
 	float v[3], tc[3];
@@ -1316,6 +1344,86 @@ void Mod_ConstructTerrainPatchFromBGRA(const unsigned char *imagepixels, int ima
 		for (x = 0, ix = x1;x < width + 1;x++, ix++, vertex3f += 3, texcoord2f += 2, svector3f += 3, tvector3f += 3, normal3f += 3)
 			Mod_GetTerrainVertexFromBGRA(imagepixels, imagewidth, imageheight, ix, iy, vertex3f, texcoord2f, svector3f, tvector3f, normal3f, pixelstepmatrix, pixeltexturestepmatrix);
 }
+
+#if 0
+void Mod_Terrain_SurfaceRecurseChunk(dp_model_t *model, int stepsize, int x, int y)
+{
+	float mins[3];
+	float maxs[3];
+	float chunkwidth = min(stepsize, model->terrain.width - 1 - x);
+	float chunkheight = min(stepsize, model->terrain.height - 1 - y);
+	float viewvector[3];
+	unsigned int firstvertex;
+	unsigned int *e;
+	float *v;
+	if (chunkwidth < 2 || chunkheight < 2)
+		return;
+	VectorSet(mins, model->terrain.mins[0] +  x    * stepsize * model->terrain.scale[0], model->terrain.mins[1] +  y    * stepsize * model->terrain.scale[1], model->terrain.mins[2]);
+	VectorSet(maxs, model->terrain.mins[0] + (x+1) * stepsize * model->terrain.scale[0], model->terrain.mins[1] + (y+1) * stepsize * model->terrain.scale[1], model->terrain.maxs[2]);
+	viewvector[0] = bound(mins[0], modelorg, maxs[0]) - model->terrain.vieworigin[0];
+	viewvector[1] = bound(mins[1], modelorg, maxs[1]) - model->terrain.vieworigin[1];
+	viewvector[2] = bound(mins[2], modelorg, maxs[2]) - model->terrain.vieworigin[2];
+	if (stepsize > 1 && VectorLength(viewvector) < stepsize*model->terrain.scale[0]*r_terrain_lodscale.value)
+	{
+		// too close for this stepsize, emit as 4 chunks instead
+		stepsize /= 2;
+		Mod_Terrain_SurfaceRecurseChunk(model, stepsize, x, y);
+		Mod_Terrain_SurfaceRecurseChunk(model, stepsize, x+stepsize, y);
+		Mod_Terrain_SurfaceRecurseChunk(model, stepsize, x, y+stepsize);
+		Mod_Terrain_SurfaceRecurseChunk(model, stepsize, x+stepsize, y+stepsize);
+		return;
+	}
+	// emit the geometry at stepsize into our vertex buffer / index buffer
+	// we add two columns and two rows for skirt
+	outwidth = chunkwidth+2;
+	outheight = chunkheight+2;
+	outwidth2 = outwidth-1;
+	outheight2 = outheight-1;
+	outwidth3 = outwidth+1;
+	outheight3 = outheight+1;
+	firstvertex = numvertices;
+	e = model->terrain.element3i + numtriangles;
+	numtriangles += chunkwidth*chunkheight*2+chunkwidth*2*2+chunkheight*2*2;
+	v = model->terrain.vertex3f + numvertices;
+	numvertices += (chunkwidth+1)*(chunkheight+1)+(chunkwidth+1)*2+(chunkheight+1)*2;
+	// emit the triangles (note: the skirt is treated as two extra rows and two extra columns)
+	for (ty = 0;ty < outheight;ty++)
+	{
+		for (tx = 0;tx < outwidth;tx++)
+		{
+			*e++ = firstvertex + (ty  )*outwidth3+(tx  );
+			*e++ = firstvertex + (ty  )*outwidth3+(tx+1);
+			*e++ = firstvertex + (ty+1)*outwidth3+(tx+1);
+			*e++ = firstvertex + (ty  )*outwidth3+(tx  );
+			*e++ = firstvertex + (ty+1)*outwidth3+(tx+1);
+			*e++ = firstvertex + (ty+1)*outwidth3+(tx  );
+		}
+	}
+	// TODO: emit surface vertices (x+tx*stepsize, y+ty*stepsize)
+	for (ty = 0;ty <= outheight;ty++)
+	{
+		skirtrow = ty == 0 || ty == outheight;
+		ry = y+bound(1, ty, outheight)*stepsize;
+		for (tx = 0;tx <= outwidth;tx++)
+		{
+			skirt = skirtrow || tx == 0 || tx == outwidth;
+			rx = x+bound(1, tx, outwidth)*stepsize;
+			v[0] = rx*scale[0];
+			v[1] = ry*scale[1];
+			v[2] = heightmap[ry*terrainwidth+rx]*scale[2];
+			v += 3;
+		}
+	}
+	// TODO: emit skirt vertices
+}
+
+void Mod_Terrain_UpdateSurfacesForViewOrigin(dp_model_t *model)
+{
+	for (y = 0;y < model->terrain.size[1];y += model->terrain.
+	Mod_Terrain_SurfaceRecurseChunk(model, model->terrain.maxstepsize, x, y);
+	Mod_Terrain_BuildChunk(model, 
+}
+#endif
 
 q3wavefunc_t Mod_LoadQ3Shaders_EnumerateWaveFunc(const char *s)
 {
@@ -2346,6 +2454,19 @@ void Mod_MakeSortedSurfaces(dp_model_t *mod)
 
 static void Mod_BuildVBOs(void)
 {
+	if (developer.integer && loadmodel->surfmesh.data_element3s && loadmodel->surfmesh.data_element3i)
+	{
+		int i;
+		for (i = 0;i < loadmodel->surfmesh.num_triangles*3;i++)
+		{
+			if (loadmodel->surfmesh.data_element3s[i] != loadmodel->surfmesh.data_element3i[i])
+			{
+				Con_Printf("Mod_BuildVBOs: element %u is incorrect (%u should be %u)\n", i, loadmodel->surfmesh.data_element3s[i], loadmodel->surfmesh.data_element3i[i]);
+				loadmodel->surfmesh.data_element3s[i] = loadmodel->surfmesh.data_element3i[i];
+			}
+		}
+	}
+
 	if (!gl_support_arb_vertex_buffer_object)
 		return;
 
@@ -2353,12 +2474,7 @@ static void Mod_BuildVBOs(void)
 	if (loadmodel->surfmesh.num_triangles)
 	{
 		if (loadmodel->surfmesh.data_element3s)
-		{
-			int i;
-			for (i = 0;i < loadmodel->surfmesh.num_triangles*3;i++)
-				loadmodel->surfmesh.data_element3s[i] = loadmodel->surfmesh.data_element3i[i];
 			loadmodel->surfmesh.ebo3s = R_Mesh_CreateStaticBufferObject(GL_ELEMENT_ARRAY_BUFFER_ARB, loadmodel->surfmesh.data_element3s, loadmodel->surfmesh.num_triangles * sizeof(unsigned short[3]), loadmodel->name);
-		}
 		else
 			loadmodel->surfmesh.ebo3i = R_Mesh_CreateStaticBufferObject(GL_ELEMENT_ARRAY_BUFFER_ARB, loadmodel->surfmesh.data_element3i, loadmodel->surfmesh.num_triangles * sizeof(unsigned int[3]), loadmodel->name);
 	}
@@ -2418,13 +2534,14 @@ static void Mod_Decompile_OBJ(dp_model_t *model, const char *filename, const cha
 		countvertices += surface->num_vertices;
 		countfaces += surface->num_triangles;
 		texname = (surface->texture && surface->texture->name[0]) ? surface->texture->name : "default";
-		for (textureindex = 0;textureindex < maxtextures && texturenames[textureindex*MAX_QPATH];textureindex++)
+		for (textureindex = 0;textureindex < counttextures;textureindex++)
 			if (!strcmp(texturenames + textureindex * MAX_QPATH, texname))
 				break;
+		if (textureindex < counttextures)
+			continue; // already wrote this material entry
 		if (textureindex >= maxtextures)
 			continue; // just a precaution
-		if (counttextures < textureindex + 1)
-			counttextures = textureindex + 1;
+		textureindex = counttextures++;
 		strlcpy(texturenames + textureindex * MAX_QPATH, texname, MAX_QPATH);
 		if (outbufferpos >= outbuffermax >> 1)
 		{
