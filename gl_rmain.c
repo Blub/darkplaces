@@ -80,7 +80,7 @@ cvar_t r_shadows_drawafterrtlighting = {CVAR_SAVE, "r_shadows_drawafterrtlightin
 cvar_t r_shadows_castfrombmodels = {CVAR_SAVE, "r_shadows_castfrombmodels", "0", "do cast shadows from bmodels"};
 cvar_t r_q1bsp_skymasking = {0, "r_q1bsp_skymasking", "1", "allows sky polygons in quake1 maps to obscure other geometry"};
 cvar_t r_polygonoffset_submodel_factor = {0, "r_polygonoffset_submodel_factor", "0", "biases depth values of world submodels such as doors, to prevent z-fighting artifacts in Quake maps"};
-cvar_t r_polygonoffset_submodel_offset = {0, "r_polygonoffset_submodel_offset", "2", "biases depth values of world submodels such as doors, to prevent z-fighting artifacts in Quake maps"};
+cvar_t r_polygonoffset_submodel_offset = {0, "r_polygonoffset_submodel_offset", "4", "biases depth values of world submodels such as doors, to prevent z-fighting artifacts in Quake maps"};
 cvar_t r_fog_exp2 = {0, "r_fog_exp2", "0", "uses GL_EXP2 fog (as in Nehahra) rather than realistic GL_EXP fog"};
 cvar_t r_drawfog = {CVAR_SAVE, "r_drawfog", "1", "allows one to disable fog rendering"};
 
@@ -192,8 +192,15 @@ unsigned int r_queries[R_MAX_OCCLUSION_QUERIES];
 unsigned int r_numqueries;
 unsigned int r_maxqueries;
 
-char r_qwskincache[MAX_SCOREBOARD][MAX_QPATH];
-skinframe_t *r_qwskincache_skinframe[MAX_SCOREBOARD];
+typedef struct r_qwskincache_s
+{
+	char name[MAX_QPATH];
+	skinframe_t *skinframe;
+}
+r_qwskincache_t;
+
+static r_qwskincache_t *r_qwskincache;
+static int r_qwskincache_size;
 
 /// vertex coordinates for a quad that covers the screen exactly
 const float r_screenvertex3f[12] =
@@ -2431,7 +2438,8 @@ skinframe_t *R_SkinFrame_LoadExternal_CheckAlpha(const char *name, int texturefl
 	int basepixels_height;
 	skinframe_t *skinframe;
 
-	*has_alpha = false;
+	if (has_alpha)
+		*has_alpha = false;
 
 	if (cls.state == ca_dedicated)
 		return NULL;
@@ -2475,7 +2483,8 @@ skinframe_t *R_SkinFrame_LoadExternal_CheckAlpha(const char *name, int texturefl
 		if (j < basepixels_width * basepixels_height * 4)
 		{
 			// has transparent pixels
-			*has_alpha = true;
+			if (has_alpha)
+				*has_alpha = true;
 			pixels = (unsigned char *)Mem_Alloc(tempmempool, image_width * image_height * 4);
 			for (j = 0;j < image_width * image_height * 4;j += 4)
 			{
@@ -2533,8 +2542,7 @@ skinframe_t *R_SkinFrame_LoadExternal_CheckAlpha(const char *name, int texturefl
 
 skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboolean complain)
 {
-	qboolean has_alpha;
-	return R_SkinFrame_LoadExternal_CheckAlpha(name, textureflags, complain, &has_alpha);
+	return R_SkinFrame_LoadExternal_CheckAlpha(name, textureflags, complain, NULL);
 }
 
 static rtexture_t *R_SkinFrame_TextureForSkinLayer(const unsigned char *in, int width, int height, const char *name, const unsigned int *palette, int textureflags, qboolean force)
@@ -2716,8 +2724,8 @@ void gl_main_start(void)
 	r_maxqueries = 0;
 	memset(r_queries, 0, sizeof(r_queries));
 
-	memset(r_qwskincache, 0, sizeof(r_qwskincache));
-	memset(r_qwskincache_skinframe, 0, sizeof(r_qwskincache_skinframe));
+	r_qwskincache = NULL;
+	r_qwskincache_size = 0;
 
 	// set up r_skinframe loading system for textures
 	memset(&r_skinframe, 0, sizeof(r_skinframe));
@@ -2754,8 +2762,8 @@ void gl_main_shutdown(void)
 	r_maxqueries = 0;
 	memset(r_queries, 0, sizeof(r_queries));
 
-	memset(r_qwskincache, 0, sizeof(r_qwskincache));
-	memset(r_qwskincache_skinframe, 0, sizeof(r_qwskincache_skinframe));
+	r_qwskincache = NULL;
+	r_qwskincache_size = 0;
 
 	// clear out the r_skinframe state
 	Mem_ExpandableArray_FreeArray(&r_skinframe.array);
@@ -2786,6 +2794,10 @@ void gl_main_newmap(void)
 	// FIXME: move this code to client
 	int l;
 	char *entities, entname[MAX_QPATH];
+	if (r_qwskincache)
+		Mem_Free(r_qwskincache);
+	r_qwskincache = NULL;
+	r_qwskincache_size = 0;
 	if (cl.worldmodel)
 	{
 		strlcpy(entname, cl.worldmodel->name, sizeof(entname));
@@ -3272,6 +3284,45 @@ static void R_View_UpdateEntityLighting (void)
 	}
 }
 
+#define MAX_LINEOFSIGHTTRACES 64
+
+static qboolean R_CanSeeBox(int numsamples, vec_t enlarge, vec3_t eye, vec3_t entboxmins, vec3_t entboxmaxs)
+{
+	int i;
+	vec3_t boxmins, boxmaxs;
+	vec3_t start;
+	vec3_t end;
+	dp_model_t *model = r_refdef.scene.worldmodel;
+	
+	if (!model || !model->brush.TraceLineOfSight)
+		return true;
+
+	// expand the box a little
+	boxmins[0] = (enlarge+1) * entboxmins[0] - enlarge * entboxmaxs[0];
+	boxmaxs[0] = (enlarge+1) * entboxmaxs[0] - enlarge * entboxmins[0];
+	boxmins[1] = (enlarge+1) * entboxmins[1] - enlarge * entboxmaxs[1];
+	boxmaxs[1] = (enlarge+1) * entboxmaxs[1] - enlarge * entboxmins[1];
+	boxmins[2] = (enlarge+1) * entboxmins[2] - enlarge * entboxmaxs[2];
+	boxmaxs[2] = (enlarge+1) * entboxmaxs[2] - enlarge * entboxmins[2];
+
+	// try center
+	VectorCopy(eye, start);
+	VectorMAM(0.5f, boxmins, 0.5f, boxmaxs, end);
+	if (model->brush.TraceLineOfSight(model, start, end))
+		return true;
+
+	// try various random positions
+	for (i = 0;i < numsamples;i++)
+	{
+		VectorSet(end, lhrandom(boxmins[0], boxmaxs[0]), lhrandom(boxmins[1], boxmaxs[1]), lhrandom(boxmins[2], boxmaxs[2]));
+		if (model->brush.TraceLineOfSight(model, start, end))
+			return true;
+	}
+
+	return false;
+}
+
+
 static void R_View_UpdateEntityVisible (void)
 {
 	int i, renderimask;
@@ -3300,7 +3351,7 @@ static void R_View_UpdateEntityVisible (void)
 				ent = r_refdef.scene.entities[i];
 				if(r_refdef.viewcache.entityvisible[i] && !(ent->effects & EF_NODEPTHTEST) && !(ent->flags & (RENDER_VIEWMODEL + RENDER_NOCULL)) && !(ent->model && (ent->model->name[0] == '*')))
 				{
-					if(Mod_CanSeeBox_Trace(r_cullentities_trace_samples.integer, r_cullentities_trace_enlarge.value, r_refdef.scene.worldmodel, r_refdef.view.origin, ent->mins, ent->maxs))
+					if(R_CanSeeBox(r_cullentities_trace_samples.integer, r_cullentities_trace_enlarge.value, r_refdef.view.origin, ent->mins, ent->maxs))
 						ent->last_trace_visibility = realtime;
 					if(ent->last_trace_visibility < realtime - r_cullentities_trace_delay.value)
 						r_refdef.viewcache.entityvisible[i] = 0;
@@ -5377,6 +5428,33 @@ void R_tcMod_ApplyToMatrix(matrix4x4_t *texmatrix, q3shaderinfo_layer_tcmod_t *t
 	Matrix4x4_Concat(texmatrix, &matrix, &temp);
 }
 
+void R_LoadQWSkin(r_qwskincache_t *cache, const char *skinname)
+{
+	int textureflags = TEXF_PRECACHE | (r_mipskins.integer ? TEXF_MIPMAP : 0) | TEXF_PICMIP | TEXF_COMPRESS;
+	char name[MAX_QPATH];
+	skinframe_t *skinframe;
+	unsigned char pixels[296*194];
+	strlcpy(cache->name, skinname, sizeof(cache->name));
+	dpsnprintf(name, sizeof(name), "skins/%s.pcx", cache->name);
+	if (developer_loading.integer)
+		Con_Printf("loading %s\n", name);
+	skinframe = R_SkinFrame_Find(name, textureflags, 0, 0, 0, false);
+	if (!skinframe || !skinframe->base)
+	{
+		unsigned char *f;
+		fs_offset_t filesize;
+		skinframe = NULL;
+		f = FS_LoadFile(name, tempmempool, true, &filesize);
+		if (f)
+		{
+			if (LoadPCX_QWSkin(f, filesize, pixels, 296, 194))
+				skinframe = R_SkinFrame_LoadInternalQuake(name, textureflags, true, r_fullbrights.integer, pixels, image_width, image_height);
+			Mem_Free(f);
+		}
+	}
+	cache->skinframe = skinframe;
+}
+
 texture_t *R_GetCurrentTexture(texture_t *t)
 {
 	int i;
@@ -5419,14 +5497,16 @@ texture_t *R_GetCurrentTexture(texture_t *t)
 	// update currentskinframe to be a qw skin or animation frame
 	if ((i = ent->entitynumber - 1) >= 0 && i < cl.maxclients && cls.protocol == PROTOCOL_QUAKEWORLD && cl.scores[i].qw_skin[0] && !strcmp(ent->model->name, "progs/player.mdl"))
 	{
-		if (strcmp(r_qwskincache[i], cl.scores[i].qw_skin))
+		if (!r_qwskincache || r_qwskincache_size != cl.maxclients)
 		{
-			strlcpy(r_qwskincache[i], cl.scores[i].qw_skin, sizeof(r_qwskincache[i]));
-			if (developer_loading.integer)
-				Con_Printf("loading skins/%s\n", r_qwskincache[i]);
-			r_qwskincache_skinframe[i] = R_SkinFrame_LoadExternal(va("skins/%s", r_qwskincache[i]), TEXF_PRECACHE | (r_mipskins.integer ? TEXF_MIPMAP : 0) | TEXF_PICMIP | TEXF_COMPRESS, developer.integer > 0);
+			r_qwskincache_size = cl.maxclients;
+			if (r_qwskincache)
+				Mem_Free(r_qwskincache);
+			r_qwskincache = Mem_Alloc(r_main_mempool, sizeof(*r_qwskincache) * r_qwskincache_size);
 		}
-		t->currentskinframe = r_qwskincache_skinframe[i];
+		if (strcmp(r_qwskincache[i].name, cl.scores[i].qw_skin))
+			R_LoadQWSkin(&r_qwskincache[i], cl.scores[i].qw_skin);
+		t->currentskinframe = r_qwskincache[i].skinframe;
 		if (t->currentskinframe == NULL)
 			t->currentskinframe = t->skinframes[(int)(t->skinframerate * (cl.time - ent->shadertime)) % t->numskinframes];
 	}

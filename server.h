@@ -68,6 +68,8 @@ typedef struct server_connectfloodaddress_s
 }
 server_connectfloodaddress_t;
 
+#define MAX_CLIENTNETWORKEYES 256
+
 typedef struct server_s
 {
 	/// false if only a net client
@@ -142,7 +144,8 @@ typedef struct server_s
 	int writeentitiestoclient_cliententitynumber;
 	int writeentitiestoclient_clientnumber;
 	sizebuf_t *writeentitiestoclient_msg;
-	vec3_t writeentitiestoclient_testeye;
+	vec3_t writeentitiestoclient_eyes[MAX_CLIENTNETWORKEYES];
+	int writeentitiestoclient_numeyes;
 	int writeentitiestoclient_pvsbytes;
 	unsigned char writeentitiestoclient_pvs[MAX_MAP_LEAFS/8];
 	entity_state_t writeentitiestoclient_sendstates[MAX_EDICTS];
@@ -310,6 +313,7 @@ typedef struct client_s
 #define MOVETYPE_BOUNCEMISSILE	11		///< bounce w/o gravity
 #define MOVETYPE_FOLLOW			12		///< track movement of aiment
 #define MOVETYPE_FAKEPUSH		13		///< tenebrae's push that doesn't push
+#define MOVETYPE_PHYSICS		32		///< indicates this object is physics controlled
 
 // edict->solid values
 #define	SOLID_NOT				0		///< no interaction with other objects
@@ -319,6 +323,10 @@ typedef struct client_s
 #define	SOLID_BSP				4		///< bsp clip, touch on edge, block
 // LordHavoc: corpse code
 #define	SOLID_CORPSE			5		///< same as SOLID_BBOX, except it behaves as SOLID_NOT against SOLID_SLIDEBOX objects (players/monsters)
+// LordHavoc: physics
+#define	SOLID_PHYSICS_BOX		32		///< physics object (mins, maxs, mass, origin, axis_forward, axis_left, axis_up, velocity, spinvelocity)
+#define	SOLID_PHYSICS_SPHERE	33		///< physics object (mins, maxs, mass, origin, axis_forward, axis_left, axis_up, velocity, spinvelocity)
+#define	SOLID_PHYSICS_CAPSULE	34		///< physics object (mins, maxs, mass, origin, axis_forward, axis_left, axis_up, velocity, spinvelocity)
 
 // edict->deadflag values
 #define	DEAD_NO					0
@@ -525,6 +533,8 @@ trace_t SV_TraceBox(const vec3_t start, const vec3_t mins, const vec3_t maxs, co
 trace_t SV_TraceLine(const vec3_t start, const vec3_t end, int type, prvm_edict_t *passedict, int hitsupercontentsmask);
 trace_t SV_TracePoint(const vec3_t start, int type, prvm_edict_t *passedict, int hitsupercontentsmask);
 
+qboolean SV_CanSeeBox(int numsamples, vec_t enlarge, vec3_t eye, vec3_t entboxmins, vec3_t entboxmaxs);
+
 int SV_PointSuperContents(const vec3_t point);
 
 void SV_FlushBroadcastMessages(void);
@@ -544,6 +554,8 @@ void SV_VM_Begin(void);
 void SV_VM_End(void);
 
 const char *Host_TimingReport(void); ///< for output in Host_Status_f
+
+int SV_GetPitchSign(prvm_edict_t *ent);
 
 #endif
 
