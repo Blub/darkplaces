@@ -313,6 +313,7 @@ char *prvm_opnames[] =
 
 char *PRVM_GlobalString (int ofs);
 char *PRVM_GlobalStringNoContents (int ofs);
+extern ddef_t *PRVM_ED_FieldAtOfs(int ofs);
 
 
 //=============================================================================

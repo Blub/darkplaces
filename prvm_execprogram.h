@@ -59,9 +59,9 @@
 	ptrvalA = ((int *)(x) - (int *)prog->edictsfields),		\
 	ptrvalB = ((int *)(x) - (int *)prog->globals.generic),		\
 	ptrvalC = ((int *)(x) - (int *)/* TODO: fill in memory area*/ 0), \
-	(ptrvalA >= 0 && ptrvalA + PTR_size <= prog->edictareasize) ? 1 : \
-	(ptrvalB >= 0 && ptrvalB + PTR_size <= GLOBALSIZE) ? 1 :	\
-	(ptrvalC >= 0 && ptrvalC + PTR_size <= /* TODO: fill in memory area size */0) ? 1 : \
+	(ptrvalA >= 0 && ptrvalA + 1 <= prog->edictareasize) ? 1 : \
+	(ptrvalB >= 0 && ptrvalB + 1 <= GLOBALSIZE) ? 1 :	\
+	(ptrvalC >= 0 && ptrvalC + 1 <= /* TODO: fill in memory area size */0) ? 1 : \
 	0 )
 
 #if PRVMBOUNDSCHECK
@@ -73,7 +73,7 @@
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
-			PRVM_ERROR("%s attempted to write to an out of bounds global (%i)", PRVM_NAME, (int)p);	\
+			PRVM_ERROR("%s attempted to access an out of bounds global (%i)", PRVM_NAME, (int)p);	\
 			goto cleanup;					\
 		}							\
 		ptr = (prvm_eval_t*)((int *)prog->globals.generic + p);	\
@@ -85,7 +85,7 @@
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
-			PRVM_ERROR("%s attempted to write to out of bounds memory (%i)", PRVM_NAME, (int)p); \
+			PRVM_ERROR("%s attempted to access out of bounds memory (%i)", PRVM_NAME, (int)p); \
 			goto cleanup;					\
 		}							\
 		ptr = (prvm_eval_t*)((int *)0 /* TODO: FILL IN*/ + p /* TODO: REMOVE: */ * 0); \
@@ -97,10 +97,12 @@
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\
-			PRVM_ERROR("%s attempted to write to an out of bounds edict field (%i)", PRVM_NAME, (int)p); \
+			PRVM_ERROR("%s attempted to access an out of bounds edict field (%i)", PRVM_NAME, (int)p); \
 			goto cleanup;					\
 		}							\
 		ptr = (prvm_eval_t*)((int *)prog->edictsfields + p);	\
+		if (p < prog->progs->entityfields && !prog->allowworldwrites) \
+			Con_DPrintf("WARNING: assignment to world.%s (field %i) in %s\n", PRVM_GetString(PRVM_ED_FieldAtOfs(p)->s_name), p, PRVM_NAME); \
 	}
 #else
 
@@ -314,6 +316,7 @@ ptrvalC = 0;
 					goto cleanup;
 				}
 #endif
+#if 0
 				if (OPA->edict == 0 && !prog->allowworldwrites)
 				{
 					prog->xfunction->profile += (st - startst);
@@ -321,6 +324,7 @@ ptrvalC = 0;
 					PRVM_ERROR("forbidden assignment to null/world entity in %s", PRVM_NAME);
 					goto cleanup;
 				}
+#endif
 				ed = PRVM_PROG_TO_EDICT(OPA->edict);
 				OPC->_int = PTR_FLD(((int *)ed->fields.vp + OPB->_int) - (int *)prog->edictsfields);
 				break;
