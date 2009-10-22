@@ -182,8 +182,509 @@ static void Cmd_Centerprint_f (void)
 =============================================================================
 */
 
-static sizebuf_t	cmd_text;
-static unsigned char		cmd_text_buf[CMDBUFSIZE];
+#define MAX_CONSOLE_INSTANCES 16
+typedef struct {
+	sizebuf_t     text;
+	unsigned char text_buf[CMDBUFSIZE];
+	double        sleep;
+	size_t        tid;
+	qboolean      suspended;
+	char          condvar[128];
+	double        cps; // commands per second
+	double        lastTime;
+} cmd_executor_t;
+
+static memexpandablearray_t    cmd_exec_array;
+static size_t                  cmd_tid = 0;
+static sizebuf_t              *cmd_text = NULL;
+static cmd_executor_t         *cmd_ex = NULL;
+static size_t                  cmd_num_executors = 0;
+
+cvar_t con_this = {CVAR_READONLY, "_cthis","0", "the current console instance id"};
+
+qboolean Con_Running(cmd_executor_t *ex, double systime)
+{
+	if (ex->tid == 0)
+		return true;
+	if (ex->suspended || ex->sleep > systime)
+		return false;
+	if (ex->condvar[0])
+	{
+		cvar_t *c = Cvar_FindVar(ex->condvar);
+		if (!c)
+			return true;
+		if (c->integer)
+		{
+			ex->condvar[0] = 0;
+			return true;
+		}
+		return false;
+	}
+	return true;
+}
+
+size_t Con_GetTID(void)
+{
+	return cmd_tid;
+}
+
+qboolean Con_SetTID (size_t tid, qboolean quiet)
+{
+	cmd_executor_t *ex;
+
+	ex = Mem_ExpandableArray_RecordAtIndex(&cmd_exec_array, tid);
+	if (ex == NULL)
+	{
+		if (!quiet)
+			Con_Printf("Con_SetTID: no such id: %lu\n", (unsigned long)tid);
+		return false;
+	}
+
+	cmd_tid = tid;
+	cmd_text = &ex->text;
+	cmd_ex = ex;
+	Cvar_SetValueQuick(&con_this, tid);
+	return true;
+}
+
+cmd_executor_t *Con_Spawn(size_t *out_id)
+{
+	size_t id;
+	cmd_executor_t *ex;
+
+	if (cmd_num_executors >= MAX_CONSOLE_INSTANCES)
+	{
+		Con_Printf("Reached the maximum amount of console instances\n");
+		return NULL;
+	}
+
+	ex = (cmd_executor_t*)Mem_ExpandableArray_AllocRecord_Id(&cmd_exec_array, &id);
+	if (ex == NULL)
+	{
+		Con_Printf("Cannot spawn any more instances\n");
+		return NULL;
+	}
+
+	++cmd_num_executors;
+	ex->text.data = ex->text_buf;
+	ex->text_buf[0] = 0;
+	ex->text.maxsize = sizeof(ex->text_buf);
+	ex->text.cursize = 0;
+	ex->sleep = 0;
+	ex->tid = id;
+	ex->suspended = false;
+	ex->sleep = 0;
+	ex->condvar[0] = 0;
+	ex->lastTime = Sys_DoubleTime();
+	ex->cps = -1;
+	if (out_id)
+		*out_id = id;
+	return ex;
+}
+
+void Con_Kill(size_t id)
+{
+	if (id == 0)
+	{
+		Con_Print("Con_Kill(): Cannot kill console instance 0\n");
+		return;
+	}
+	if (id == cmd_tid)
+		Con_SetTID(0, false);
+	Mem_ExpandableArray_FreeRecord(&cmd_exec_array, Mem_ExpandableArray_RecordAtIndex(&cmd_exec_array, id));
+	--cmd_num_executors;
+}
+
+void Cbuf_AddTo (size_t tid, const char *text)
+{
+	size_t old = Con_GetTID();
+	if (Con_SetTID(tid, false))
+	{
+		Cbuf_AddText(text);
+		Con_SetTID(old, false);
+	}
+}
+
+static void Cmd_Spawn_f (void)
+{
+	int i;
+	cmd_executor_t *ex;
+	size_t id;
+	if (Cmd_Argc() < 2)
+	{
+		Con_Print("conspawn <cvar1> [<cvar2>...] : Spawn console instances and store the id into the given cvars\n");
+		return;
+	}
+	
+	for (i = 1; i < Cmd_Argc(); ++i)
+	{
+		ex = Con_Spawn(&id);
+		if (ex == NULL)
+		{
+			Con_Printf("Failed to spawn instance for: %s\n", Cmd_Argv(i));
+			continue;
+		}
+		//Cvar_Set(Cmd_Argv(i), va("%i", (int)id));
+		//Cvar_SetValue(Cmd_Argv(i), id);
+		Cvar_Get(Cmd_Argv(i), va("%i", (int)id), 0, "a console instance");
+	}
+}
+
+static qboolean Con_ForName(const char *name, size_t *out_id, cmd_executor_t **out_ex)
+{
+	size_t id;
+	cvar_t *c;
+	cmd_executor_t *x;
+
+	if (isdigit(name[0]))
+		id = (size_t)atoi(name);
+	else
+	{
+		c = Cvar_FindVar(name);
+		if (!c)
+			return false;
+		id = (size_t)c->integer;
+	}
+
+	x = Mem_ExpandableArray_RecordAtIndex(&cmd_exec_array, id);
+	if (x == NULL)
+		return false;
+	if (out_ex)
+		*out_ex = x;
+	if (out_id)
+		*out_id = id;
+	return true;
+}
+
+static void Cmd_SetCPS_f (void)
+{
+	int i;
+	cmd_executor_t *ex;
+	double cps;
+
+	if (Cmd_Argc() < 3)
+	{
+		Con_Print("setcps <cps> <instances>... : Set the CPS of the given instances to <cps>\n");
+		return;
+	}
+
+	cps = atof(Cmd_Argv(1));
+	for (i = 2; i < Cmd_Argc(); ++i)
+	{
+		if(!Con_ForName(Cmd_Argv(i), NULL, &ex)) {
+			Con_Printf("setcps: unknown console: %s\n", Cmd_Argv(i));
+			continue;
+		}
+		ex->cps = cps;
+	}
+}
+
+static void Cmd_SetTID_f (void)
+{
+	size_t tid = 0;
+	if (Cmd_Argc() != 2)
+	{
+		Con_Print("setid <id|cvar> : Use the specified console instance by ID or cvar containing an ID\n");
+		return;
+	}
+	if (!Con_ForName(Cmd_Argv(1), &tid, NULL))
+	{
+		Con_Printf("setid: invalid name: %s\n", Cmd_Argv(1));
+		return;
+	}
+	if (!Con_SetTID(tid, false))
+		Con_Printf("setid: invalid instance: %s\n", Cmd_Argv(1));
+}
+
+static void Cmd_Sleep_f (void)
+{
+	cmd_executor_t *ex = NULL;
+	double sleeptime = 0;
+	double systime = Sys_DoubleTime();
+
+	if (Cmd_Argc() == 2)
+	{
+		ex = cmd_ex;
+		sleeptime = atof(Cmd_Argv(1));
+	}
+	else if (Cmd_Argc() == 3)
+	{
+		Con_ForName(Cmd_Argv(1), NULL, &ex);
+		sleeptime = atof(Cmd_Argv(2));
+	}
+	else
+	{
+		Con_Print("sleep [<instance>] <sleeptime> : let a console instance sleep for an amount of time\n"
+			  "the time is added to the current sleep time\n");
+	}
+
+	if (ex->tid == 0)
+	{
+		Con_Print("sleep: cannot suspend instance 0\n");
+		return;
+	}
+
+	if (ex->sleep < systime)
+		ex->sleep = systime + sleeptime;
+	else
+		ex->sleep += sleeptime;
+	if (ex->tid == cmd_ex->tid)
+		Con_SetTID(0, false);
+}
+
+static void Cmd_Suspend_f (void)
+{
+	int i;
+	size_t id;
+	cmd_executor_t *ex;
+
+	if (Cmd_Argc() == 1)
+	{
+		id = Con_GetTID();
+		if (id == 0)
+		{
+			Con_Print("suspend [<instance1> [<instance2>...]] : Suspend the current or specified console instances\n"
+				  "Error: you cannot suspend instance 0\n");
+			return;
+		}
+		cmd_ex->suspended = true;
+		Con_SetTID(0, false);
+		return;
+	}
+
+	for (i = 1; i < Cmd_Argc(); ++i)
+	{
+		if (!Con_ForName(Cmd_Argv(i), &id, &ex))
+			continue;
+		if (id == 0)
+			Con_Print("suspend: cannot suspend instance 0\n");
+		else
+			ex->suspended = true;
+	}
+}
+
+static void Cmd_Resume_f (void)
+{
+	int i;
+	size_t id;
+	cmd_executor_t *ex;
+
+	if (Cmd_Argc() == 1)
+	{
+		// No, we don't resume the current instance here, resume wouldn't be executed in the "current" instance...
+		Con_Print("resume <instance1> [<instance2>...] : Resume the specified console instances\n");
+		return;
+	}
+
+	for (i = 1; i < Cmd_Argc(); ++i)
+	{
+		if (!Con_ForName(Cmd_Argv(i), &id, &ex))
+			continue;
+		ex->suspended = false;
+	}
+}
+
+static void Cmd_Cond_f (void)
+{
+	const char *cvar;
+	int i;
+	size_t id;
+	cmd_executor_t *ex;
+
+	if (Cmd_Argc() < 2)
+	{
+		Con_Print("xcond <cvar> [<instance>...] : Suspend a console instance until cvar becomes not-null\n");
+		return;
+	}
+
+	cvar = Cmd_Argv(1);
+	if (!Cvar_FindVar(cvar))
+	{
+		Con_Printf("xcond: no such cvar \"%s\"\n", cvar);
+		return;
+	}
+
+	if (Cmd_Argc() == 2)
+	{
+		id = Con_GetTID();
+		if (id == 0)
+		{
+			Con_Print("xcond: Cannot suspend instance 0\n");
+			return;
+		}
+		strlcpy(cmd_ex->condvar, cvar, sizeof(cmd_ex->condvar));
+		return;
+	}
+
+	for (i = 2; i < Cmd_Argc(); ++i)
+	{
+		if (!Con_ForName(Cmd_Argv(i), NULL, &ex))
+			continue;
+		strlcpy(ex->condvar, cvar, sizeof(ex->condvar));
+	}
+}
+
+static void Cmd_CondLocal_f (void)
+{
+	const char *cvar;
+	int i;
+	size_t id;
+	cmd_executor_t *ex;
+
+	if (Cmd_Argc() < 2)
+	{
+		Con_Print("xcondl <cvar> [<instance>...] : Suspend a console instance until cvar becomes not-null\n");
+		return;
+	}
+
+	cvar = Cmd_Argv(1);
+
+	if (Cmd_Argc() == 2)
+	{
+		id = Con_GetTID();
+		if (id == 0)
+		{
+			Con_Print("xcondl: Cannot suspend instance 0\n");
+			return;
+		}
+		dpsnprintf(cmd_ex->condvar, sizeof(cmd_ex->condvar), "_cin_%lu_%s", (unsigned long)cmd_tid, cvar);
+		return;
+	}
+
+	for (i = 2; i < Cmd_Argc(); ++i)
+	{
+		if (!Con_ForName(Cmd_Argv(i), NULL, &ex))
+			continue;
+		dpsnprintf(ex->condvar, sizeof(ex->condvar), "_cin_%lu_%s",(unsigned long) ex->tid, cvar);
+	}
+}
+
+static void Cmd_XKill_f (void)
+{
+	size_t id;
+	int i;
+
+	if (Cmd_Argc() == 1)
+	{
+		id = Con_GetTID();
+		if (id == 0)
+		{
+			// termq = quiet, no warning when killing 0
+			if (strcmp(Cmd_Argv(0), "termq"))
+				Con_Print("term: cannot kill instance 0\n");
+			SZ_Clear(&cmd_ex->text);
+			return;
+		}
+		Con_Kill(id);
+		return;
+	}
+
+	for (i = 1; i < Cmd_Argc(); ++i)
+	{
+		if (!Con_ForName(Cmd_Argv(i), &id, NULL))
+			continue;
+		if (id == 0)
+		{
+			// termq = quiet, no warning when killing 0
+			if (strcmp(Cmd_Argv(0), "termq"))
+				Con_Print("term: cannot kill instance 0\n");
+			continue;
+		}
+		Con_Kill(id);
+		return;
+	}
+}
+
+static void Cmd_XAdd_f (void)
+{
+	size_t id;
+	size_t oldid;
+
+	if (Cmd_Argc() != 3)
+	{
+		Con_Print("xadd <instance> <command> : Append <command> to a console instance's command buffer\n");
+		return;
+	}
+
+	if (!Con_ForName(Cmd_Argv(1), &id, NULL))
+	{
+		Con_Printf("xadd: invalid instance: %s\n", Cmd_Argv(1));
+		return;
+	}
+
+	oldid = Con_GetTID();
+	if (!Con_SetTID(id, false))
+	{
+		Con_Printf("xadd: cannot append to %s\n", Cmd_Argv(1));
+		return;
+	}
+	Cbuf_AddText(Cmd_Argv(2));
+	Cbuf_AddText("\n");
+	Con_SetTID(oldid, false);
+}
+
+static void Cmd_SetLocal_f (void)
+{
+	static char varname[MAX_INPUTLINE];
+	cvar_t *cvar;
+
+	// make sure it's the right number of parameters
+	if (Cmd_Argc() < 3)
+	{
+		Con_Printf("setlocal: wrong number of parameters, usage: setlocal <variablename> <value> [<description>]\n");
+		return;
+	}
+
+	// check if it's read-only
+	cvar = Cvar_FindVar(Cmd_Argv(1));
+	if (cvar && cvar->flags & CVAR_READONLY)
+	{
+		Con_Printf("setlocal: %s is read-only\n", cvar->name);
+		return;
+	}
+
+	if (developer.integer >= 100)
+		Con_DPrint("Set: ");
+
+	// all looks ok, create/modify the cvar
+	dpsnprintf(varname, sizeof(varname), "_cin_%lu_%s", (unsigned long)cmd_tid, Cmd_Argv(1));
+	Cvar_Get(varname, Cmd_Argv(2), 0, Cmd_Argc() > 3 ? Cmd_Argv(3) : NULL);
+}
+
+static void Cmd_SetForeign_f (void)
+{
+	static char varname[MAX_INPUTLINE];
+	cvar_t *cvar;
+	size_t id;
+
+	// make sure it's the right number of parameters
+	if (Cmd_Argc() < 4)
+	{
+		Con_Printf("setforeign: wrong number of parameters, usage: setforeign <instance> <variablename> <value> [<description>]\n");
+		return;
+	}
+
+	if (!Con_ForName(Cmd_Argv(1), &id, NULL))
+	{
+		Con_Printf("setforeign: invalid instance: %s\n", Cmd_Argv(1));
+		return;
+	}
+
+	// check if it's read-only
+	cvar = Cvar_FindVar(Cmd_Argv(2));
+	if (cvar && cvar->flags & CVAR_READONLY)
+	{
+		Con_Printf("setforeign: %s is read-only\n", cvar->name);
+		return;
+	}
+
+	if (developer.integer >= 100)
+		Con_DPrint("Set: ");
+
+	// all looks ok, create/modify the cvar
+	dpsnprintf(varname, sizeof(varname), "_cin_%lu_%s", (unsigned long)id, Cmd_Argv(2));
+	Cvar_Get(varname, Cmd_Argv(3), 0, Cmd_Argc() > 4 ? Cmd_Argv(4) : NULL);
+}
 
 /*
 ============
@@ -198,13 +699,13 @@ void Cbuf_AddText (const char *text)
 
 	l = (int)strlen (text);
 
-	if (cmd_text.cursize + l >= cmd_text.maxsize)
+	if (cmd_text->cursize + l >= cmd_text->maxsize)
 	{
 		Con_Print("Cbuf_AddText: overflow\n");
 		return;
 	}
 
-	SZ_Write (&cmd_text, (const unsigned char *)text, (int)strlen (text));
+	SZ_Write (cmd_text, (const unsigned char *)text, (int)strlen (text));
 }
 
 
@@ -223,12 +724,12 @@ void Cbuf_InsertText (const char *text)
 	int		templen;
 
 	// copy off any commands still remaining in the exec buffer
-	templen = cmd_text.cursize;
+	templen = cmd_text->cursize;
 	if (templen)
 	{
 		temp = (char *)Mem_Alloc (tempmempool, templen);
-		memcpy (temp, cmd_text.data, templen);
-		SZ_Clear (&cmd_text);
+		memcpy (temp, cmd_text->data, templen);
+		SZ_Clear (cmd_text);
 	}
 	else
 		temp = NULL;
@@ -239,7 +740,7 @@ void Cbuf_InsertText (const char *text)
 	// add the copied off data
 	if (temp != NULL)
 	{
-		SZ_Write (&cmd_text, (const unsigned char *)temp, templen);
+		SZ_Write (cmd_text, (const unsigned char *)temp, templen);
 		Mem_Free (temp);
 	}
 }
@@ -285,7 +786,31 @@ Cbuf_Execute
 ============
 */
 static void Cmd_PreprocessString( const char *intext, char *outtext, unsigned maxoutlen, cmdalias_t *alias );
+static void Cbuf_Execute_Instance (double systime);
 void Cbuf_Execute (void)
+{
+	size_t oldid;
+	size_t numtids;
+	size_t tid;
+	double systime = Sys_DoubleTime();
+
+	Cbuf_Execute_Deferred();
+
+	oldid = Con_GetTID();
+	numtids = Mem_ExpandableArray_IndexRange(&cmd_exec_array);
+	for (tid = 0; tid < numtids; ++tid)
+	{
+		if (!Con_SetTID(tid, true))
+			continue;
+		if (!Con_Running(cmd_ex, systime))
+			continue;
+		Cbuf_Execute_Instance(systime);
+	}
+	if (!Con_SetTID(oldid, true))
+		Con_SetTID(0, false);
+}
+
+static void Cbuf_Execute_Instance (double systime)
 {
 	int i;
 	char *text;
@@ -293,19 +818,33 @@ void Cbuf_Execute (void)
 	char preprocessed[MAX_INPUTLINE];
 	char *firstchar;
 	qboolean quotes, comment;
+	size_t id;
+	size_t runaway = 0;
+	size_t runawaylimit = 1000;
 
 	// LordHavoc: making sure the tokenizebuffer doesn't get filled up by repeated crashes
 	cmd_tokenizebufferpos = 0;
 
-	Cbuf_Execute_Deferred();
-	while (cmd_text.cursize)
+	// let's see how many commands we are allowed to execute:
+	if (cmd_ex->tid != 0 && cmd_ex->cps > 0) {
+		if (systime < cmd_ex->lastTime)
+			cmd_ex->lastTime = systime;
+
+		runawaylimit = cmd_ex->cps * (systime - cmd_ex->lastTime);
+		if (runawaylimit < 1)
+			return;
+		cmd_ex->lastTime += runawaylimit / cmd_ex->cps;
+	}
+
+	id = cmd_ex->tid;
+	while (cmd_ex->tid == id && Con_Running(cmd_ex, systime) && cmd_text->cursize && (cmd_ex->tid == 0 || runaway++ < runawaylimit))
 	{
 // find a \n or ; line break
-		text = (char *)cmd_text.data;
+		text = (char *)cmd_text->data;
 
 		quotes = false;
 		comment = false;
-		for (i=0 ; i < cmd_text.cursize ; i++)
+		for (i=0 ; i < cmd_text->cursize ; i++)
 		{
 			if(!comment)
 			{
@@ -316,7 +855,7 @@ void Cbuf_Execute (void)
 				{
 					// make sure i doesn't get > cursize which causes a negative
 					// size in memmove, which is fatal --blub
-					if (i < (cmd_text.cursize-1) && (text[i] == '\\' && (text[i+1] == '"' || text[i+1] == '\\')))
+					if (i < (cmd_text->cursize-1) && (text[i] == '\\' && (text[i+1] == '"' || text[i+1] == '\\')))
 						i++;
 				}
 				else
@@ -348,13 +887,13 @@ void Cbuf_Execute (void)
 // this is necessary because commands (exec, alias) can insert data at the
 // beginning of the text buffer
 
-		if (i == cmd_text.cursize)
-			cmd_text.cursize = 0;
+		if (i == cmd_text->cursize)
+			cmd_text->cursize = 0;
 		else
 		{
 			i++;
-			cmd_text.cursize -= i;
-			memmove (cmd_text.data, text+i, cmd_text.cursize);
+			cmd_text->cursize -= i;
+			memmove (cmd_text->data, text+i, cmd_text->cursize);
 		}
 
 // execute the command line
@@ -866,6 +1405,21 @@ static const char *Cmd_GetCvarValue(const char *var, size_t varlen, cmdalias_t *
 	{
 		*varfunc = 0;
 		++varfunc;
+		if (!memcmp(varfunc, "local", 5) && (varfunc[5] == ' ' || !varfunc[5]))
+		{
+			static char tmp[MAX_INPUTLINE];
+			int len;
+			len = dpsnprintf(tmp, sizeof(tmp), "_cin_%lu_", (unsigned long)cmd_tid);
+			memcpy(tmp + len, varname, varfunc - varname - 1);
+			strlcpy(tmp + len + (varfunc - varname - 1), varfunc + 5, sizeof(tmp) - len - (varfunc - varname - 1));
+			memcpy(varname, tmp, sizeof(varname));
+			varfunc = strchr(varname, ' ');
+			if(varfunc)
+			{
+				*varfunc = 0;
+				++varfunc;
+			}
+		}
 	}
 
 	if(*var == 0)
@@ -1167,10 +1721,20 @@ Cmd_Init
 void Cmd_Init (void)
 {
 	cmd_mempool = Mem_AllocPool("commands", 0, NULL);
+	Cvar_RegisterVariable(&con_this);
 	// space for commands and script files
-	cmd_text.data = cmd_text_buf;
-	cmd_text.maxsize = sizeof(cmd_text_buf);
-	cmd_text.cursize = 0;
+	Mem_ExpandableArray_NewArray(&cmd_exec_array, cmd_mempool, sizeof(cmd_executor_t), 4);
+
+	cmd_ex = Con_Spawn(&cmd_tid);
+	Con_SetTID(cmd_tid, false);
+
+	/*
+	cmd_tid = 0;
+	cmd_text = &cmd_exec[cmd_tid].text;
+	cmd_text->data = cmd_exec[cmd_tid].text_buf;
+	cmd_text->maxsize = sizeof(cmd_exec[cmd_tid].text_buf);
+	cmd_text->cursize = 0;
+	*/
 }
 
 void Cmd_Init_Commands (void)
@@ -1204,6 +1768,20 @@ void Cmd_Init_Commands (void)
 
 	Cmd_AddCommand ("cprint", Cmd_Centerprint_f, "print something at the screen center");
 	Cmd_AddCommand ("defer", Cmd_Defer_f, "execute a command in the future");
+
+	Cmd_AddCommand ("conspawn", Cmd_Spawn_f, "spawn new console instances, their IDs are stored in the provided cvars");
+	Cmd_AddCommand ("setid", Cmd_SetTID_f, "experts only! set the console-ID to which new input-commands are being added, has no effect when an invalid id is provided");
+	Cmd_AddCommand ("sleep", Cmd_Sleep_f, "let the current, or a specific console instance sleep for some time in the background");
+	Cmd_AddCommand ("cond", Cmd_Cond_f, "suspend a console instance until a cvar becomes true (not-null)");
+	Cmd_AddCommand ("condl", Cmd_CondLocal_f, "suspend a console instance until a local cvar becomes true (not-null)");
+	Cmd_AddCommand ("suspend", Cmd_Suspend_f, "suspend a console instance, when suspending the current console, this also does 'setid 0'");
+	Cmd_AddCommand ("resume", Cmd_Resume_f, "resume the execution of a console instance");
+	Cmd_AddCommand ("term", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
+	Cmd_AddCommand ("termq", Cmd_XKill_f, "kill a console instance (doesn't work on id 0)");
+	Cmd_AddCommand ("xadd", Cmd_XAdd_f, "add a command to a console instance");
+	Cmd_AddCommand ("setlocal", Cmd_SetLocal_f, "set a instance-local cvar");
+	Cmd_AddCommand ("setforeign", Cmd_SetForeign_f, "set an instance's local cvar");
+	Cmd_AddCommand ("setcps", Cmd_SetCPS_f, "set the commands executed per second in a console instance");
 
 	// DRESK - 5/14/06
 	// Support Doom3-style Toggle Command
