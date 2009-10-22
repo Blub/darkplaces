@@ -676,6 +676,9 @@ typedef struct model_brush_s
 	// a mesh containing all shadow casting geometry for the whole model (including submodels), portions of this are referenced by each surface's num_firstshadowmeshtriangle
 	shadowmesh_t *shadowmesh;
 
+	// a mesh containing all SUPERCONTENTS_SOLID surfaces for this model or submodel, for physics engines to use
+	shadowmesh_t *collisionmesh;
+
 	// common functions
 	int (*SuperContentsFromNativeContents)(struct model_s *model, int nativecontents);
 	int (*NativeContentsFromSuperContents)(struct model_s *model, int supercontents);
@@ -966,6 +969,8 @@ shadowmesh_t *Mod_ShadowMesh_Finish(mempool_t *mempool, shadowmesh_t *firstmesh,
 void Mod_ShadowMesh_CalcBBox(shadowmesh_t *firstmesh, vec3_t mins, vec3_t maxs, vec3_t center, float *radius);
 void Mod_ShadowMesh_Free(shadowmesh_t *mesh);
 
+void Mod_CreateCollisionMesh(dp_model_t *mod);
+
 void Mod_FreeQ3Shaders(void);
 void Mod_LoadQ3Shaders(void);
 q3shaderinfo_t *Mod_LookupQ3Shader(const char *name);
@@ -1039,9 +1044,6 @@ void Mod_DARKPLACESMODEL_Load(dp_model_t *mod, void *buffer, void *bufferend);
 void Mod_PSKMODEL_Load(dp_model_t *mod, void *buffer, void *bufferend);
 void Mod_IDSP_Load(dp_model_t *mod, void *buffer, void *bufferend);
 void Mod_IDS2_Load(dp_model_t *mod, void *buffer, void *bufferend);
-
-// utility
-qboolean Mod_CanSeeBox_Trace(int numsamples, float t, dp_model_t *model, vec3_t eye, vec3_t minsX, vec3_t maxsX);
 
 #endif	// MODEL_SHARED_H
 
