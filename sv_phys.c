@@ -43,6 +43,25 @@ solid_edge items only clip against bsp models.
 
 void SV_Physics_Toss (prvm_edict_t *ent);
 
+int SV_GetPitchSign(prvm_edict_t *ent)
+{
+	dp_model_t *model;
+	int modelindex;
+	if (
+			((modelindex = (int)ent->fields.server->modelindex) >= 1 && modelindex < MAX_MODELS && (model = sv.models[modelindex]))
+			?
+			model->type == mod_alias
+			:
+			(
+			 (((unsigned char)PRVM_EDICTFIELDVALUE(ent, prog->fieldoffsets.pflags)->_float) & PFLAGS_FULLDYNAMIC)
+			 ||
+			 ((gamemode == GAME_TENEBRAE) && ((unsigned int)ent->fields.server->effects & (16 | 32)))
+			)
+	   )
+		return -1;
+	return 1;
+}
+
 /*
 ===============================================================================
 
@@ -199,19 +218,7 @@ trace_t SV_TracePoint(const vec3_t start, int type, prvm_edict_t *passedict, int
 			// if the modelindex is 0, it shouldn't be SOLID_BSP!
 			if (modelindex > 0 && modelindex < MAX_MODELS)
 				model = sv.models[(int)touch->fields.server->modelindex];
-			//pitchsign = 1;
-			if (
-				((modelindex = (int)touch->fields.server->modelindex) >= 1 && modelindex < MAX_MODELS && (model = sv.models[(int)touch->fields.server->modelindex]))
-				?
-					model->type == mod_alias
-				:
-					(
-						(((unsigned char)PRVM_EDICTFIELDVALUE(touch, prog->fieldoffsets.pflags)->_float) & PFLAGS_FULLDYNAMIC)
-						||
-						((gamemode == GAME_TENEBRAE) && ((unsigned int)touch->fields.server->effects & (16 | 32)))
-					)
-			)
-				pitchsign = -1;
+			pitchsign = SV_GetPitchSign(touch);
 		}
 		if (model)
 			Matrix4x4_CreateFromQuakeEntity(&matrix, touch->fields.server->origin[0], touch->fields.server->origin[1], touch->fields.server->origin[2], pitchsign * touch->fields.server->angles[0], touch->fields.server->angles[1], touch->fields.server->angles[2], 1);
@@ -374,19 +381,7 @@ trace_t SV_TraceLine(const vec3_t start, const vec3_t end, int type, prvm_edict_
 			// if the modelindex is 0, it shouldn't be SOLID_BSP!
 			if (modelindex > 0 && modelindex < MAX_MODELS)
 				model = sv.models[(int)touch->fields.server->modelindex];
-			//pitchsign = 1;
-			if (
-				((modelindex = (int)touch->fields.server->modelindex) >= 1 && modelindex < MAX_MODELS && (model = sv.models[(int)touch->fields.server->modelindex]))
-				?
-					model->type == mod_alias
-				:
-					(
-						(((unsigned char)PRVM_EDICTFIELDVALUE(touch, prog->fieldoffsets.pflags)->_float) & PFLAGS_FULLDYNAMIC)
-						||
-						((gamemode == GAME_TENEBRAE) && ((unsigned int)touch->fields.server->effects & (16 | 32)))
-					)
-			)
-				pitchsign = -1;
+			pitchsign = SV_GetPitchSign(touch);
 		}
 		if (model)
 			Matrix4x4_CreateFromQuakeEntity(&matrix, touch->fields.server->origin[0], touch->fields.server->origin[1], touch->fields.server->origin[2], pitchsign * touch->fields.server->angles[0], touch->fields.server->angles[1], touch->fields.server->angles[2], 1);
@@ -587,18 +582,7 @@ trace_t SV_TraceBox(const vec3_t start, const vec3_t mins, const vec3_t maxs, co
 			if (modelindex > 0 && modelindex < MAX_MODELS)
 				model = sv.models[(int)touch->fields.server->modelindex];
 			//pitchsign = 1;
-			if (
-				((modelindex = (int)touch->fields.server->modelindex) >= 1 && modelindex < MAX_MODELS && (model = sv.models[(int)touch->fields.server->modelindex]))
-				?
-					model->type == mod_alias
-				:
-					(
-						(((unsigned char)PRVM_EDICTFIELDVALUE(touch, prog->fieldoffsets.pflags)->_float) & PFLAGS_FULLDYNAMIC)
-						||
-						((gamemode == GAME_TENEBRAE) && ((unsigned int)touch->fields.server->effects & (16 | 32)))
-					)
-			)
-				pitchsign = -1;
+			pitchsign = SV_GetPitchSign(touch);
 		}
 		if (model)
 			Matrix4x4_CreateFromQuakeEntity(&matrix, touch->fields.server->origin[0], touch->fields.server->origin[1], touch->fields.server->origin[2], pitchsign * touch->fields.server->angles[0], touch->fields.server->angles[1], touch->fields.server->angles[2], 1);
@@ -706,6 +690,32 @@ Linking entities into the world culling system
 ===============================================================================
 */
 
+void SV_LinkEdict_TouchAreaGrid_Call(prvm_edict_t *touch, prvm_edict_t *ent)
+{
+	prvm_eval_t *val;
+	prog->globals.server->self = PRVM_EDICT_TO_PROG(touch);
+	prog->globals.server->other = PRVM_EDICT_TO_PROG(ent);
+	prog->globals.server->time = sv.time;
+	prog->globals.server->trace_allsolid = false;
+	prog->globals.server->trace_startsolid = false;
+	prog->globals.server->trace_fraction = 1;
+	prog->globals.server->trace_inwater = false;
+	prog->globals.server->trace_inopen = true;
+	VectorCopy (touch->fields.server->origin, prog->globals.server->trace_endpos);
+	VectorSet (prog->globals.server->trace_plane_normal, 0, 0, 1);
+	prog->globals.server->trace_plane_dist = 0;
+	prog->globals.server->trace_ent = PRVM_EDICT_TO_PROG(ent);
+	if ((val = PRVM_GLOBALFIELDVALUE(prog->globaloffsets.trace_dpstartcontents)))
+		val->_float = 0;
+	if ((val = PRVM_GLOBALFIELDVALUE(prog->globaloffsets.trace_dphitcontents)))
+		val->_float = 0;
+	if ((val = PRVM_GLOBALFIELDVALUE(prog->globaloffsets.trace_dphitq3surfaceflags)))
+		val->_float = 0;
+	if ((val = PRVM_GLOBALFIELDVALUE(prog->globaloffsets.trace_dphittexturename)))
+		val->string = 0;
+	PRVM_ExecuteProgram (touch->fields.server->touch, "QC function self.touch is missing");
+}
+
 void SV_LinkEdict_TouchAreaGrid(prvm_edict_t *ent)
 {
 	int i, numtouchedicts, old_self, old_other;
@@ -737,32 +747,42 @@ void SV_LinkEdict_TouchAreaGrid(prvm_edict_t *ent)
 		touch = touchedicts[i];
 		if (touch != ent && (int)touch->fields.server->solid == SOLID_TRIGGER && touch->fields.server->touch)
 		{
-			prvm_eval_t *val;
-			prog->globals.server->self = PRVM_EDICT_TO_PROG(touch);
-			prog->globals.server->other = PRVM_EDICT_TO_PROG(ent);
-			prog->globals.server->time = sv.time;
-			prog->globals.server->trace_allsolid = false;
-			prog->globals.server->trace_startsolid = false;
-			prog->globals.server->trace_fraction = 1;
-			prog->globals.server->trace_inwater = false;
-			prog->globals.server->trace_inopen = true;
-			VectorCopy (touch->fields.server->origin, prog->globals.server->trace_endpos);
-			VectorSet (prog->globals.server->trace_plane_normal, 0, 0, 1);
-			prog->globals.server->trace_plane_dist = 0;
-			prog->globals.server->trace_ent = PRVM_EDICT_TO_PROG(ent);
-			if ((val = PRVM_GLOBALFIELDVALUE(prog->globaloffsets.trace_dpstartcontents)))
-				val->_float = 0;
-			if ((val = PRVM_GLOBALFIELDVALUE(prog->globaloffsets.trace_dphitcontents)))
-				val->_float = 0;
-			if ((val = PRVM_GLOBALFIELDVALUE(prog->globaloffsets.trace_dphitq3surfaceflags)))
-				val->_float = 0;
-			if ((val = PRVM_GLOBALFIELDVALUE(prog->globaloffsets.trace_dphittexturename)))
-				val->string = 0;
-			PRVM_ExecuteProgram (touch->fields.server->touch, "QC function self.touch is missing");
+			SV_LinkEdict_TouchAreaGrid_Call(touch, ent);
 		}
 	}
 	prog->globals.server->self = old_self;
 	prog->globals.server->other = old_other;
+}
+
+static void RotateBBox(const vec3_t mins, const vec3_t maxs, const vec3_t angles, vec3_t rotatedmins, vec3_t rotatedmaxs)
+{
+	vec3_t v, u;
+	matrix4x4_t m;
+	Matrix4x4_CreateFromQuakeEntity(&m, 0, 0, 0, angles[PITCH], angles[YAW], angles[ROLL], 1.0);
+
+	v[0] = mins[0]; v[1] = mins[1]; v[2] = mins[2]; Matrix4x4_Transform(&m, v, u);
+		VectorCopy(u, rotatedmins); VectorCopy(u, rotatedmaxs);
+	v[0] = maxs[0]; v[1] = mins[1]; v[2] = mins[2]; Matrix4x4_Transform(&m, v, u);
+		if(rotatedmins[0] > u[0]) rotatedmins[0] = u[0]; if(rotatedmins[1] > u[1]) rotatedmins[1] = u[1]; if(rotatedmins[2] > u[2]) rotatedmins[2] = u[2];
+		if(rotatedmaxs[0] < u[0]) rotatedmaxs[0] = u[0]; if(rotatedmaxs[1] < u[1]) rotatedmaxs[1] = u[1]; if(rotatedmaxs[2] < u[2]) rotatedmaxs[2] = u[2];
+	v[0] = mins[0]; v[1] = maxs[1]; v[2] = mins[2]; Matrix4x4_Transform(&m, v, u);
+		if(rotatedmins[0] > u[0]) rotatedmins[0] = u[0]; if(rotatedmins[1] > u[1]) rotatedmins[1] = u[1]; if(rotatedmins[2] > u[2]) rotatedmins[2] = u[2];
+		if(rotatedmaxs[0] < u[0]) rotatedmaxs[0] = u[0]; if(rotatedmaxs[1] < u[1]) rotatedmaxs[1] = u[1]; if(rotatedmaxs[2] < u[2]) rotatedmaxs[2] = u[2];
+	v[0] = maxs[0]; v[1] = maxs[1]; v[2] = mins[2]; Matrix4x4_Transform(&m, v, u);
+		if(rotatedmins[0] > u[0]) rotatedmins[0] = u[0]; if(rotatedmins[1] > u[1]) rotatedmins[1] = u[1]; if(rotatedmins[2] > u[2]) rotatedmins[2] = u[2];
+		if(rotatedmaxs[0] < u[0]) rotatedmaxs[0] = u[0]; if(rotatedmaxs[1] < u[1]) rotatedmaxs[1] = u[1]; if(rotatedmaxs[2] < u[2]) rotatedmaxs[2] = u[2];
+	v[0] = mins[0]; v[1] = mins[1]; v[2] = maxs[2]; Matrix4x4_Transform(&m, v, u);
+		if(rotatedmins[0] > u[0]) rotatedmins[0] = u[0]; if(rotatedmins[1] > u[1]) rotatedmins[1] = u[1]; if(rotatedmins[2] > u[2]) rotatedmins[2] = u[2];
+		if(rotatedmaxs[0] < u[0]) rotatedmaxs[0] = u[0]; if(rotatedmaxs[1] < u[1]) rotatedmaxs[1] = u[1]; if(rotatedmaxs[2] < u[2]) rotatedmaxs[2] = u[2];
+	v[0] = maxs[0]; v[1] = mins[1]; v[2] = maxs[2]; Matrix4x4_Transform(&m, v, u);
+		if(rotatedmins[0] > u[0]) rotatedmins[0] = u[0]; if(rotatedmins[1] > u[1]) rotatedmins[1] = u[1]; if(rotatedmins[2] > u[2]) rotatedmins[2] = u[2];
+		if(rotatedmaxs[0] < u[0]) rotatedmaxs[0] = u[0]; if(rotatedmaxs[1] < u[1]) rotatedmaxs[1] = u[1]; if(rotatedmaxs[2] < u[2]) rotatedmaxs[2] = u[2];
+	v[0] = mins[0]; v[1] = maxs[1]; v[2] = maxs[2]; Matrix4x4_Transform(&m, v, u);
+		if(rotatedmins[0] > u[0]) rotatedmins[0] = u[0]; if(rotatedmins[1] > u[1]) rotatedmins[1] = u[1]; if(rotatedmins[2] > u[2]) rotatedmins[2] = u[2];
+		if(rotatedmaxs[0] < u[0]) rotatedmaxs[0] = u[0]; if(rotatedmaxs[1] < u[1]) rotatedmaxs[1] = u[1]; if(rotatedmaxs[2] < u[2]) rotatedmaxs[2] = u[2];
+	v[0] = maxs[0]; v[1] = maxs[1]; v[2] = maxs[2]; Matrix4x4_Transform(&m, v, u);
+		if(rotatedmins[0] > u[0]) rotatedmins[0] = u[0]; if(rotatedmins[1] > u[1]) rotatedmins[1] = u[1]; if(rotatedmins[2] > u[2]) rotatedmins[2] = u[2];
+		if(rotatedmaxs[0] < u[0]) rotatedmaxs[0] = u[0]; if(rotatedmaxs[1] < u[1]) rotatedmaxs[1] = u[1]; if(rotatedmaxs[2] < u[2]) rotatedmaxs[2] = u[2];
 }
 
 /*
@@ -784,7 +804,15 @@ void SV_LinkEdict (prvm_edict_t *ent)
 
 // set the abs box
 
-	if (ent->fields.server->solid == SOLID_BSP)
+	if (ent->fields.server->movetype == MOVETYPE_PHYSICS)
+	{
+		// TODO maybe should do this for rotating SOLID_BSP too? Would behave better with rotating doors
+		// TODO special handling for spheres?
+		RotateBBox(ent->fields.server->mins, ent->fields.server->maxs, ent->fields.server->angles, mins, maxs);
+		VectorAdd(ent->fields.server->origin, mins, mins);
+		VectorAdd(ent->fields.server->origin, maxs, maxs);
+	}
+	else if (ent->fields.server->solid == SOLID_BSP)
 	{
 		int modelindex = (int)ent->fields.server->modelindex;
 		if (modelindex < 0 || modelindex >= MAX_MODELS)
@@ -1634,12 +1662,18 @@ void SV_PushMove (prvm_edict_t *pusher, float movetime)
 	for (e = 0;e < numcheckentities;e++)
 	{
 		prvm_edict_t *check = checkentities[e];
-		if (check->fields.server->movetype == MOVETYPE_NONE
-		 || check->fields.server->movetype == MOVETYPE_PUSH
-		 || check->fields.server->movetype == MOVETYPE_FOLLOW
-		 || check->fields.server->movetype == MOVETYPE_NOCLIP
-		 || check->fields.server->movetype == MOVETYPE_FAKEPUSH)
+		int movetype = (int)check->fields.server->movetype;
+		switch(movetype)
+		{
+		case MOVETYPE_NONE:
+		case MOVETYPE_PUSH:
+		case MOVETYPE_FOLLOW:
+		case MOVETYPE_NOCLIP:
+		case MOVETYPE_FAKEPUSH:
 			continue;
+		default:
+			break;
+		}
 
 		if (check->fields.server->owner == pusherprog)
 			continue;
@@ -1686,6 +1720,15 @@ void SV_PushMove (prvm_edict_t *pusher, float movetime)
 		VectorCopy (check->fields.server->origin, check->priv.server->moved_from);
 		VectorCopy (check->fields.server->angles, check->priv.server->moved_fromangles);
 		moved_edicts[num_moved++] = PRVM_NUM_FOR_EDICT(check);
+
+		// physics objects need better collisions than this code can do
+		if (movetype == MOVETYPE_PHYSICS)
+		{
+			VectorAdd(check->fields.server->origin, move, check->fields.server->origin);
+			SV_LinkEdict(check);
+			SV_LinkEdict_TouchAreaGrid(check);
+			continue;
+		}
 
 		// try moving the contacted entity
 		pusher->fields.server->solid = SOLID_NOT;
@@ -2432,7 +2475,13 @@ void SV_Physics_Toss (prvm_edict_t *ent)
 		movetime *= 1 - min(1, trace.fraction);
 		if (ent->fields.server->movetype == MOVETYPE_BOUNCEMISSILE)
 		{
-			ClipVelocity (ent->fields.server->velocity, trace.plane.normal, ent->fields.server->velocity, 2.0);
+			prvm_eval_t *val;
+			float bouncefactor = 1.0f;
+			val = PRVM_EDICTFIELDVALUE(ent, prog->fieldoffsets.bouncefactor);
+			if (val!=0 && val->_float)
+				bouncefactor = val->_float;
+
+			ClipVelocity (ent->fields.server->velocity, trace.plane.normal, ent->fields.server->velocity, 1 + bouncefactor);
 			ent->fields.server->flags = (int)ent->fields.server->flags & ~FL_ONGROUND;
 		}
 		else if (ent->fields.server->movetype == MOVETYPE_BOUNCE)
@@ -2654,6 +2703,13 @@ static void SV_Physics_Entity (prvm_edict_t *ent)
 		if (SV_RunThink (ent))
 			SV_Physics_Toss (ent);
 		break;
+	case MOVETYPE_PHYSICS:
+		if (SV_RunThink(ent))
+		{
+			SV_LinkEdict(ent);
+			SV_LinkEdict_TouchAreaGrid(ent);
+		}
+		break;
 	default:
 		Con_Printf ("SV_Physics: bad movetype %i\n", (int)ent->fields.server->movetype);
 		break;
@@ -2818,6 +2874,9 @@ static void SV_Physics_ClientEntity(prvm_edict_t *ent)
 		SV_RunThink (ent);
 		SV_WalkMove (ent);
 		break;
+	case MOVETYPE_PHYSICS:
+		SV_RunThink (ent);
+		break;
 	default:
 		Con_Printf ("SV_Physics_ClientEntity: bad movetype %i\n", (int)ent->fields.server->movetype);
 		break;
@@ -2848,6 +2907,9 @@ void SV_Physics (void)
 	prog->globals.server->time = sv.time;
 	prog->globals.server->frametime = sv.frametime;
 	PRVM_ExecuteProgram (prog->globals.server->StartFrame, "QC function StartFrame is missing");
+
+	// run physics engine
+	World_Physics_Frame(&sv.world, sv.frametime, sv_gravity.value);
 
 //
 // treat each object in turn
