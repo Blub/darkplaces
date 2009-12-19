@@ -68,14 +68,21 @@ typedef struct skinframe_s
 	// on each level change for the used skinframes, if some are not used they
 	// are freed
 	int loadsequence;
-	// on 32bit systems this makes the struct 128 bytes long
-	int padding;
+	// indicates whether this texture has transparent pixels
+	qboolean hasalpha;
 	// average texture color, if applicable
 	float avgcolor[4];
+	// for mdl skins, we actually only upload on first use (many are never used, and they are almost never used in both base+pants+shirt and merged modes)
+	unsigned char *qpixels;
+	int qwidth;
+	int qheight;
+	qboolean qhascolormapping;
+	qboolean qgeneratebase;
+	qboolean qgeneratemerged;
+	qboolean qgeneratenmap;
+	qboolean qgenerateglow;
 }
 skinframe_t;
-
-#define MAX_SKINS 256
 
 struct md3vertex_s;
 struct trivertx_s;
@@ -699,8 +706,8 @@ typedef struct model_brush_s
 
 	char skybox[MAX_QPATH];
 
-	rtexture_t *solidskytexture;
-	rtexture_t *alphaskytexture;
+	skinframe_t *solidskyskinframe;
+	skinframe_t *alphaskyskinframe;
 
 	qboolean supportwateralpha;
 
@@ -810,6 +817,7 @@ typedef struct model_brushq3_s
 model_brushq3_t;
 
 struct frameblend_s;
+struct skeleton_s;
 
 typedef struct model_s
 {
@@ -856,8 +864,6 @@ typedef struct model_s
 	// range of collision brush numbers in this (sub)model
 	int				firstmodelbrush;
 	int				nummodelbrushes;
-	// list of surface numbers in this (sub)model
-	int				*surfacelist;
 	// for md3 models
 	int				num_tags;
 	int				num_tagframes;
@@ -882,7 +888,7 @@ typedef struct model_s
 	// data type of model
 	const char		*modeldatatypestring;
 	// generates vertex data for a given frameblend
-	void(*AnimateVertices)(const struct model_s *model, const struct frameblend_s *frameblend, float *vertex3f, float *normal3f, float *svector3f, float *tvector3f);
+	void(*AnimateVertices)(const struct model_s *model, const struct frameblend_s *frameblend, const struct skeleton_s *skeleton, float *vertex3f, float *normal3f, float *svector3f, float *tvector3f);
 	// draw the model's sky polygons (only used by brush models)
 	void(*DrawSky)(struct entity_render_s *ent);
 	// draw refraction/reflection textures for the model's water polygons (only used by brush models)
@@ -893,12 +899,14 @@ typedef struct model_s
 	void(*DrawDepth)(struct entity_render_s *ent);
 	// draw any enabled debugging effects on this model (such as showing triangles, normals, collision brushes...)
 	void(*DrawDebug)(struct entity_render_s *ent);
+	// draw geometry textures for deferred rendering
+	void(*DrawPrepass)(struct entity_render_s *ent);
     // compile an optimized shadowmap mesh for the model based on light source
 	void(*CompileShadowMap)(struct entity_render_s *ent, vec3_t relativelightorigin, vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist);
 	// draw depth into a shadowmap
 	void(*DrawShadowMap)(int side, struct entity_render_s *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist, const unsigned char *surfacesides, const vec3_t lightmins, const vec3_t lightmaxs);
 	// gathers info on which clusters and surfaces are lit by light, as well as calculating a bounding box
-	void(*GetLightInfo)(struct entity_render_s *ent, vec3_t relativelightorigin, float lightradius, vec3_t outmins, vec3_t outmaxs, int *outleaflist, unsigned char *outleafpvs, int *outnumleafspointer, int *outsurfacelist, unsigned char *outsurfacepvs, int *outnumsurfacespointer, unsigned char *outshadowtrispvs, unsigned char *outlighttrispvs, unsigned char *visitingleafpvs);
+	void(*GetLightInfo)(struct entity_render_s *ent, vec3_t relativelightorigin, float lightradius, vec3_t outmins, vec3_t outmaxs, int *outleaflist, unsigned char *outleafpvs, int *outnumleafspointer, int *outsurfacelist, unsigned char *outsurfacepvs, int *outnumsurfacespointer, unsigned char *outshadowtrispvs, unsigned char *outlighttrispvs, unsigned char *visitingleafpvs, int numfrustumplanes, const mplane_t *frustumplanes);
 	// compile a shadow volume for the model based on light source
 	void(*CompileShadowVolume)(struct entity_render_s *ent, vec3_t relativelightorigin, vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist);
 	// draw a shadow volume for the model based on light source
@@ -906,11 +914,11 @@ typedef struct model_s
 	// draw the lighting on a model (through stencil)
 	void(*DrawLight)(struct entity_render_s *ent, int numsurfaces, const int *surfacelist, const unsigned char *trispvs);
 	// trace a box against this model
-	void (*TraceBox)(struct model_s *model, int frame, struct trace_s *trace, const vec3_t start, const vec3_t boxmins, const vec3_t boxmaxs, const vec3_t end, int hitsupercontentsmask);
+	void (*TraceBox)(struct model_s *model, const struct frameblend_s *frameblend, const struct skeleton_s *skeleton, struct trace_s *trace, const vec3_t start, const vec3_t boxmins, const vec3_t boxmaxs, const vec3_t end, int hitsupercontentsmask);
 	// trace a box against this model
-	void (*TraceLine)(struct model_s *model, int frame, struct trace_s *trace, const vec3_t start, const vec3_t end, int hitsupercontentsmask);
+	void (*TraceLine)(struct model_s *model, const struct frameblend_s *frameblend, const struct skeleton_s *skeleton, struct trace_s *trace, const vec3_t start, const vec3_t end, int hitsupercontentsmask);
 	// trace a point against this model (like PointSuperContents)
-	void (*TracePoint)(struct model_s *model, int frame, struct trace_s *trace, const vec3_t start, int hitsupercontentsmask);
+	void (*TracePoint)(struct model_s *model, const struct frameblend_s *frameblend, const struct skeleton_s *skeleton, struct trace_s *trace, const vec3_t start, int hitsupercontentsmask);
 	// find the supercontents value at a point in this model
 	int (*PointSuperContents)(struct model_s *model, int frame, const vec3_t point);
 	// fields belonging to some types of model
@@ -978,6 +986,13 @@ qboolean Mod_LoadTextureFromQ3Shader(texture_t *texture, const char *name, qbool
 
 extern cvar_t r_mipskins;
 
+typedef struct skeleton_s
+{
+	const dp_model_t *model;
+	matrix4x4_t *relativetransforms;
+}
+skeleton_t;
+
 typedef struct skinfileitem_s
 {
 	struct skinfileitem_s *next;
@@ -1001,6 +1016,27 @@ void Mod_SnapVertices(int numcomponents, int numvertices, float *vertices, float
 int Mod_RemoveDegenerateTriangles(int numtriangles, const int *inelement3i, int *outelement3i, const float *vertex3f);
 void Mod_VertexRangeFromElements(int numelements, const int *elements, int *firstvertexpointer, int *lastvertexpointer);
 
+typedef struct mod_alloclightmap_row_s
+{
+	int rowY;
+	int currentX;
+}
+mod_alloclightmap_row_t;
+
+typedef struct mod_alloclightmap_state_s
+{
+	int width;
+	int height;
+	int currentY;
+	mod_alloclightmap_row_t *rows;
+}
+mod_alloclightmap_state_t;
+
+void Mod_AllocLightmap_Init(mod_alloclightmap_state_t *state, int width, int height);
+void Mod_AllocLightmap_Free(mod_alloclightmap_state_t *state);
+void Mod_AllocLightmap_Reset(mod_alloclightmap_state_t *state);
+qboolean Mod_AllocLightmap_Block(mod_alloclightmap_state_t *state, int blockwidth, int blockheight, int *outx, int *outy);
+
 // bsp models
 void Mod_BrushInit(void);
 // used for talking to the QuakeC mainly
@@ -1014,7 +1050,8 @@ void R_Q1BSP_DrawSky(struct entity_render_s *ent);
 void R_Q1BSP_Draw(struct entity_render_s *ent);
 void R_Q1BSP_DrawDepth(struct entity_render_s *ent);
 void R_Q1BSP_DrawDebug(struct entity_render_s *ent);
-void R_Q1BSP_GetLightInfo(struct entity_render_s *ent, vec3_t relativelightorigin, float lightradius, vec3_t outmins, vec3_t outmaxs, int *outleaflist, unsigned char *outleafpvs, int *outnumleafspointer, int *outsurfacelist, unsigned char *outsurfacepvs, int *outnumsurfacespointer, unsigned char *outshadowtrispvs, unsigned char *outlighttrispvs, unsigned char *visitingleafpvs);
+void R_Q1BSP_DrawPrepass(struct entity_render_s *ent);
+void R_Q1BSP_GetLightInfo(struct entity_render_s *ent, vec3_t relativelightorigin, float lightradius, vec3_t outmins, vec3_t outmaxs, int *outleaflist, unsigned char *outleafpvs, int *outnumleafspointer, int *outsurfacelist, unsigned char *outsurfacepvs, int *outnumsurfacespointer, unsigned char *outshadowtrispvs, unsigned char *outlighttrispvs, unsigned char *visitingleafpvs, int numfrustumplanes, const mplane_t *frustumplanes);
 void R_Q1BSP_CompileShadowMap(struct entity_render_s *ent, vec3_t relativelightorigin, vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist);
 void R_Q1BSP_DrawShadowMap(int side, struct entity_render_s *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int modelnumsurfaces, const int *modelsurfacelist, const unsigned char *surfacesides, const vec3_t lightmins, const vec3_t lightmaxs);
 void R_Q1BSP_CompileShadowVolume(struct entity_render_s *ent, vec3_t relativelightorigin, vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist);
@@ -1023,10 +1060,11 @@ void R_Q1BSP_DrawLight(struct entity_render_s *ent, int numsurfaces, const int *
 
 // alias models
 struct frameblend_s;
+struct skeleton_s;
 void Mod_AliasInit(void);
-int Mod_Alias_GetTagMatrix(const dp_model_t *model, int poseframe, int tagindex, matrix4x4_t *outmatrix);
+int Mod_Alias_GetTagMatrix(const dp_model_t *model, const struct frameblend_s *frameblend, const struct skeleton_s *skeleton, int tagindex, matrix4x4_t *outmatrix);
 int Mod_Alias_GetTagIndexForName(const dp_model_t *model, unsigned int skin, const char *tagname);
-int Mod_Alias_GetExtendedTagInfoForIndex(const dp_model_t *model, unsigned int skin, int poseframe, int tagindex, int *parentindex, const char **tagname, matrix4x4_t *tag_localmatrix);
+int Mod_Alias_GetExtendedTagInfoForIndex(const dp_model_t *model, unsigned int skin, const struct frameblend_s *frameblend, const struct skeleton_s *skeleton, int tagindex, int *parentindex, const char **tagname, matrix4x4_t *tag_localmatrix);
 
 // sprite models
 void Mod_SpriteInit(void);

@@ -4,7 +4,8 @@
 #include "jpeg.h"
 #include "image_png.h"
 
-cvar_t gl_max_size = {CVAR_SAVE, "gl_max_size", "2048", "maximum allowed texture size, can be used to reduce video memory usage, note: this is automatically reduced to match video card capabilities (such as 256 on 3Dfx cards before Voodoo4/5)"};
+cvar_t gl_max_size = {CVAR_SAVE, "gl_max_size", "2048", "maximum allowed texture size, can be used to reduce video memory usage, limited by hardware capabilities (typically 2048, 4096, or 8192)"};
+cvar_t gl_max_lightmapsize = {CVAR_SAVE, "gl_max_lightmapsize", "1024", "maximum allowed texture size for lightmap textures, use larger values to improve rendering speed, as long as there is enough video memory available (setting it too high for the hardware will cause very bad performance)"};
 cvar_t gl_picmip = {CVAR_SAVE, "gl_picmip", "0", "reduces resolution of textures by powers of 2, for example 1 will halve width/height, reducing texture memory usage by 75%"};
 cvar_t r_lerpimages = {CVAR_SAVE, "r_lerpimages", "1", "bilinear filters images when scaling them up to power of 2 size (mode 1), looks better than glquake (mode 0)"};
 cvar_t r_precachetextures = {CVAR_SAVE, "r_precachetextures", "1", "0 = never upload textures until used, 1 = upload most textures before use (exceptions: rarely used skin colormap layers), 2 = upload all textures before use (can increase texture memory usage significantly)"};
@@ -67,7 +68,6 @@ static textypeinfo_t textype_alpha_compress         = {TEXTYPE_ALPHA  , 1, 4, 1.
 
 typedef enum gltexturetype_e
 {
-	GLTEXTURETYPE_1D,
 	GLTEXTURETYPE_2D,
 	GLTEXTURETYPE_3D,
 	GLTEXTURETYPE_CUBEMAP,
@@ -76,9 +76,9 @@ typedef enum gltexturetype_e
 }
 gltexturetype_t;
 
-static int gltexturetypeenums[GLTEXTURETYPE_TOTAL] = {GL_TEXTURE_1D, GL_TEXTURE_2D, GL_TEXTURE_3D, GL_TEXTURE_CUBE_MAP_ARB, GL_TEXTURE_RECTANGLE_ARB};
-static int gltexturetypebindingenums[GLTEXTURETYPE_TOTAL] = {GL_TEXTURE_BINDING_1D, GL_TEXTURE_BINDING_2D, GL_TEXTURE_BINDING_3D, GL_TEXTURE_BINDING_CUBE_MAP_ARB, GL_TEXTURE_BINDING_RECTANGLE_ARB};
-static int gltexturetypedimensions[GLTEXTURETYPE_TOTAL] = {1, 2, 3, 2, 2};
+static int gltexturetypeenums[GLTEXTURETYPE_TOTAL] = {GL_TEXTURE_2D, GL_TEXTURE_3D, GL_TEXTURE_CUBE_MAP_ARB, GL_TEXTURE_RECTANGLE_ARB};
+static int gltexturetypebindingenums[GLTEXTURETYPE_TOTAL] = {GL_TEXTURE_BINDING_2D, GL_TEXTURE_BINDING_3D, GL_TEXTURE_BINDING_CUBE_MAP_ARB, GL_TEXTURE_BINDING_RECTANGLE_ARB};
+static int gltexturetypedimensions[GLTEXTURETYPE_TOTAL] = {2, 3, 2, 2};
 static int cubemapside[6] =
 {
 	GL_TEXTURE_CUBE_MAP_POSITIVE_X_ARB,
@@ -125,7 +125,7 @@ typedef struct gltexture_s
 	// palette if the texture is TEXTYPE_PALETTE
 	const unsigned int *palette;
 	// actual stored texture size after gl_picmip and gl_max_size are applied
-	// (power of 2 if gl_support_arb_texture_non_power_of_two is not supported)
+	// (power of 2 if vid.support.arb_texture_non_power_of_two is not supported)
 	int tilewidth, tileheight, tiledepth;
 	// 1 or 6 depending on texturetype
 	int sides;
@@ -159,7 +159,7 @@ static int texturebuffersize = 0;
 
 static textypeinfo_t *R_GetTexTypeInfo(textype_t textype, int flags)
 {
-	if ((flags & TEXF_COMPRESS) && gl_texturecompression.integer >= 1 && gl_support_texture_compression)
+	if ((flags & TEXF_COMPRESS) && gl_texturecompression.integer >= 1 && vid.support.arb_texture_compression)
 	{
 		if (flags & TEXF_ALPHA)
 		{
@@ -273,41 +273,6 @@ static void R_UpdateDynamicTexture(gltexture_t *glt) {
 	if( glt->updatecallback ) {
 		glt->updatecallback( (rtexture_t*) glt, glt->updatacallback_data );
 	}
-}
-
-static void R_UploadTexture(gltexture_t *t);
-
-static void R_PrecacheTexture(gltexture_t *glt)
-{
-	int precache;
-	precache = false;
-	if (glt->flags & TEXF_ALWAYSPRECACHE)
-		precache = true;
-	else if (r_precachetextures.integer >= 2)
-		precache = true;
-	else if (r_precachetextures.integer >= 1)
-		if (glt->flags & TEXF_PRECACHE)
-			precache = true;
-
-	if (precache)
-		R_UploadTexture(glt);
-}
-
-int R_RealGetTexture(rtexture_t *rt)
-{
-	if (rt)
-	{
-		gltexture_t *glt;
-		glt = (gltexture_t *)rt;
-		if (glt->flags & GLTEXF_DYNAMIC)
-			R_UpdateDynamicTexture(glt);
-		if (glt->flags & GLTEXF_UPLOAD)
-			R_UploadTexture(glt);
-
-		return glt->texnum;
-	}
-	else
-		return 0;
 }
 
 void R_PurgeTexture(rtexture_t *rt)
@@ -459,33 +424,28 @@ static void GL_Texture_CalcImageSize(int texturetype, int flags, int inwidth, in
 {
 	int picmip = 0, maxsize = 0, width2 = 1, height2 = 1, depth2 = 1;
 
-	if (gl_max_size.integer > gl_max_texture_size)
-		Cvar_SetValue("gl_max_size", gl_max_texture_size);
-
 	switch (texturetype)
 	{
 	default:
-	case GLTEXTURETYPE_1D:
 	case GLTEXTURETYPE_2D:
-		maxsize = gl_max_texture_size;
+		maxsize = vid.maxtexturesize_2d;
+		if (flags & TEXF_PICMIP)
+		{
+			maxsize = bound(1, gl_max_size.integer, maxsize);
+			picmip = gl_picmip.integer;
+		}
 		break;
 	case GLTEXTURETYPE_3D:
-		maxsize = gl_max_3d_texture_size;
+		maxsize = vid.maxtexturesize_3d;
 		break;
 	case GLTEXTURETYPE_CUBEMAP:
-		maxsize = gl_max_cube_map_texture_size;
+		maxsize = vid.maxtexturesize_cubemap;
 		break;
-	}
-
-	if (flags & TEXF_PICMIP)
-	{
-		maxsize = min(maxsize, gl_max_size.integer);
-		picmip = gl_picmip.integer;
 	}
 
 	if (outwidth)
 	{
-		if (gl_support_arb_texture_non_power_of_two)
+		if (vid.support.arb_texture_non_power_of_two)
 			width2 = min(inwidth >> picmip, maxsize);
 		else
 		{
@@ -496,7 +456,7 @@ static void GL_Texture_CalcImageSize(int texturetype, int flags, int inwidth, in
 	}
 	if (outheight)
 	{
-		if (gl_support_arb_texture_non_power_of_two)
+		if (vid.support.arb_texture_non_power_of_two)
 			height2 = min(inheight >> picmip, maxsize);
 		else
 		{
@@ -507,7 +467,7 @@ static void GL_Texture_CalcImageSize(int texturetype, int flags, int inwidth, in
 	}
 	if (outdepth)
 	{
-		if (gl_support_arb_texture_non_power_of_two)
+		if (vid.support.arb_texture_non_power_of_two)
 			depth2 = min(indepth >> picmip, maxsize);
 		else
 		{
@@ -642,6 +602,7 @@ void R_Textures_Init (void)
 	Cmd_AddCommand("r_texturestats", R_TextureStats_f, "print information about all loaded textures and some statistics");
 	Cvar_RegisterVariable (&gl_max_size);
 	Cvar_RegisterVariable (&gl_picmip);
+	Cvar_RegisterVariable (&gl_max_lightmapsize);
 	Cvar_RegisterVariable (&r_lerpimages);
 	Cvar_RegisterVariable (&r_precachetextures);
 	Cvar_RegisterVariable (&gl_texture_anisotropy);
@@ -685,7 +646,7 @@ void R_Textures_Frame (void)
 		gltexturepool_t *pool;
 		GLint oldbindtexnum;
 
-		old_aniso = bound(1, gl_texture_anisotropy.integer, gl_max_anisotropy);
+		old_aniso = bound(1, gl_texture_anisotropy.integer, (int)vid.max_anisotropy);
 
 		Cvar_SetValueQuick(&gl_texture_anisotropy, old_aniso);
 
@@ -728,13 +689,13 @@ void R_MakeResizeBufferBigger(int size)
 static void GL_SetupTextureParameters(int flags, textype_t textype, int texturetype)
 {
 	int textureenum = gltexturetypeenums[texturetype];
-	int wrapmode = ((flags & TEXF_CLAMP) && gl_support_clamptoedge) ? GL_CLAMP_TO_EDGE : GL_REPEAT;
+	int wrapmode = (flags & TEXF_CLAMP) ? GL_CLAMP_TO_EDGE : GL_REPEAT;
 
 	CHECKGLERROR
 
-	if (gl_support_anisotropy && (flags & TEXF_MIPMAP))
+	if (vid.support.ext_texture_filter_anisotropic && (flags & TEXF_MIPMAP))
 	{
-		int aniso = bound(1, gl_texture_anisotropy.integer, gl_max_anisotropy);
+		int aniso = bound(1, gl_texture_anisotropy.integer, (int)vid.max_anisotropy);
 		if (gl_texture_anisotropy.integer != aniso)
 			Cvar_SetValueQuick(&gl_texture_anisotropy, aniso);
 		qglTexParameteri(textureenum, GL_TEXTURE_MAX_ANISOTROPY_EXT, aniso);CHECKGLERROR
@@ -793,7 +754,7 @@ static void GL_SetupTextureParameters(int flags, textype_t textype, int texturet
 
 	if (textype == TEXTYPE_SHADOWMAP)
 	{
-		if (gl_support_arb_shadow)
+		if (vid.support.arb_shadow)
 		{
 			if (flags & TEXF_COMPARE)
 			{
@@ -825,7 +786,7 @@ static void R_Upload(gltexture_t *glt, const unsigned char *data, int fragx, int
 	qglBindTexture(gltexturetypeenums[glt->texturetype], glt->texnum);CHECKGLERROR
 
 	// these are rounded up versions of the size to do better resampling
-	if (gl_support_arb_texture_non_power_of_two || glt->texturetype == GLTEXTURETYPE_RECTANGLE)
+	if (vid.support.arb_texture_non_power_of_two || glt->texturetype == GLTEXTURETYPE_RECTANGLE)
 	{
 		width = glt->inputwidth;
 		height = glt->inputheight;
@@ -858,9 +819,6 @@ static void R_Upload(gltexture_t *glt, const unsigned char *data, int fragx, int
 		// update a portion of the image
 		switch(glt->texturetype)
 		{
-		case GLTEXTURETYPE_1D:
-			qglTexSubImage1D(GL_TEXTURE_1D, 0, fragx, fragwidth, glt->glformat, glt->gltype, prevbuffer);CHECKGLERROR
-			break;
 		case GLTEXTURETYPE_2D:
 			qglTexSubImage2D(GL_TEXTURE_2D, 0, fragx, fragy, fragwidth, fragheight, glt->glformat, glt->gltype, prevbuffer);CHECKGLERROR
 			break;
@@ -868,7 +826,7 @@ static void R_Upload(gltexture_t *glt, const unsigned char *data, int fragx, int
 			qglTexSubImage3D(GL_TEXTURE_3D, 0, fragx, fragy, fragz, fragwidth, fragheight, fragdepth, glt->glformat, glt->gltype, prevbuffer);CHECKGLERROR
 			break;
 		default:
-			Host_Error("R_Upload: partial update of type other than 1D, 2D, or 3D");
+			Host_Error("R_Upload: partial update of type other than 2D");
 			break;
 		}
 	}
@@ -896,7 +854,7 @@ static void R_Upload(gltexture_t *glt, const unsigned char *data, int fragx, int
 			}
 		}
 		mip = 0;
-		if (gl_support_texture_compression)
+		if (vid.support.arb_texture_compression)
 		{
 			if (gl_texturecompression.integer >= 2)
 				qglHint(GL_TEXTURE_COMPRESSION_HINT_ARB, GL_NICEST);
@@ -906,18 +864,6 @@ static void R_Upload(gltexture_t *glt, const unsigned char *data, int fragx, int
 		}
 		switch(glt->texturetype)
 		{
-		case GLTEXTURETYPE_1D:
-			qglTexImage1D(GL_TEXTURE_1D, mip++, glt->glinternalformat, width, 0, glt->glformat, glt->gltype, prevbuffer);CHECKGLERROR
-			if (glt->flags & TEXF_MIPMAP)
-			{
-				while (width > 1 || height > 1 || depth > 1)
-				{
-					Image_MipReduce32(prevbuffer, resizebuffer, &width, &height, &depth, 1, 1, 1);
-					prevbuffer = resizebuffer;
-					qglTexImage1D(GL_TEXTURE_1D, mip++, glt->glinternalformat, width, 0, glt->glformat, glt->gltype, prevbuffer);CHECKGLERROR
-				}
-			}
-			break;
 		case GLTEXTURETYPE_2D:
 			qglTexImage2D(GL_TEXTURE_2D, mip++, glt->glinternalformat, width, height, 0, glt->glformat, glt->gltype, prevbuffer);CHECKGLERROR
 			if (glt->flags & TEXF_MIPMAP)
@@ -983,22 +929,33 @@ static void R_Upload(gltexture_t *glt, const unsigned char *data, int fragx, int
 	qglBindTexture(gltexturetypeenums[glt->texturetype], oldbindtexnum);CHECKGLERROR
 }
 
-static void R_UploadTexture (gltexture_t *glt)
+int R_RealGetTexture(rtexture_t *rt)
 {
-	if (!(glt->flags & GLTEXF_UPLOAD))
-		return;
-
-	CHECKGLERROR
-	qglGenTextures(1, (GLuint *)&glt->texnum);CHECKGLERROR
-	R_Upload(glt, glt->inputtexels, 0, 0, 0, glt->inputwidth, glt->inputheight, glt->inputdepth);
-	if (glt->inputtexels)
+	if (rt)
 	{
-		Mem_Free(glt->inputtexels);
-		glt->inputtexels = NULL;
-		glt->flags |= GLTEXF_DESTROYED;
+		gltexture_t *glt;
+		glt = (gltexture_t *)rt;
+		if (glt->flags & GLTEXF_DYNAMIC)
+			R_UpdateDynamicTexture(glt);
+		if (glt->flags & GLTEXF_UPLOAD)
+		{
+			CHECKGLERROR
+			qglGenTextures(1, (GLuint *)&glt->texnum);CHECKGLERROR
+			R_Upload(glt, glt->inputtexels, 0, 0, 0, glt->inputwidth, glt->inputheight, glt->inputdepth);
+			if (glt->inputtexels)
+			{
+				Mem_Free(glt->inputtexels);
+				glt->inputtexels = NULL;
+				glt->flags |= GLTEXF_DESTROYED;
+			}
+			else if (glt->flags & GLTEXF_DESTROYED)
+				Con_Printf("R_GetTexture: Texture %s already uploaded and destroyed.  Can not upload original image again.  Uploaded blank texture.\n", glt->identifier);
+		}
+
+		return glt->texnum;
 	}
-	else if (glt->flags & GLTEXF_DESTROYED)
-		Con_Printf("R_UploadTexture: Texture %s already uploaded and destroyed.  Can not upload original image again.  Uploaded blank texture.\n", glt->identifier);
+	else
+		return 0;
 }
 
 static rtexture_t *R_SetupTexture(rtexturepool_t *rtexturepool, const char *identifier, int width, int height, int depth, int sides, int flags, textype_t textype, int texturetype, const unsigned char *data, const unsigned int *palette)
@@ -1007,21 +964,22 @@ static rtexture_t *R_SetupTexture(rtexturepool_t *rtexturepool, const char *iden
 	gltexture_t *glt;
 	gltexturepool_t *pool = (gltexturepool_t *)rtexturepool;
 	textypeinfo_t *texinfo;
+	int precache;
 
 	if (cls.state == ca_dedicated)
 		return NULL;
 
-	if (texturetype == GLTEXTURETYPE_RECTANGLE && !gl_texturerectangle)
+	if (texturetype == GLTEXTURETYPE_RECTANGLE && !vid.support.arb_texture_rectangle)
 	{
 		Con_Printf ("R_LoadTexture: rectangle texture not supported by driver\n");
 		return NULL;
 	}
-	if (texturetype == GLTEXTURETYPE_CUBEMAP && !gl_texturecubemap)
+	if (texturetype == GLTEXTURETYPE_CUBEMAP && !vid.support.arb_texture_cube_map)
 	{
 		Con_Printf ("R_LoadTexture: cubemap texture not supported by driver\n");
 		return NULL;
 	}
-	if (texturetype == GLTEXTURETYPE_3D && !gl_texture3d)
+	if (texturetype == GLTEXTURETYPE_3D && !vid.support.ext_texture_3d)
 	{
 		Con_Printf ("R_LoadTexture: 3d texture not supported by driver\n");
 		return NULL;
@@ -1107,26 +1065,50 @@ static rtexture_t *R_SetupTexture(rtexturepool_t *rtexturepool, const char *iden
 	glt->updatecallback = NULL;
 	glt->updatacallback_data = NULL;
 
-	if (data)
-	{
-		glt->inputtexels = (unsigned char *)Mem_Alloc(texturemempool, size);
-		memcpy(glt->inputtexels, data, size);
-	}
-	else
-		glt->inputtexels = NULL;
-
 	GL_Texture_CalcImageSize(glt->texturetype, glt->flags, glt->inputwidth, glt->inputheight, glt->inputdepth, &glt->tilewidth, &glt->tileheight, &glt->tiledepth);
-	R_PrecacheTexture(glt);
+
+	precache = false;
+	if (glt->flags & TEXF_ALWAYSPRECACHE)
+		precache = true;
+	else if (r_precachetextures.integer >= 2)
+		precache = true;
+	else if (r_precachetextures.integer >= 1)
+		if (glt->flags & TEXF_PRECACHE)
+			precache = true;
+
+	if (precache)
+	{
+		// immediate upload (most common case)
+		// data may be NULL (blank texture for dynamic rendering)
+		CHECKGLERROR
+		qglGenTextures(1, (GLuint *)&glt->texnum);CHECKGLERROR
+		R_Upload(glt, data, 0, 0, 0, glt->inputwidth, glt->inputheight, glt->inputdepth);
+	}
+	else if (data)
+	{
+		// deferred texture upload (menu graphics)
+		// optimize first if possible
+		if ((textype == TEXTYPE_BGRA || textype == TEXTYPE_RGBA) && glt->inputwidth * glt->inputheight * glt->inputdepth > glt->tilewidth * glt->tileheight * glt->tiledepth)
+		{
+			glt->inputtexels = (unsigned char *)Mem_Alloc(texturemempool, glt->tilewidth*glt->tileheight*glt->tiledepth*glt->sides*glt->bytesperpixel);
+			Image_Resample32(data, glt->inputwidth, glt->inputheight, glt->inputdepth, glt->inputtexels, glt->tilewidth, glt->tileheight, glt->tiledepth, r_lerpimages.integer);
+			// change texture size accordingly
+			glt->inputwidth = glt->tilewidth;
+			glt->inputheight = glt->tileheight;
+			glt->inputdepth = glt->tiledepth;
+			GL_Texture_CalcImageSize(glt->texturetype, glt->flags, glt->inputwidth, glt->inputheight, glt->inputdepth, &glt->tilewidth, &glt->tileheight, &glt->tiledepth);
+		}
+		else
+		{
+			glt->inputtexels = (unsigned char *)Mem_Alloc(texturemempool, size);
+			memcpy(glt->inputtexels, data, size);
+		}
+	}
 
 	// texture converting and uploading can take a while, so make sure we're sending keepalives
 	CL_KeepaliveMessage(false);
 
 	return (rtexture_t *)glt;
-}
-
-rtexture_t *R_LoadTexture1D(rtexturepool_t *rtexturepool, const char *identifier, int width, const unsigned char *data, textype_t textype, int flags, const unsigned int *palette)
-{
-	return R_SetupTexture(rtexturepool, identifier, width, 1, 1, 1, flags, textype, GLTEXTURETYPE_1D, data, palette);
 }
 
 rtexture_t *R_LoadTexture2D(rtexturepool_t *rtexturepool, const char *identifier, int width, int height, const unsigned char *data, textype_t textype, int flags, const unsigned int *palette)
@@ -1142,6 +1124,11 @@ rtexture_t *R_LoadTexture3D(rtexturepool_t *rtexturepool, const char *identifier
 rtexture_t *R_LoadTextureCubeMap(rtexturepool_t *rtexturepool, const char *identifier, int width, const unsigned char *data, textype_t textype, int flags, const unsigned int *palette)
 {
 	return R_SetupTexture(rtexturepool, identifier, width, width, 1, 6, flags, textype, GLTEXTURETYPE_CUBEMAP, data, palette);
+}
+
+rtexture_t *R_LoadTextureRectangle(rtexturepool_t *rtexturepool, const char *identifier, int width, int height, const unsigned char *data, textype_t textype, int flags, const unsigned int *palette)
+{
+	return R_SetupTexture(rtexturepool, identifier, width, height, 1, 1, flags, textype, GLTEXTURETYPE_RECTANGLE, data, palette);
 }
 
 static int R_ShadowMapTextureFlags(int precision, qboolean filter)
@@ -1171,11 +1158,6 @@ rtexture_t *R_LoadTextureShadowMapCube(rtexturepool_t *rtexturepool, const char 
     return R_SetupTexture(rtexturepool, identifier, width, width, 1, 6, R_ShadowMapTextureFlags(precision, filter), TEXTYPE_SHADOWMAP, GLTEXTURETYPE_CUBEMAP, NULL, NULL);
 }
 
-int R_TextureHasAlpha(rtexture_t *rt)
-{
-	return rt ? (((gltexture_t *)rt)->flags & TEXF_ALPHA) != 0 : false;
-}
-
 int R_TextureWidth(rtexture_t *rt)
 {
 	return rt ? ((gltexture_t *)rt)->inputwidth : 0;
@@ -1188,17 +1170,13 @@ int R_TextureHeight(rtexture_t *rt)
 
 void R_UpdateTexture(rtexture_t *rt, const unsigned char *data, int x, int y, int width, int height)
 {
-	gltexture_t *glt;
-	if (rt == NULL)
-		Host_Error("R_UpdateTexture: no texture supplied");
+	gltexture_t *glt = (gltexture_t *)rt;
 	if (data == NULL)
 		Host_Error("R_UpdateTexture: no data supplied");
-	glt = (gltexture_t *)rt;
-
-	// we need it to be uploaded before we can update a part of it
-	if (glt->flags & GLTEXF_UPLOAD)
-		R_UploadTexture(glt);
-
+	if (glt == NULL)
+		Host_Error("R_UpdateTexture: no texture supplied");
+	if (!glt->texnum)
+		Host_Error("R_UpdateTexture: texture has not been uploaded yet");
 	// update part of the texture
 	R_Upload(glt, data, x, y, 0, width, height, 1);
 }

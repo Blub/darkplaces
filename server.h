@@ -68,8 +68,6 @@ typedef struct server_connectfloodaddress_s
 }
 server_connectfloodaddress_t;
 
-#define MAX_CLIENTNETWORKEYES 256
-
 typedef struct server_s
 {
 	/// false if only a net client
@@ -423,17 +421,20 @@ extern cvar_t sv_gameplayfix_droptofloorstartsolid;
 extern cvar_t sv_gameplayfix_droptofloorstartsolid_nudgetocorrect;
 extern cvar_t sv_gameplayfix_easierwaterjump;
 extern cvar_t sv_gameplayfix_findradiusdistancetobox;
+extern cvar_t sv_gameplayfix_gravityunaffectedbyticrate;
 extern cvar_t sv_gameplayfix_grenadebouncedownslopes;
 extern cvar_t sv_gameplayfix_multiplethinksperframe;
-extern cvar_t sv_gameplayfix_slidemoveprojectiles;
 extern cvar_t sv_gameplayfix_noairborncorpse;
 extern cvar_t sv_gameplayfix_noairborncorpse_allowsuspendeditems;
+extern cvar_t sv_gameplayfix_nudgeoutofsolid;
+extern cvar_t sv_gameplayfix_nudgeoutofsolid_bias;
 extern cvar_t sv_gameplayfix_setmodelrealbox;
+extern cvar_t sv_gameplayfix_slidemoveprojectiles;
 extern cvar_t sv_gameplayfix_stepdown;
 extern cvar_t sv_gameplayfix_stepwhilejumping;
 extern cvar_t sv_gameplayfix_swiminbmodels;
 extern cvar_t sv_gameplayfix_upwardvelocityclearsongroundflag;
-extern cvar_t sv_gameplayfix_gravityunaffectedbyticrate;
+extern cvar_t sv_gameplayfix_downtracesupportsongroundflag;
 extern cvar_t sv_gravity;
 extern cvar_t sv_idealpitchscale;
 extern cvar_t sv_jumpstep;
@@ -494,6 +495,9 @@ int SV_ModelIndex(const char *s, int precachemode);
 int SV_SoundIndex(const char *s, int precachemode);
 
 int SV_ParticleEffectIndex(const char *name);
+
+dp_model_t *SV_GetModelByIndex(int modelindex);
+dp_model_t *SV_GetModelFromEdict(prvm_edict_t *ed);
 
 void SV_SetIdealPitch (void);
 

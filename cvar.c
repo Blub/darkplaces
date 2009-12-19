@@ -24,7 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 char *cvar_dummy_description = "custom cvar";
 
 cvar_t *cvar_vars = NULL;
-cvar_t *cvar_hashtable[65536];
+cvar_t *cvar_hashtable[CVAR_HASHSIZE];
 char *cvar_null_string = "";
 
 /*
@@ -38,7 +38,7 @@ cvar_t *Cvar_FindVar (const char *var_name)
 	cvar_t *var;
 
 	// use hash lookup to minimize search time
-	hashindex = CRC_Block((const unsigned char *)var_name, strlen(var_name));
+	hashindex = CRC_Block((const unsigned char *)var_name, strlen(var_name)) % CVAR_HASHSIZE;
 	for (var = cvar_hashtable[hashindex];var;var = var->nextonhashchain)
 		if (!strcmp (var_name, var->name))
 			return var;
@@ -233,6 +233,8 @@ void Cvar_SetQuick_Internal (cvar_t *var, const char *value)
 {
 	qboolean changed;
 	size_t valuelen;
+	prvm_prog_t *tmpprog;
+	int i;
 
 	changed = strcmp(var->string, value) != 0;
 	// LordHavoc: don't reallocate when there is no change
@@ -305,6 +307,49 @@ void Cvar_SetQuick_Internal (cvar_t *var, const char *value)
 		else if (!strcmp(var->name, "net_slist_favorites"))
 			NetConn_UpdateFavorites();
 	}
+
+	tmpprog = prog;
+	for(i = 0; i < PRVM_MAXPROGS; ++i)
+	{
+		if(PRVM_ProgLoaded(i))
+		{
+			PRVM_SetProg(i);
+			if(var->globaldefindex_progid[i] == prog->id)
+			{
+				// MUST BE SYNCED WITH prvm_edict.c PRVM_LoadProgs
+				int j;
+				const char *s;
+				prvm_eval_t *val = (prvm_eval_t *)(prog->globals.generic + prog->globaldefs[var->globaldefindex[i]].ofs);
+				switch(prog->globaldefs[var->globaldefindex[i]].type & ~DEF_SAVEGLOBAL)
+				{
+					case ev_float:
+						val->_float = var->value;
+						break;
+					case ev_vector:
+						s = var->string;
+						VectorClear(val->vector);
+						for (j = 0;j < 3;j++)
+						{
+							while (*s && ISWHITESPACE(*s))
+								s++;
+							if (!*s)
+								break;
+							val->vector[j] = atof(s);
+							while (!ISWHITESPACE(*s))
+								s++;
+							if (!*s)
+								break;
+						}
+						break;
+					case ev_string:
+						PRVM_ChangeEngineString(var->globaldefindex_stringno[i], var->string);
+						val->string = var->globaldefindex_stringno[i];
+						break;
+				}
+			}
+		}
+	}
+	prog = tmpprog;
 }
 
 void Cvar_SetQuick (cvar_t *var, const char *value)
@@ -449,7 +494,7 @@ void Cvar_RegisterVariable (cvar_t *variable)
 	variable->next = next;
 
 	// link to head of list in this hash table index
-	hashindex = CRC_Block((const unsigned char *)variable->name, strlen(variable->name));
+	hashindex = CRC_Block((const unsigned char *)variable->name, strlen(variable->name)) % CVAR_HASHSIZE;
 	variable->nextonhashchain = cvar_hashtable[hashindex];
 	cvar_hashtable[hashindex] = variable;
 }
@@ -491,6 +536,13 @@ cvar_t *Cvar_Get (const char *name, const char *value, int flags, const char *ne
 				cvar->description = cvar_dummy_description;
 		}
 		return cvar;
+	}
+
+// check for pure evil
+	if (!*name)
+	{
+		Con_Printf("Cvar_Get: invalid variable name\n");
+		return NULL;
 	}
 
 // check for overlap with a command
@@ -536,7 +588,7 @@ cvar_t *Cvar_Get (const char *name, const char *value, int flags, const char *ne
 	cvar->next = next;
 
 	// link to head of list in this hash table index
-	hashindex = CRC_Block((const unsigned char *)cvar->name, strlen(cvar->name));
+	hashindex = CRC_Block((const unsigned char *)cvar->name, strlen(cvar->name)) % CVAR_HASHSIZE;
 	cvar->nextonhashchain = cvar_hashtable[hashindex];
 	cvar_hashtable[hashindex] = cvar;
 
@@ -563,7 +615,7 @@ qboolean	Cvar_Command (void)
 // perform a variable print or set
 	if (Cmd_Argc() == 1)
 	{
-		Con_Printf("\"%s\" is \"%s\" [\"%s\"]\n", v->name, v->string, v->defstring);
+		Con_Printf("\"%s\" is \"%s\" [\"%s\"]\n", v->name, ((v->flags & CVAR_PRIVATE) ? "********"/*hunter2*/ : v->string), v->defstring);
 		return true;
 	}
 
@@ -653,11 +705,16 @@ with the archive flag set to true.
 void Cvar_WriteVariables (qfile_t *f)
 {
 	cvar_t	*var;
+	char buf1[MAX_INPUTLINE], buf2[MAX_INPUTLINE];
 
 	// don't save cvars that match their default value
 	for (var = cvar_vars ; var ; var = var->next)
 		if ((var->flags & CVAR_SAVE) && (strcmp(var->string, var->defstring) || (var->flags & CVAR_ALLOCATED)))
-			FS_Printf(f, "%s%s \"%s\"\n", var->flags & CVAR_ALLOCATED ? "seta " : "", var->name, var->string);
+		{
+			Cmd_QuoteString(buf1, sizeof(buf1), var->name, "\"\\$");
+			Cmd_QuoteString(buf2, sizeof(buf2), var->string, "\"\\$");
+			FS_Printf(f, "%s\"%s\" \"%s\"\n", var->flags & CVAR_ALLOCATED ? "seta " : "", buf1, buf2);
+		}
 }
 
 
@@ -695,7 +752,7 @@ void Cvar_List_f (void)
 		if (len && (ispattern ? !matchpattern_with_separator(cvar->name, partial, false, "", false) : strncmp (partial,cvar->name,len)))
 			continue;
 
-		Con_Printf("%s is \"%s\" [\"%s\"] %s\n", cvar->name, cvar->string, cvar->defstring, cvar->description);
+		Con_Printf("%s is \"%s\" [\"%s\"] %s\n", cvar->name, ((cvar->flags & CVAR_PRIVATE) ? "********"/*hunter2*/ : cvar->string), cvar->defstring, cvar->description);
 		count++;
 	}
 
