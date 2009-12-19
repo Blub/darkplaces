@@ -25,6 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "snd_ogg.h"
 #include "snd_modplug.h"
 #include "csprogs.h"
+#include "cl_collision.h"
 
 
 #define SND_MIN_SPEED 8000
@@ -169,8 +170,7 @@ cvar_t snd_spatialization_control = {CVAR_SAVE, "snd_spatialization_control", "0
 cvar_t snd_spatialization_occlusion = {CVAR_SAVE, "snd_spatialization_occlusion", "1", "enable occlusion testing on spatialized sounds, which simply quiets sounds that are blocked by the world"};
 
 // Cvars declared in snd_main.h (shared with other snd_*.c files)
-cvar_t _snd_mixahead = {CVAR_SAVE, "_snd_mixahead", "0.11", "how much sound to mix ahead of time"};
-cvar_t snd_streaming = { CVAR_SAVE, "snd_streaming", "1", "enables keeping compressed ogg sound files compressed, decompressing them only as needed, otherwise they will be decompressed completely at load (may use a lot of memory)"};
+cvar_t _snd_mixahead = {CVAR_SAVE, "_snd_mixahead", "0.15", "how much sound to mix ahead of time"};
 cvar_t snd_swapstereo = {CVAR_SAVE, "snd_swapstereo", "0", "swaps left/right speakers for old ISA soundblaster cards"};
 extern cvar_t v_flipped;
 cvar_t snd_channellayout = {0, "snd_channellayout", "0", "channel layout. Can be 0 (auto - snd_restart needed), 1 (standard layout), or 2 (ALSA layout)"};
@@ -844,7 +844,6 @@ void S_Init(void)
 	Cvar_RegisterVariable(&nosound);
 	Cvar_RegisterVariable(&snd_precache);
 	Cvar_RegisterVariable(&snd_initialized);
-	Cvar_RegisterVariable(&snd_streaming);
 	Cvar_RegisterVariable(&ambient_level);
 	Cvar_RegisterVariable(&ambient_fade);
 	Cvar_RegisterVariable(&snd_noextraupdate);
@@ -923,12 +922,16 @@ void S_UnloadAllSounds_f (void)
 S_FindName
 ==================
 */
+sfx_t changevolume_sfx = {""};
 sfx_t *S_FindName (const char *name)
 {
 	sfx_t *sfx;
 
 	if (!snd_initialized.integer)
 		return NULL;
+
+	if(!strcmp(name, changevolume_sfx.name))
+		return &changevolume_sfx;
 
 	if (strlen (name) >= sizeof (sfx->name))
 	{
@@ -1102,7 +1105,7 @@ S_IsSoundPrecached
 */
 qboolean S_IsSoundPrecached (const sfx_t *sfx)
 {
-	return (sfx != NULL && sfx->fetcher != NULL);
+	return (sfx != NULL && sfx->fetcher != NULL) || (sfx == &changevolume_sfx);
 }
 
 /*
@@ -1239,18 +1242,20 @@ void SND_Spatialize(channel_t *ch, qboolean isstatic)
 	// update sound origin if we know about the entity
 	if (ch->entnum > 0 && cls.state == ca_connected && cl_gameplayfix_soundsmovewithentities.integer)
 	{
-		if (ch->entnum >= 32768)
+		if (ch->entnum >= MAX_EDICTS)
 		{
 			//Con_Printf("-- entnum %i origin %f %f %f neworigin %f %f %f\n", ch->entnum, ch->origin[0], ch->origin[1], ch->origin[2], cl.entities[ch->entnum].state_current.origin[0], cl.entities[ch->entnum].state_current.origin[1], cl.entities[ch->entnum].state_current.origin[2]);
 
-			if (ch->entnum > 32768)
+			if (ch->entnum > MAX_EDICTS)
 				if (!CL_VM_GetEntitySoundOrigin(ch->entnum, ch->origin))
-					ch->entnum = 32768; // entity was removed, disown sound
+					ch->entnum = MAX_EDICTS; // entity was removed, disown sound
 		}
 		else if (cl.entities[ch->entnum].state_current.active)
 		{
+			dp_model_t *model;
 			//Con_Printf("-- entnum %i origin %f %f %f neworigin %f %f %f\n", ch->entnum, ch->origin[0], ch->origin[1], ch->origin[2], cl.entities[ch->entnum].state_current.origin[0], cl.entities[ch->entnum].state_current.origin[1], cl.entities[ch->entnum].state_current.origin[2]);
-			if (cl.entities[ch->entnum].state_current.modelindex && cl.model_precache[cl.entities[ch->entnum].state_current.modelindex] && cl.model_precache[cl.entities[ch->entnum].state_current.modelindex]->soundfromcenter)
+			model = CL_GetModelByIndex(cl.entities[ch->entnum].state_current.modelindex);
+			if (model && model->soundfromcenter)
 				VectorMAM(0.5f, cl.entities[ch->entnum].render.mins, 0.5f, cl.entities[ch->entnum].render.maxs, ch->origin);
 			else
 				Matrix4x4_OriginFromMatrix(&cl.entities[ch->entnum].render.matrix, ch->origin);
@@ -1264,7 +1269,7 @@ void SND_Spatialize(channel_t *ch, qboolean isstatic)
 		mastervol *= snd_staticvolume.value;
 	else if(!(ch->flags & CHANNELFLAG_FULLVOLUME)) // same as SND_PaintChannel uses
 	{
-		if(ch->entnum >= 32768)
+		if(ch->entnum >= MAX_EDICTS)
 		{
 			switch(ch->entchannel)
 			{
@@ -1445,11 +1450,29 @@ void S_PlaySfxOnChannel (sfx_t *sfx, channel_t *target_chan, unsigned int flags,
 
 int S_StartSound (int entnum, int entchannel, sfx_t *sfx, vec3_t origin, float fvol, float attenuation)
 {
-	channel_t *target_chan, *check;
+	channel_t *target_chan, *check, *ch;
 	int		ch_idx;
 
 	if (snd_renderbuffer == NULL || sfx == NULL || nosound.integer)
 		return -1;
+
+	if(sfx == &changevolume_sfx)
+	{
+		if(entchannel == 0)
+			return -1;
+		for (ch_idx=NUM_AMBIENTS ; ch_idx < NUM_AMBIENTS + MAX_DYNAMIC_CHANNELS ; ch_idx++)
+		{
+			ch = &channels[ch_idx];
+			if (ch->entnum == entnum && (ch->entchannel == entchannel || entchannel == -1) )
+			{
+				S_SetChannelVolume(ch_idx, fvol);
+				ch->dist_mult = attenuation / snd_soundradius.value;
+				SND_Spatialize(ch, false);
+				return ch_idx;
+			}
+		}
+		return -1;
+	}
 
 	if (sfx->fetcher == NULL)
 		return -1;

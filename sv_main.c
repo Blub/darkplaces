@@ -75,7 +75,7 @@ cvar_t sv_cullentities_trace_enlarge = {0, "sv_cullentities_trace_enlarge", "0",
 cvar_t sv_cullentities_trace_prediction = {0, "sv_cullentities_trace_prediction", "1", "also trace from the predicted player position"};
 cvar_t sv_cullentities_trace_prediction_time = {0, "sv_cullentities_trace_prediction_time", "0.2", "how many seconds of prediction to use"};
 cvar_t sv_cullentities_trace_entityocclusion = {0, "sv_cullentities_trace_entityocclusion", "0", "also check if doors and other bsp models are in the way"};
-cvar_t sv_cullentities_trace_samples = {0, "sv_cullentities_trace_samples", "1", "number of samples to test for entity culling"};
+cvar_t sv_cullentities_trace_samples = {0, "sv_cullentities_trace_samples", "2", "number of samples to test for entity culling"};
 cvar_t sv_cullentities_trace_samples_extra = {0, "sv_cullentities_trace_samples_extra", "2", "number of samples to test for entity culling when the entity affects its surroundings by e.g. dlight"};
 cvar_t sv_cullentities_trace_samples_players = {0, "sv_cullentities_trace_samples_players", "8", "number of samples to test for entity culling when the entity is a player entity"};
 cvar_t sv_debugmove = {CVAR_NOTIFY, "sv_debugmove", "0", "disables collision detection optimizations for debugging purposes"};
@@ -92,18 +92,21 @@ cvar_t sv_gameplayfix_droptofloorstartsolid = {0, "sv_gameplayfix_droptofloorsta
 cvar_t sv_gameplayfix_droptofloorstartsolid_nudgetocorrect = {0, "sv_gameplayfix_droptofloorstartsolid_nudgetocorrect", "1", "tries to nudge stuck items and monsters out of walls before droptofloor is performed"};
 cvar_t sv_gameplayfix_easierwaterjump = {0, "sv_gameplayfix_easierwaterjump", "1", "changes water jumping to make it easier to get out of water (exactly like in QuakeWorld)"};
 cvar_t sv_gameplayfix_findradiusdistancetobox = {0, "sv_gameplayfix_findradiusdistancetobox", "1", "causes findradius to check the distance to the corner of a box rather than the center of the box, makes findradius detect bmodels such as very large doors that would otherwise be unaffected by splash damage"};
+cvar_t sv_gameplayfix_gravityunaffectedbyticrate = {0, "sv_gameplayfix_gravityunaffectedbyticrate", "0", "fix some ticrate issues in physics."};
 cvar_t sv_gameplayfix_grenadebouncedownslopes = {0, "sv_gameplayfix_grenadebouncedownslopes", "1", "prevents MOVETYPE_BOUNCE (grenades) from getting stuck when fired down a downward sloping surface"};
 cvar_t sv_gameplayfix_multiplethinksperframe = {0, "sv_gameplayfix_multiplethinksperframe", "1", "allows entities to think more often than the server framerate, primarily useful for very high fire rate weapons"};
-cvar_t sv_gameplayfix_slidemoveprojectiles = {0, "sv_gameplayfix_slidemoveprojectiles", "1", "allows MOVETYPE_FLY/FLYMISSILE/TOSS/BOUNCE/BOUNCEMISSILE entities to finish their move in a frame even if they hit something, fixes 'gravity accumulation' bug for grenades on steep slopes"};
 cvar_t sv_gameplayfix_noairborncorpse = {0, "sv_gameplayfix_noairborncorpse", "1", "causes entities (corpses, items, etc) sitting ontop of moving entities (players) to fall when the moving entity (player) is no longer supporting them"};
 cvar_t sv_gameplayfix_noairborncorpse_allowsuspendeditems = {0, "sv_gameplayfix_noairborncorpse_allowsuspendeditems", "1", "causes entities sitting ontop of objects that are instantaneously remove to float in midair (special hack to allow a common level design trick for floating items)"};
+cvar_t sv_gameplayfix_nudgeoutofsolid = {0, "sv_gameplayfix_nudgeoutofsolid", "1", "attempts to fix physics errors (where an object ended up in solid for some reason)"};
+cvar_t sv_gameplayfix_nudgeoutofsolid_bias = {0, "sv_gameplayfix_nudgeoutofsolid_bias", "0", "over-correction on nudgeoutofsolid logic, to prevent constant contact"};
+cvar_t sv_gameplayfix_q2airaccelerate = {0, "sv_gameplayfix_q2airaccelerate", "0", "Quake2-style air acceleration"};
 cvar_t sv_gameplayfix_setmodelrealbox = {0, "sv_gameplayfix_setmodelrealbox", "1", "fixes a bug in Quake that made setmodel always set the entity box to ('-16 -16 -16', '16 16 16') rather than properly checking the model box, breaks some poorly coded mods"};
+cvar_t sv_gameplayfix_slidemoveprojectiles = {0, "sv_gameplayfix_slidemoveprojectiles", "1", "allows MOVETYPE_FLY/FLYMISSILE/TOSS/BOUNCE/BOUNCEMISSILE entities to finish their move in a frame even if they hit something, fixes 'gravity accumulation' bug for grenades on steep slopes"};
 cvar_t sv_gameplayfix_stepdown = {0, "sv_gameplayfix_stepdown", "0", "attempts to step down stairs, not just up them (prevents the familiar thud..thud..thud.. when running down stairs and slopes)"};
 cvar_t sv_gameplayfix_stepwhilejumping = {0, "sv_gameplayfix_stepwhilejumping", "1", "applies step-up onto a ledge even while airborn, useful if you would otherwise just-miss the floor when running across small areas with gaps (for instance running across the moving platforms in dm2, or jumping to the megahealth and red armor in dm2 rather than using the bridge)"};
 cvar_t sv_gameplayfix_swiminbmodels = {0, "sv_gameplayfix_swiminbmodels", "1", "causes pointcontents (used to determine if you are in a liquid) to check bmodel entities as well as the world model, so you can swim around in (possibly moving) water bmodel entities"};
 cvar_t sv_gameplayfix_upwardvelocityclearsongroundflag = {0, "sv_gameplayfix_upwardvelocityclearsongroundflag", "1", "prevents monsters, items, and most other objects from being stuck to the floor when pushed around by damage, and other situations in mods"};
-cvar_t sv_gameplayfix_gravityunaffectedbyticrate = {0, "sv_gameplayfix_gravityunaffectedbyticrate", "0", "fix some ticrate issues in physics."};
-cvar_t sv_gameplayfix_q2airaccelerate = {0, "sv_gameplayfix_q2airaccelerate", "0", "Quake2-style air acceleration"};
+cvar_t sv_gameplayfix_downtracesupportsongroundflag = {0, "sv_gameplayfix_downtracesupportsongroundflag", "1", "prevents very short moves from clearing onground (which may make the player stick to the floor at high netfps)"};
 cvar_t sv_gravity = {CVAR_NOTIFY, "sv_gravity","800", "how fast you fall (512 = roughly earth gravity)"};
 cvar_t sv_idealpitchscale = {0, "sv_idealpitchscale","0.8", "how much to look up/down slopes and stairs when not using freelook"};
 cvar_t sv_jumpstep = {CVAR_NOTIFY, "sv_jumpstep", "0", "whether you can step up while jumping (sv_gameplayfix_stepwhilejumping must also be 1)"};
@@ -401,18 +404,21 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_gameplayfix_droptofloorstartsolid_nudgetocorrect);
 	Cvar_RegisterVariable (&sv_gameplayfix_easierwaterjump);
 	Cvar_RegisterVariable (&sv_gameplayfix_findradiusdistancetobox);
+	Cvar_RegisterVariable (&sv_gameplayfix_gravityunaffectedbyticrate);
 	Cvar_RegisterVariable (&sv_gameplayfix_grenadebouncedownslopes);
 	Cvar_RegisterVariable (&sv_gameplayfix_multiplethinksperframe);
-	Cvar_RegisterVariable (&sv_gameplayfix_slidemoveprojectiles);
 	Cvar_RegisterVariable (&sv_gameplayfix_noairborncorpse);
 	Cvar_RegisterVariable (&sv_gameplayfix_noairborncorpse_allowsuspendeditems);
+	Cvar_RegisterVariable (&sv_gameplayfix_nudgeoutofsolid);
+	Cvar_RegisterVariable (&sv_gameplayfix_nudgeoutofsolid_bias);
+	Cvar_RegisterVariable (&sv_gameplayfix_q2airaccelerate);
 	Cvar_RegisterVariable (&sv_gameplayfix_setmodelrealbox);
+	Cvar_RegisterVariable (&sv_gameplayfix_slidemoveprojectiles);
 	Cvar_RegisterVariable (&sv_gameplayfix_stepdown);
 	Cvar_RegisterVariable (&sv_gameplayfix_stepwhilejumping);
 	Cvar_RegisterVariable (&sv_gameplayfix_swiminbmodels);
 	Cvar_RegisterVariable (&sv_gameplayfix_upwardvelocityclearsongroundflag);
-	Cvar_RegisterVariable (&sv_gameplayfix_gravityunaffectedbyticrate);
-	Cvar_RegisterVariable (&sv_gameplayfix_q2airaccelerate);
+	Cvar_RegisterVariable (&sv_gameplayfix_downtracesupportsongroundflag);
 	Cvar_RegisterVariable (&sv_gravity);
 	Cvar_RegisterVariable (&sv_idealpitchscale);
 	Cvar_RegisterVariable (&sv_jumpstep);
@@ -1059,7 +1065,7 @@ static qboolean SV_PrepareEntityForSending (prvm_edict_t *ent, entity_state_t *c
 	// LordHavoc: this could kill tags attached to an invisible entity, I
 	// just hope we never have to support that case
 	i = (int)ent->fields.server->modelindex;
-	modelindex = (i >= 1 && i < MAX_MODELS && ent->fields.server->model && *PRVM_GetString(ent->fields.server->model)) ? i : 0;
+	modelindex = (i >= 1 && i < MAX_MODELS && ent->fields.server->model && *PRVM_GetString(ent->fields.server->model) && sv.models[i]) ? i : 0;
 
 	flags = 0;
 	i = (int)(PRVM_EDICTFIELDVALUE(ent, prog->fieldoffsets.glow_size)->_float * 0.25f);
@@ -1231,7 +1237,7 @@ static qboolean SV_PrepareEntityForSending (prvm_edict_t *ent, entity_state_t *c
 	// calculate the visible box of this entity (don't use the physics box
 	// as that is often smaller than a model, and would not count
 	// specialvisibilityradius)
-	if ((model = sv.models[modelindex]) && (model->type != mod_null))
+	if ((model = SV_GetModelByIndex(modelindex)) && (model->type != mod_null))
 	{
 		float scale = cs->scale * (1.0f / 16.0f);
 		if (cs->angles[0] || cs->angles[2]) // pitch and roll
@@ -1349,7 +1355,6 @@ qboolean SV_CanSeeBox(int numtraces, vec_t enlarge, vec3_t eye, vec3_t entboxmin
 	dp_model_t *model;
 	prvm_edict_t *touch;
 	prvm_edict_t *touchedicts[MAX_EDICTS];
-	unsigned int modelindex;
 	vec3_t boxmins, boxmaxs;
 	vec3_t clipboxmins, clipboxmaxs;
 	vec3_t endpoints[MAX_LINEOFSIGHTTRACES];
@@ -1398,13 +1403,8 @@ qboolean SV_CanSeeBox(int numtraces, vec_t enlarge, vec3_t eye, vec3_t entboxmin
 		touch = touchedicts[touchindex];
 		if (touch->fields.server->solid != SOLID_BSP)
 			continue;
-		modelindex = (unsigned int)touch->fields.server->modelindex;
-		if (!modelindex)
-			continue;
-		if (modelindex >= MAX_MODELS)
-			continue; // error?
-		model = sv.models[(int)touch->fields.server->modelindex];
-		if (!model->brush.TraceLineOfSight)
+		model = SV_GetModelFromEdict(touch);
+		if (!model || !model->brush.TraceLineOfSight)
 			continue;
 		// skip obviously transparent entities
 		alpha = PRVM_EDICTFIELDVALUE(touch, prog->fieldoffsets.alpha)->_float;
@@ -1428,8 +1428,7 @@ qboolean SV_CanSeeBox(int numtraces, vec_t enlarge, vec3_t eye, vec3_t entboxmin
 		for (touchindex = 0;touchindex < numtouchedicts;touchindex++)
 		{
 			touch = touchedicts[touchindex];
-			modelindex = (unsigned int)touch->fields.server->modelindex;
-			model = (modelindex >= 1 && modelindex < MAX_MODELS) ? sv.models[(int)touch->fields.server->modelindex] : NULL;
+			model = SV_GetModelFromEdict(touch);
 			if(model && model->brush.TraceLineOfSight)
 			{
 				// get the entity matrix
@@ -1490,7 +1489,7 @@ void SV_MarkWriteEntityStateToClient(entity_state_t *s)
 		if (!s->modelindex && s->specialvisibilityradius == 0)
 			return;
 
-		isbmodel = (model = sv.models[s->modelindex]) != NULL && model->name[0] == '*';
+		isbmodel = (model = SV_GetModelByIndex(s->modelindex)) != NULL && model->name[0] == '*';
 		// viewmodels don't have visibility checking
 		if (s->viewmodelforclient)
 		{
@@ -2766,6 +2765,20 @@ int SV_ParticleEffectIndex(const char *name)
 	return 0;
 }
 
+dp_model_t *SV_GetModelByIndex(int modelindex)
+{
+	return (modelindex > 0 && modelindex < MAX_MODELS) ? sv.models[modelindex] : NULL;
+}
+
+dp_model_t *SV_GetModelFromEdict(prvm_edict_t *ed)
+{
+	int modelindex;
+	if (!ed || ed->priv.server->free)
+		return NULL;
+	modelindex = (int)ed->fields.server->modelindex;
+	return (modelindex > 0 && modelindex < MAX_MODELS) ? sv.models[modelindex] : NULL;
+}
+
 /*
 ================
 SV_CreateBaseline
@@ -3292,6 +3305,7 @@ static void SV_VM_CB_FreeEdict(prvm_edict_t *ed)
 	ed->fields.server->nextthink = -1;
 	ed->fields.server->solid = 0;
 
+	VM_RemoveEdictSkeleton(ed);
 	World_Physics_RemoveFromEntity(&sv.world, ed);
 	World_Physics_RemoveJointFromEntity(&sv.world, ed);
 
