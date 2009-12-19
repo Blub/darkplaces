@@ -23,8 +23,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "r_shadow.h"
 #include "portals.h"
 
-#define MAX_LIGHTMAP_SIZE 256
-
 cvar_t r_ambient = {0, "r_ambient", "0", "brightens map, value is 0-128"};
 cvar_t r_lockpvs = {0, "r_lockpvs", "0", "disables pvs switching, allows you to walk around and inspect what is visible from a given location in the map (anything not visible from your current location will not be drawn)"};
 cvar_t r_lockvisibility = {0, "r_lockvisibility", "0", "disables visibility updates, allows you to walk around and inspect what is visible from a given viewpoint in the map (anything offscreen at the moment this is enabled will not be drawn)"};
@@ -364,7 +362,7 @@ static void R_DrawPortal_Callback(const entity_render_t *ent, const rtlight_t *r
 			 isvis ? 0.125f : 0.03125f);
 	for (i = 0, v = vertex3f;i < numpoints;i++, v += 3)
 		VectorCopy(portal->points[i].position, v);
-	R_Mesh_Draw(0, numpoints, 0, numpoints - 2, NULL, polygonelements, 0, 0);
+	R_Mesh_Draw(0, numpoints, 0, numpoints - 2, polygonelement3i, polygonelement3s, 0, 0);
 }
 
 // LordHavoc: this is just a nice debugging tool, very slow
@@ -435,7 +433,7 @@ void R_View_WorldVisibility(qboolean forcenovis)
 	viewleaf = model->brush.PointInLeaf ? model->brush.PointInLeaf(model, r_refdef.view.origin) : NULL;
 	// if possible fetch the visible cluster bits
 	if (!r_lockpvs.integer && model->brush.FatPVS)
-		model->brush.FatPVS(model, r_refdef.view.origin, 2, r_refdef.viewcache.world_pvsbits, sizeof(r_refdef.viewcache.world_pvsbits), false);
+		model->brush.FatPVS(model, r_refdef.view.origin, 2, r_refdef.viewcache.world_pvsbits, (r_refdef.viewcache.world_numclusters+7)>>3, false);
 
 	if (!r_lockvisibility.integer)
 	{
@@ -541,9 +539,9 @@ void R_Q1BSP_DrawSky(entity_render_t *ent)
 	if (ent->model == NULL)
 		return;
 	if (ent == r_refdef.scene.worldentity)
-		R_DrawWorldSurfaces(true, true, false, false);
+		R_DrawWorldSurfaces(true, true, false, false, false);
 	else
-		R_DrawModelSurfaces(ent, true, true, false, false);
+		R_DrawModelSurfaces(ent, true, true, false, false, false);
 }
 
 extern void R_Water_AddWaterPlane(msurface_t *surface);
@@ -592,9 +590,9 @@ void R_Q1BSP_Draw(entity_render_t *ent)
 	if (model == NULL)
 		return;
 	if (ent == r_refdef.scene.worldentity)
-		R_DrawWorldSurfaces(false, true, false, false);
+		R_DrawWorldSurfaces(false, true, false, false, false);
 	else
-		R_DrawModelSurfaces(ent, false, true, false, false);
+		R_DrawModelSurfaces(ent, false, true, false, false, false);
 }
 
 void R_Q1BSP_DrawDepth(entity_render_t *ent)
@@ -612,9 +610,9 @@ void R_Q1BSP_DrawDepth(entity_render_t *ent)
 	R_Mesh_ResetTextureState();
 	R_SetupDepthOrShadowShader();
 	if (ent == r_refdef.scene.worldentity)
-		R_DrawWorldSurfaces(false, false, true, false);
+		R_DrawWorldSurfaces(false, false, true, false, false);
 	else
-		R_DrawModelSurfaces(ent, false, false, true, false);
+		R_DrawModelSurfaces(ent, false, false, true, false, false);
 	GL_ColorMask(r_refdef.view.colormask[0], r_refdef.view.colormask[1], r_refdef.view.colormask[2], 1);
 }
 
@@ -623,9 +621,20 @@ void R_Q1BSP_DrawDebug(entity_render_t *ent)
 	if (ent->model == NULL)
 		return;
 	if (ent == r_refdef.scene.worldentity)
-		R_DrawWorldSurfaces(false, false, false, true);
+		R_DrawWorldSurfaces(false, false, false, true, false);
 	else
-		R_DrawModelSurfaces(ent, false, false, false, true);
+		R_DrawModelSurfaces(ent, false, false, false, true, false);
+}
+
+void R_Q1BSP_DrawPrepass(entity_render_t *ent)
+{
+	dp_model_t *model = ent->model;
+	if (model == NULL)
+		return;
+	if (ent == r_refdef.scene.worldentity)
+		R_DrawWorldSurfaces(false, true, false, false, true);
+	else
+		R_DrawModelSurfaces(ent, false, true, false, false, true);
 }
 
 typedef struct r_q1bsp_getlightinfo_s
@@ -650,6 +659,8 @@ typedef struct r_q1bsp_getlightinfo_s
 	const unsigned char *pvs;
 	qboolean svbsp_active;
 	qboolean svbsp_insertoccluder;
+	int numfrustumplanes;
+	const mplane_t *frustumplanes;
 }
 r_q1bsp_getlightinfo_t;
 
@@ -664,7 +675,7 @@ static void R_Q1BSP_RecursiveGetLightInfo(r_q1bsp_getlightinfo_t *info, mnode_t 
 		//	return;
 		if (!plane)
 			break;
-		//if (!r_shadow_compilingrtlight && R_CullBoxCustomPlanes(node->mins, node->maxs, rsurface.rtlight_numfrustumplanes, rsurface.rtlight_frustumplanes))
+		//if (!r_shadow_compilingrtlight && R_CullBoxCustomPlanes(node->mins, node->maxs, rtlight->cached_numfrustumplanes, rtlight->cached_frustumplanes))
 		//	return;
 		if (plane->type < 3)
 		{
@@ -706,7 +717,7 @@ static void R_Q1BSP_RecursiveGetLightInfo(r_q1bsp_getlightinfo_t *info, mnode_t 
 				node = node->children[sides - 1];
 		}
 	}
-	if (!r_shadow_compilingrtlight && R_CullBoxCustomPlanes(node->mins, node->maxs, rsurface.rtlight_numfrustumplanes, rsurface.rtlight_frustumplanes))
+	if (!r_shadow_compilingrtlight && R_CullBoxCustomPlanes(node->mins, node->maxs, info->numfrustumplanes, info->frustumplanes))
 		return;
 	leaf = (mleaf_t *)node;
 	if (info->svbsp_active)
@@ -917,7 +928,7 @@ static void R_Q1BSP_CallRecursiveGetLightInfo(r_q1bsp_getlightinfo_t *info, qboo
 	}
 }
 
-void R_Q1BSP_GetLightInfo(entity_render_t *ent, vec3_t relativelightorigin, float lightradius, vec3_t outmins, vec3_t outmaxs, int *outleaflist, unsigned char *outleafpvs, int *outnumleafspointer, int *outsurfacelist, unsigned char *outsurfacepvs, int *outnumsurfacespointer, unsigned char *outshadowtrispvs, unsigned char *outlighttrispvs, unsigned char *visitingleafpvs)
+void R_Q1BSP_GetLightInfo(entity_render_t *ent, vec3_t relativelightorigin, float lightradius, vec3_t outmins, vec3_t outmaxs, int *outleaflist, unsigned char *outleafpvs, int *outnumleafspointer, int *outsurfacelist, unsigned char *outsurfacepvs, int *outnumsurfacespointer, unsigned char *outshadowtrispvs, unsigned char *outlighttrispvs, unsigned char *visitingleafpvs, int numfrustumplanes, const mplane_t *frustumplanes)
 {
 	r_q1bsp_getlightinfo_t info;
 	VectorCopy(relativelightorigin, info.relativelightorigin);
@@ -946,6 +957,8 @@ void R_Q1BSP_GetLightInfo(entity_render_t *ent, vec3_t relativelightorigin, floa
 	info.outshadowtrispvs = outshadowtrispvs;
 	info.outlighttrispvs = outlighttrispvs;
 	info.outnumsurfaces = 0;
+	info.numfrustumplanes = numfrustumplanes;
+	info.frustumplanes = frustumplanes;
 	VectorCopy(info.relativelightorigin, info.outmins);
 	VectorCopy(info.relativelightorigin, info.outmaxs);
 	memset(visitingleafpvs, 0, (info.model->brush.num_leafs + 7) >> 3);
@@ -1019,7 +1032,7 @@ extern cvar_t r_polygonoffset_submodel_offset;
 void R_Q1BSP_DrawShadowVolume(entity_render_t *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int modelnumsurfaces, const int *modelsurfacelist, const vec3_t lightmins, const vec3_t lightmaxs)
 {
 	dp_model_t *model = ent->model;
-	msurface_t *surface;
+	const msurface_t *surface;
 	int modelsurfacelistindex;
 	float projectdistance = relativelightdirection ? lightradius : lightradius + model->radius*2 + r_shadow_projectdistance.value;
 	// check the box in modelspace, it was already checked in worldspace
@@ -1084,7 +1097,7 @@ void R_Q1BSP_CompileShadowMap(entity_render_t *ent, vec3_t relativelightorigin, 
 void R_Q1BSP_DrawShadowMap(int side, entity_render_t *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int modelnumsurfaces, const int *modelsurfacelist, const unsigned char *surfacesides, const vec3_t lightmins, const vec3_t lightmaxs)
 {
 	dp_model_t *model = ent->model;
-	msurface_t *surface, *batch[64];
+	const msurface_t *surface, *batch[1024];
 	int modelsurfacelistindex, batchsize;
 	// check the box in modelspace, it was already checked in worldspace
 	if (!BoxesOverlap(model->normalmins, model->normalmaxs, lightmins, lightmaxs))
@@ -1103,7 +1116,7 @@ void R_Q1BSP_DrawShadowMap(int side, entity_render_t *ent, const vec3_t relative
 		r_refdef.stats.lights_dynamicshadowtriangles += surface->num_triangles;
 		r_refdef.stats.lights_shadowtriangles += surface->num_triangles;
 		batch[0] = surface;
-        batchsize = 1;
+		batchsize = 1;
 		while(++modelsurfacelistindex < modelnumsurfaces && batchsize < (int)(sizeof(batch)/sizeof(batch[0])))
 		{
 			surface = model->data_surfaces + modelsurfacelist[modelsurfacelistindex];
@@ -1131,7 +1144,7 @@ static void R_Q1BSP_DrawLight_TransparentCallback(const entity_render_t *ent, co
 {
 	int i, j, endsurface;
 	texture_t *t;
-	msurface_t *surface;
+	const msurface_t *surface;
 	// note: in practice this never actually receives batches), oh well
 	R_Shadow_RenderMode_Begin();
 	R_Shadow_RenderMode_ActiveLight(rtlight);
@@ -1161,7 +1174,7 @@ static void R_Q1BSP_DrawLight_TransparentCallback(const entity_render_t *ent, co
 void R_Q1BSP_DrawLight(entity_render_t *ent, int numsurfaces, const int *surfacelist, const unsigned char *trispvs)
 {
 	dp_model_t *model = ent->model;
-	msurface_t *surface;
+	const msurface_t *surface;
 	int i, k, kend, l, m, mend, endsurface, batchnumsurfaces, batchnumtriangles, batchfirstvertex, batchlastvertex, batchfirsttriangle;
 	qboolean usebufferobject, culltriangles;
 	const int *element3i;
@@ -1287,7 +1300,8 @@ void R_ReplaceWorldTexture (void)
 	skinframe_t *skinframe;
 	if (!r_refdef.scene.worldmodel)
 	{
-		Con_Printf("There is no worldmodel\n");
+		if (gamemode != GAME_BLOODOMNICIDE)
+			Con_Printf("There is no worldmodel\n");
 		return;
 	}
 	m = r_refdef.scene.worldmodel;
@@ -1300,7 +1314,8 @@ void R_ReplaceWorldTexture (void)
 	}
 	if(!cl.islocalgame || !cl.worldmodel)
 	{
-		Con_Print("This command works only in singleplayer\n");
+		if (gamemode != GAME_BLOODOMNICIDE)
+			Con_Print("This command works only in singleplayer\n");
 		return;
 	}
 	r = Cmd_Argv(1);
@@ -1316,11 +1331,13 @@ void R_ReplaceWorldTexture (void)
 //				t->skinframes[0] = skinframe;
 				t->currentskinframe = skinframe;
 				t->currentskinframe = skinframe;
-				Con_Printf("%s replaced with %s\n", r, newt);
+				if (gamemode != GAME_BLOODOMNICIDE)
+					Con_Printf("%s replaced with %s\n", r, newt);
 			}
 			else
 			{
-				Con_Printf("%s was not found\n", newt);
+				if (gamemode != GAME_BLOODOMNICIDE)
+					Con_Printf("%s was not found\n", newt);
 				return;
 			}
 		}

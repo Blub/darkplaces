@@ -6,13 +6,15 @@
 cvar_t r_sky = {CVAR_SAVE, "r_sky", "1", "enables sky rendering (black otherwise)"};
 cvar_t r_skyscroll1 = {CVAR_SAVE, "r_skyscroll1", "1", "speed at which upper clouds layer scrolls in quake sky"};
 cvar_t r_skyscroll2 = {CVAR_SAVE, "r_skyscroll2", "2", "speed at which lower clouds layer scrolls in quake sky"};
-int skyrendernow;
+int skyrenderlater;
 int skyrendermasked;
 
 static int skyrendersphere;
 static int skyrenderbox;
 static rtexturepool_t *skytexturepool;
 static char skyname[MAX_QPATH];
+static matrix4x4_t skymatrix;
+static matrix4x4_t skyinversematrix;
 
 typedef struct suffixinfo_s
 {
@@ -48,22 +50,21 @@ static const suffixinfo_t suffix[3][6] =
 	}
 };
 
-static rtexture_t *skyboxside[6];
+static skinframe_t *skyboxskinframe[6];
 
 void R_SkyStartFrame(void)
 {
-	skyrendernow = false;
 	skyrendersphere = false;
 	skyrenderbox = false;
 	skyrendermasked = false;
-	if (r_sky.integer && !(r_refdef.fogenabled && r_refdef.fogmasktable[FOGMASKTABLEWIDTH-1] < (1.0f / 256.0f)))
+	// for depth-masked sky, we need to know whether any sky was rendered
+	skyrenderlater = false;
+	if (r_sky.integer)
 	{
-		if (skyboxside[0] || skyboxside[1] || skyboxside[2] || skyboxside[3] || skyboxside[4] || skyboxside[5])
+		if (skyboxskinframe[0] || skyboxskinframe[1] || skyboxskinframe[2] || skyboxskinframe[3] || skyboxskinframe[4] || skyboxskinframe[5])
 			skyrenderbox = true;
-		else if (r_refdef.scene.worldmodel && r_refdef.scene.worldmodel->brush.solidskytexture)
+		else if (r_refdef.scene.worldmodel && r_refdef.scene.worldmodel->brush.solidskyskinframe)
 			skyrendersphere = true;
-		// for depth-masked sky, render the sky on the first sky surface encountered
-		skyrendernow = true;
 		skyrendermasked = true;
 	}
 }
@@ -79,12 +80,12 @@ void R_UnloadSkyBox(void)
 	int c = 0;
 	for (i = 0;i < 6;i++)
 	{
-		if (skyboxside[i])
+		if (skyboxskinframe[i])
 		{
-			R_FreeTexture(skyboxside[i]);
+			// TODO: make a R_SkinFrame_Purge for single skins...
 			c++;
 		}
-		skyboxside[i] = NULL;
+		skyboxskinframe[i] = NULL;
 	}
 	if (c && developer_loading.integer)
 		Con_Printf("unloading skybox\n");
@@ -121,7 +122,7 @@ int R_LoadSkyBox(void)
 			}
 			temp = (unsigned char *)Mem_Alloc(tempmempool, image_width*image_height*4);
 			Image_CopyMux (temp, image_buffer, image_width, image_height, suffix[j][i].flipx, suffix[j][i].flipy, suffix[j][i].flipdiagonal, 4, 4, indices);
-			skyboxside[i] = R_LoadTexture2D(skytexturepool, va("skyboxside%d", i), image_width, image_height, temp, TEXTYPE_BGRA, TEXF_CLAMP | TEXF_PRECACHE | (gl_texturecompression_sky.integer ? TEXF_COMPRESS : 0), NULL);
+			skyboxskinframe[i] = R_SkinFrame_LoadInternalBGRA(va("skyboxside%d", i), TEXF_CLAMP | TEXF_PRECACHE | (gl_texturecompression_sky.integer ? TEXF_COMPRESS : 0), temp, image_width, image_height);
 			Mem_Free(image_buffer);
 			Mem_Free(temp);
 			success++;
@@ -252,7 +253,29 @@ static const float skyboxtexcoord2f[6*4*2] =
 	0, 0
 };
 
-static const unsigned short skyboxelements[6*2*3] =
+static const int skyboxelement3i[6*2*3] =
+{
+	// skyside[3]
+	 0,  1,  2,
+	 0,  2,  3,
+	// skyside[1]
+	 4,  5,  6,
+	 4,  6,  7,
+	// skyside[0]
+	 8,  9, 10,
+	 8, 10, 11,
+	// skyside[2]
+	12, 13, 14,
+	12, 14, 15,
+	// skyside[4]
+	16, 17, 18,
+	16, 18, 19,
+	// skyside[5]
+	20, 21, 22,
+	20, 22, 23
+};
+
+static const unsigned short skyboxelement3s[6*2*3] =
 {
 	// skyside[3]
 	 0,  1,  2,
@@ -277,39 +300,9 @@ static const unsigned short skyboxelements[6*2*3] =
 static void R_SkyBox(void)
 {
 	int i;
-	// FIXME: fixed function path can't properly handle r_refdef.view.colorscale > 1
-	GL_Color(1 * r_refdef.view.colorscale, 1 * r_refdef.view.colorscale, 1 * r_refdef.view.colorscale, 1);
-	GL_BlendFunc(GL_ONE, GL_ZERO);
-	GL_CullFace(GL_NONE);
-	GL_DepthMask(false);
-	GL_DepthRange(0, 1);
-	GL_PolygonOffset(0, 0);
-	GL_DepthTest(false); // don't modify or read zbuffer
-	R_Mesh_VertexPointer(skyboxvertex3f, 0, 0);
-	R_Mesh_ColorPointer(NULL, 0, 0);
-	R_Mesh_ResetTextureState();
-	R_Mesh_TexCoordPointer(0, 2, skyboxtexcoord2f, 0, 0);
-	R_SetupGenericShader(true);
-	GL_LockArrays(0, 6*4);
+	RSurf_ActiveCustomEntity(&skymatrix, &skyinversematrix, 0, 0, 1, 1, 1, 1, 6*4, skyboxvertex3f, skyboxtexcoord2f, NULL, NULL, NULL, NULL, 6*2, skyboxelement3i, skyboxelement3s, false, false);
 	for (i = 0;i < 6;i++)
-	{
-		R_Mesh_TexBind(0, R_GetTexture(skyboxside[i]));
-		R_Mesh_Draw(0, 6*4, i*2, 2, NULL, skyboxelements, 0, 0);
-	}
-
-	if(r_refdef.fogenabled)
-	{
-		R_SetupGenericShader(false);
-		GL_BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		GL_Color(r_refdef.fogcolor[0], r_refdef.fogcolor[1], r_refdef.fogcolor[2], 1 - r_refdef.fogmasktable[FOGMASKTABLEWIDTH-1]);
-		for (i = 0;i < 6;i++)
-		{
-			R_Mesh_TexBind(0, 0);
-			R_Mesh_Draw(0, 6*4, i*2, 2, NULL, skyboxelements, 0, 0);
-		}
-	}
-
-	GL_LockArrays(0, 0);
+		R_DrawCustomSurface(skyboxskinframe[i], &identitymatrix, MATERIALFLAG_FULLBRIGHT | MATERIALFLAG_NOCULLFACE | MATERIALFLAG_NODEPTHTEST, i*4, 4, i*2, 2, false, false);
 }
 
 #define skygridx 32
@@ -322,7 +315,8 @@ static void R_SkyBox(void)
 #define skysphere_numtriangles (skygridx * skygridy * 2)
 static float skysphere_vertex3f[skysphere_numverts * 3];
 static float skysphere_texcoord2f[skysphere_numverts * 2];
-static unsigned short skysphere_elements[skysphere_numtriangles * 3];
+static int skysphere_element3i[skysphere_numtriangles * 3];
+static unsigned short skysphere_element3s[skysphere_numtriangles * 3];
 
 static void skyspherecalc(void)
 {
@@ -330,9 +324,9 @@ static void skyspherecalc(void)
 	unsigned short *e;
 	float a, b, x, ax, ay, v[3], length, *vertex3f, *texcoord2f;
 	float dx, dy, dz;
-	dx = 16;
-	dy = 16;
-	dz = 16 / 3;
+	dx = 16.0f;
+	dy = 16.0f;
+	dz = 16.0f / 3.0f;
 	vertex3f = skysphere_vertex3f;
 	texcoord2f = skysphere_texcoord2f;
 	for (j = 0;j <= skygridy;j++)
@@ -355,7 +349,7 @@ static void skyspherecalc(void)
 			*vertex3f++ = v[2];
 		}
 	}
-	e = skysphere_elements;
+	e = skysphere_element3s;
 	for (j = 0;j < skygridy;j++)
 	{
 		for (i = 0;i < skygridx;i++)
@@ -369,11 +363,13 @@ static void skyspherecalc(void)
 			*e++ = (j + 1) * skygridx1 + i;
 		}
 	}
+	for (i = 0;i < skysphere_numtriangles*3;i++)
+		skysphere_element3i[i] = skysphere_element3s[i];
 }
 
 static void R_SkySphere(void)
 {
-	float speedscale;
+	double speedscale;
 	static qboolean skysphereinitialized = false;
 	matrix4x4_t scroll1matrix, scroll2matrix;
 	if (!skysphereinitialized)
@@ -386,96 +382,42 @@ static void R_SkySphere(void)
 
 	// scroll speed for upper layer
 	speedscale = r_refdef.scene.time*r_skyscroll1.value*8.0/128.0;
-	speedscale -= (int)speedscale;
+	speedscale -= floor(speedscale);
 	Matrix4x4_CreateTranslate(&scroll1matrix, speedscale, speedscale, 0);
 	// scroll speed for lower layer (transparent layer)
 	speedscale = r_refdef.scene.time*r_skyscroll2.value*8.0/128.0;
-	speedscale -= (int)speedscale;
+	speedscale -= floor(speedscale);
 	Matrix4x4_CreateTranslate(&scroll2matrix, speedscale, speedscale, 0);
 
-	// FIXME: fixed function path can't properly handle r_refdef.view.colorscale > 1
-	GL_Color(1 * r_refdef.view.colorscale, 1 * r_refdef.view.colorscale, 1 * r_refdef.view.colorscale, 1);
-	GL_BlendFunc(GL_ONE, GL_ZERO);
-	GL_CullFace(GL_NONE);
-	GL_DepthMask(true);
-	GL_DepthRange(0, 1);
-	GL_PolygonOffset(0, 0);
-	GL_DepthTest(false); // don't modify or read zbuffer
-	R_Mesh_VertexPointer(skysphere_vertex3f, 0, 0);
-	R_Mesh_ColorPointer(NULL, 0, 0);
-	R_Mesh_ResetTextureState();
-	R_Mesh_TexBind(0, R_GetTexture(r_refdef.scene.worldmodel->brush.solidskytexture));
-	R_Mesh_TexCoordPointer(0, 2, skysphere_texcoord2f, 0, 0);
-	R_Mesh_TexMatrix(0, &scroll1matrix);
-	if (r_textureunits.integer >= 2 && r_refdef.view.colorscale == 1)
-	{
-		// one pass using GL_DECAL or GL_INTERPOLATE_ARB for alpha layer
-		R_SetupGenericTwoTextureShader(GL_DECAL);
-		R_Mesh_TexBind(1, R_GetTexture(r_refdef.scene.worldmodel->brush.alphaskytexture));
-		R_Mesh_TexCoordPointer(1, 2, skysphere_texcoord2f, 0, 0);
-		R_Mesh_TexMatrix(1, &scroll2matrix);
-		GL_LockArrays(0, skysphere_numverts);
-		R_Mesh_Draw(0, skysphere_numverts, 0, skysphere_numtriangles, NULL, skysphere_elements, 0, 0);
-		GL_LockArrays(0, 0);
-		R_Mesh_TexBind(1, 0);
-	}
-	else
-	{
-		// two pass
-		R_SetupGenericShader(true);
-		GL_LockArrays(0, skysphere_numverts);
-		R_Mesh_Draw(0, skysphere_numverts, 0, skysphere_numtriangles, NULL, skysphere_elements, 0, 0);
-
-		GL_BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		R_Mesh_TexBind(0, R_GetTexture(r_refdef.scene.worldmodel->brush.alphaskytexture));
-		R_Mesh_TexMatrix(0, &scroll2matrix);
-		GL_LockArrays(0, skysphere_numverts);
-		R_Mesh_Draw(0, skysphere_numverts, 0, skysphere_numtriangles, NULL, skysphere_elements, 0, 0);
-		GL_LockArrays(0, 0);
-	}
-
-	if(r_refdef.fogenabled)
-	{
-		R_SetupGenericShader(false);
-		R_Mesh_TexBind(0, 0);
-		GL_BlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-		GL_Color(r_refdef.fogcolor[0], r_refdef.fogcolor[1], r_refdef.fogcolor[2], 1 - r_refdef.fogmasktable[FOGMASKTABLEWIDTH-1]);
-		GL_LockArrays(0, skysphere_numverts);
-		R_Mesh_Draw(0, skysphere_numverts, 0, skysphere_numtriangles, NULL, skysphere_elements, 0, 0);
-		GL_LockArrays(0, 0);
-	}
+	RSurf_ActiveCustomEntity(&skymatrix, &skyinversematrix, 0, 0, 1, 1, 1, 1, skysphere_numverts, skysphere_vertex3f, skysphere_texcoord2f, NULL, NULL, NULL, NULL, skysphere_numtriangles, skysphere_element3i, skysphere_element3s, false, false);
+	R_DrawCustomSurface(r_refdef.scene.worldmodel->brush.solidskyskinframe, &scroll1matrix, MATERIALFLAG_FULLBRIGHT | MATERIALFLAG_NOCULLFACE | MATERIALFLAG_NODEPTHTEST                                            , 0, skysphere_numverts, 0, skysphere_numtriangles, false, false);
+	R_DrawCustomSurface(r_refdef.scene.worldmodel->brush.alphaskyskinframe, &scroll2matrix, MATERIALFLAG_FULLBRIGHT | MATERIALFLAG_NOCULLFACE | MATERIALFLAG_NODEPTHTEST | MATERIALFLAG_ALPHA | MATERIALFLAG_BLENDED, 0, skysphere_numverts, 0, skysphere_numtriangles, false, false);
 }
 
 void R_Sky(void)
 {
-	matrix4x4_t skymatrix;
-	if (skyrendermasked)
+	Matrix4x4_CreateFromQuakeEntity(&skymatrix, r_refdef.view.origin[0], r_refdef.view.origin[1], r_refdef.view.origin[2], 0, 0, 0, r_refdef.farclip * (0.5f / 16.0f));
+	Matrix4x4_Invert_Simple(&skyinversematrix, &skymatrix);
+
+	if (skyrendersphere)
 	{
-		Matrix4x4_CreateTranslate(&skymatrix, r_refdef.view.origin[0], r_refdef.view.origin[1], r_refdef.view.origin[2]);
-		R_Mesh_Matrix(&skymatrix);
-		if (skyrendersphere)
-		{
-			// this does not modify depth buffer
-			R_SkySphere();
-		}
-		else if (skyrenderbox)
-		{
-			// this does not modify depth buffer
-			R_SkyBox();
-		}
-		/* this will be skyroom someday
-		else
-		{
-			// this modifies the depth buffer so we have to clear it afterward
-			//R_SkyRoom();
-			// clear the depthbuffer that was used while rendering the skyroom
-			//GL_Clear(GL_DEPTH_BUFFER_BIT);
-		}
-		*/
-		GL_DepthRange(0, 1);
-		GL_DepthTest(true);
-		GL_DepthMask(true);
+		// this does not modify depth buffer
+		R_SkySphere();
 	}
+	else if (skyrenderbox)
+	{
+		// this does not modify depth buffer
+		R_SkyBox();
+	}
+	/* this will be skyroom someday
+	else
+	{
+		// this modifies the depth buffer so we have to clear it afterward
+		//R_SkyRoom();
+		// clear the depthbuffer that was used while rendering the skyroom
+		//GL_Clear(GL_DEPTH_BUFFER_BIT);
+	}
+	*/
 }
 
 //===============================================================
@@ -510,7 +452,7 @@ void R_Sky_Init(void)
 	Cvar_RegisterVariable (&r_sky);
 	Cvar_RegisterVariable (&r_skyscroll1);
 	Cvar_RegisterVariable (&r_skyscroll2);
-	memset(&skyboxside, 0, sizeof(skyboxside));
+	memset(&skyboxskinframe, 0, sizeof(skyboxskinframe));
 	skyname[0] = 0;
 	R_RegisterModule("R_Sky", r_sky_start, r_sky_shutdown, r_sky_newmap);
 }

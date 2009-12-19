@@ -26,17 +26,92 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 extern int cl_available;
 
-typedef struct viddef_s
+#define MAX_TEXTUREUNITS 16
+
+typedef enum renderpath_e
 {
-	// these are set by VID_Mode
+	RENDERPATH_GL11,
+	RENDERPATH_GL13,
+	RENDERPATH_GL20,
+}
+renderpath_t;
+
+typedef struct viddef_support_s
+{
+	qboolean amd_texture_texture4;
+	qboolean arb_depth_texture;
+	qboolean arb_draw_buffers;
+	qboolean arb_fragment_shader;
+	qboolean arb_multitexture;
+	qboolean arb_occlusion_query;
+	qboolean arb_shader_objects;
+	qboolean arb_shading_language_100;
+	qboolean arb_shadow;
+	qboolean arb_texture_compression;
+	qboolean arb_texture_cube_map;
+	qboolean arb_texture_env_combine;
+	qboolean arb_texture_gather;
+	qboolean arb_texture_non_power_of_two;
+	qboolean arb_texture_rectangle;
+	qboolean arb_vertex_buffer_object;
+	qboolean arb_vertex_shader;
+	qboolean ati_separate_stencil;
+	qboolean ext_blend_minmax;
+	qboolean ext_blend_subtract;
+	qboolean ext_compiled_vertex_array;
+	qboolean ext_draw_range_elements;
+	qboolean ext_framebuffer_object;
+	qboolean ext_stencil_two_side;
+	qboolean ext_texture_3d;
+	qboolean ext_texture_edge_clamp;
+	qboolean ext_texture_filter_anisotropic;
+}
+viddef_support_t;
+
+typedef struct viddef_mode_s
+{
 	int width;
 	int height;
 	int bitsperpixel;
 	qboolean fullscreen;
-	int refreshrate;
+	float refreshrate;
 	qboolean userefreshrate;
 	qboolean stereobuffer;
 	int samples;
+}
+viddef_mode_t;
+
+typedef struct viddef_s
+{
+	// these are set by VID_Mode
+	viddef_mode_t mode;
+	// used in many locations in the renderer
+	int width;
+	int height;
+	int bitsperpixel;
+	qboolean fullscreen;
+	float refreshrate;
+	qboolean userefreshrate;
+	qboolean stereobuffer;
+	int samples;
+	qboolean stencil;
+
+	renderpath_t renderpath;
+
+	unsigned int texunits;
+	unsigned int teximageunits;
+	unsigned int texarrayunits;
+	unsigned int drawrangeelements_maxvertices;
+	unsigned int drawrangeelements_maxindices;
+
+	unsigned int maxtexturesize_2d;
+	unsigned int maxtexturesize_3d;
+	unsigned int maxtexturesize_cubemap;
+	unsigned int maxtexturesize_rectangle;
+	unsigned int max_anisotropy;
+	unsigned int maxdrawbuffers;
+
+	viddef_support_t support;
 } viddef_t;
 
 // global video state
@@ -65,7 +140,6 @@ extern cvar_t vid_resizable;
 extern cvar_t vid_minwidth;
 extern cvar_t vid_minheight;
 
-extern cvar_t gl_combine;
 extern cvar_t gl_finish;
 
 extern cvar_t v_gamma;
@@ -82,8 +156,6 @@ extern cvar_t v_color_white_r;
 extern cvar_t v_color_white_g;
 extern cvar_t v_color_white_b;
 extern cvar_t v_hwgamma;
-
-extern int gl_stencil;
 
 // brand of graphics chip
 extern const char *gl_vendor;
@@ -105,9 +177,6 @@ extern char gl_driver[256];
 extern qboolean isG200;
 extern qboolean isRagePro;
 
-// LordHavoc: GLX_SGI_swap_control and WGL_EXT_swap_control
-extern int gl_videosyncavailable;
-
 void *GL_GetProcAddress(const char *name);
 int GL_CheckExtension(const char *minglver_or_ext, const dllfunction_t *funcs, const char *disableparm, int silent);
 
@@ -127,7 +196,7 @@ int VID_SetMode (int modenum);
 // sets the mode; only used by the Quake engine for resetting to mode 0 (the
 // base mode) on memory allocation failures
 
-int VID_InitMode(int fullscreen, int *width, int *height, int bpp, int refreshrate, int stereobuffer, int samples);
+qboolean VID_InitMode(viddef_mode_t *mode);
 // allocates and opens an appropriate OpenGL context (and its window)
 
 

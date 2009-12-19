@@ -93,7 +93,7 @@
 	else								\
 	{								\
 		ptrval_t p = PTR_VALUE(from) + (off);			\
-		if (p < 0 || p + (access)*PTR_size > prog->edictareasize) \
+		if (p < 0 || p + (access)*PTR_size > prog->entityfieldsarea) \
 		{							\
 			prog->xfunction->profile += (st - startst);	\
 			prog->xstatement = st - prog->statements;	\

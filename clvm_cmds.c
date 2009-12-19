@@ -21,6 +21,7 @@
 //4 feature darkplaces csqc: add builtins to clientside qc for gl calls
 
 extern cvar_t v_flipped;
+extern cvar_t r_equalize_entities_fullbright;
 
 sfx_t *S_FindName(const char *name);
 int Sbar_GetSortedPlayerIndex (int index);
@@ -161,6 +162,7 @@ static void VM_CL_sound (void)
 	prvm_edict_t		*entity;
 	float 				volume;
 	float				attenuation;
+	vec3_t				org;
 
 	VM_SAFEPARMCOUNT(5, VM_CL_sound);
 
@@ -188,7 +190,8 @@ static void VM_CL_sound (void)
 		return;
 	}
 
-	S_StartSound(32768 + PRVM_NUM_FOR_EDICT(entity), channel, S_FindName(sample), entity->fields.client->origin, volume, attenuation);
+	CL_VM_GetEntitySoundOrigin(MAX_EDICTS + PRVM_NUM_FOR_EDICT(entity), org);
+	S_StartSound(MAX_EDICTS + PRVM_NUM_FOR_EDICT(entity), channel, S_FindName(sample), org, volume, attenuation);
 }
 
 // #483 void(vector origin, string sample, float volume, float attenuation) pointsound
@@ -218,8 +221,8 @@ static void VM_CL_pointsound(void)
 		return;
 	}
 
-	// Send World Entity as Entity to Play Sound (for CSQC, that is 32768)
-	S_StartSound(32768, 0, S_FindName(sample), org, volume, attenuation);
+	// Send World Entity as Entity to Play Sound (for CSQC, that is MAX_EDICTS)
+	S_StartSound(MAX_EDICTS, 0, S_FindName(sample), org, volume, attenuation);
 }
 
 // #14 entity() spawn
@@ -680,7 +683,7 @@ static void VM_CL_getlight (void)
 
 //============================================================================
 //[515]: SCENE MANAGER builtins
-extern qboolean CSQC_AddRenderEdict (prvm_edict_t *ed);//csprogs.c
+extern qboolean CSQC_AddRenderEdict (prvm_edict_t *ed, int edictnum);//csprogs.c
 
 static void CSQC_R_RecalcView (void)
 {
@@ -749,7 +752,7 @@ void VM_CL_R_AddEntities (void)
 			continue;
 		if(!((int)ed->fields.client->drawmask & drawmask))
 			continue;
-		CSQC_AddRenderEdict(ed);
+		CSQC_AddRenderEdict(ed, i);
 	}
 
 	// callprofile fixing hack: do not include this time in what is counted for CSQC_UpdateView
@@ -761,7 +764,7 @@ void VM_CL_R_AddEntity (void)
 {
 	double t = Sys_DoubleTime();
 	VM_SAFEPARMCOUNT(1, VM_CL_R_AddEntity);
-	CSQC_AddRenderEdict(PRVM_G_EDICT(OFS_PARM0));
+	CSQC_AddRenderEdict(PRVM_G_EDICT(OFS_PARM0), 0);
 	prog->functions[prog->funcoffsets.CSQC_UpdateView].totaltime -= Sys_DoubleTime() - t;
 }
 
@@ -1489,12 +1492,24 @@ static void VM_CL_makestatic (void)
 			Matrix4x4_CreateFromQuakeEntity(&staticent->render.matrix, ent->fields.client->origin[0], ent->fields.client->origin[1], ent->fields.client->origin[2], ent->fields.client->angles[0], ent->fields.client->angles[1], ent->fields.client->angles[2], staticent->render.scale);
 
 		// either fullbright or lit
-		if (!(staticent->render.effects & EF_FULLBRIGHT) && !r_fullbright.integer)
-			staticent->render.flags |= RENDER_LIGHT;
+		if(!r_fullbright.integer)
+		{
+			if (!(staticent->render.effects & EF_FULLBRIGHT))
+				staticent->render.flags |= RENDER_LIGHT;
+			else if(r_equalize_entities_fullbright.integer)
+				staticent->render.flags |= RENDER_LIGHT | RENDER_EQUALIZE;
+		}
 		// turn off shadows from transparent objects
 		if (!(staticent->render.effects & (EF_NOSHADOW | EF_ADDITIVE | EF_NODEPTHTEST)) && (staticent->render.alpha >= 1))
 			staticent->render.flags |= RENDER_SHADOW;
+		if (staticent->render.effects & EF_NODEPTHTEST)
+			staticent->render.flags |= RENDER_NODEPTHTEST;
+		if (staticent->render.effects & EF_ADDITIVE)
+			staticent->render.flags |= RENDER_ADDITIVE;
+		if (staticent->render.effects & EF_DOUBLESIDED)
+			staticent->render.flags |= RENDER_DOUBLESIDED;
 
+		staticent->render.allowdecals = true;
 		CL_UpdateRenderEntity(&staticent->render);
 	}
 	else
@@ -2235,7 +2250,6 @@ int CL_GetExtendedTagInfo (prvm_edict_t *e, int tagindex, int *parentindex, cons
 {
 	int r;
 	dp_model_t *model;
-	int frame;
 
 	*tagname = NULL;
 	*parentindex = 0;
@@ -2245,11 +2259,7 @@ int CL_GetExtendedTagInfo (prvm_edict_t *e, int tagindex, int *parentindex, cons
 	 && (model = CL_GetModelFromEdict(e))
 	 && model->animscenes)
 	{
-		frame = (int)e->fields.client->frame;
-		if (frame < 0 || frame >= model->numframes)
-			frame = 0;
-
-		r = Mod_Alias_GetExtendedTagInfoForIndex(model, (int)e->fields.client->skin, model->animscenes[frame].firstframe, tagindex - 1, parentindex, tagname, tag_localmatrix);
+		r = Mod_Alias_GetExtendedTagInfoForIndex(model, (int)e->fields.client->skin, e->priv.server->frameblend, &e->priv.server->skeleton, tagindex - 1, parentindex, tagname, tag_localmatrix);
 
 		if(!r) // success?
 			*parentindex += 1;
@@ -2289,20 +2299,17 @@ void CL_GetEntityMatrix (prvm_edict_t *ent, matrix4x4_t *out, qboolean viewmatri
 	}
 }
 
-
 int CL_GetEntityLocalTagMatrix(prvm_edict_t *ent, int tagindex, matrix4x4_t *out)
 {
-	int frame;
 	dp_model_t *model;
 	if (tagindex >= 0
 	 && (model = CL_GetModelFromEdict(ent))
 	 && model->animscenes)
 	{
-		// if model has wrong frame, engine automatically switches to model first frame
-		frame = (int)ent->fields.client->frame;
-		if (frame < 0 || frame >= model->numframes)
-			frame = 0;
-		return Mod_Alias_GetTagMatrix(model, model->animscenes[frame].firstframe, tagindex, out);
+		VM_GenerateFrameGroupBlend(ent->priv.server->framegroupblend, ent);
+		VM_FrameBlendFromFrameGroupBlend(ent->priv.server->frameblend, ent->priv.server->framegroupblend, model);
+		VM_UpdateEdictSkeleton(ent, model, ent->priv.server->frameblend);
+		return Mod_Alias_GetTagMatrix(model, ent->priv.server->frameblend, &ent->priv.server->skeleton, tagindex, out);
 	}
 	*out = identitymatrix;
 	return 0;
@@ -2401,7 +2408,7 @@ void VM_CL_gettagindex (void)
 {
 	prvm_edict_t *ent;
 	const char *tag_name;
-	int modelindex, tag_index;
+	int tag_index;
 
 	VM_SAFEPARMCOUNT(2, VM_CL_gettagindex);
 
@@ -2409,24 +2416,23 @@ void VM_CL_gettagindex (void)
 	tag_name = PRVM_G_STRING(OFS_PARM1);
 	if (ent == prog->edicts)
 	{
-		VM_Warning("gettagindex: can't affect world entity\n");
+		VM_Warning("VM_CL_gettagindex(entity #%i): can't affect world entity\n", PRVM_NUM_FOR_EDICT(ent));
 		return;
 	}
 	if (ent->priv.server->free)
 	{
-		VM_Warning("gettagindex: can't affect free entity\n");
+		VM_Warning("VM_CL_gettagindex(entity #%i): can't affect free entity\n", PRVM_NUM_FOR_EDICT(ent));
 		return;
 	}
 
-	modelindex = (int)ent->fields.client->modelindex;
 	tag_index = 0;
-	if (modelindex >= MAX_MODELS || (modelindex <= -MAX_MODELS /* client models */))
-		Con_DPrintf("gettagindex(entity #%i): null or non-precached model\n", PRVM_NUM_FOR_EDICT(ent));
+	if (!CL_GetModelFromEdict(ent))
+		Con_DPrintf("VM_CL_gettagindex(entity #%i): null or non-precached model\n", PRVM_NUM_FOR_EDICT(ent));
 	else
 	{
 		tag_index = CL_GetTagIndex(ent, tag_name);
 		if (tag_index == 0)
-			Con_DPrintf("gettagindex(entity #%i): tag \"%s\" not found\n", PRVM_NUM_FOR_EDICT(ent), tag_name);
+			Con_Printf("VM_CL_gettagindex(entity #%i): tag \"%s\" not found\n", PRVM_NUM_FOR_EDICT(ent), tag_name);
 	}
 	PRVM_G_FLOAT(OFS_RETURN) = tag_index;
 }
@@ -2443,6 +2449,7 @@ void VM_CL_gettaginfo (void)
 	int returncode;
 	prvm_eval_t *val;
 	vec3_t fo, le, up, trans;
+	const dp_model_t *model;
 
 	VM_SAFEPARMCOUNT(2, VM_CL_gettaginfo);
 
@@ -2451,6 +2458,10 @@ void VM_CL_gettaginfo (void)
 	returncode = CL_GetTagMatrix(&tag_matrix, e, tagindex);
 	Matrix4x4_ToVectors(&tag_matrix, prog->globals.client->v_forward, le, prog->globals.client->v_up, PRVM_G_VECTOR(OFS_RETURN));
 	VectorScale(le, -1, prog->globals.client->v_right);
+	model = CL_GetModelFromEdict(e);
+	VM_GenerateFrameGroupBlend(e->priv.server->framegroupblend, e);
+	VM_FrameBlendFromFrameGroupBlend(e->priv.server->frameblend, e->priv.server->framegroupblend, model);
+	VM_UpdateEdictSkeleton(e, model, e->priv.server->frameblend);
 	CL_GetExtendedTagInfo(e, tagindex, &parentindex, &tagname, &tag_localmatrix);
 	Matrix4x4_ToVectors(&tag_localmatrix, fo, le, up, trans);
 
@@ -3094,7 +3105,8 @@ void VMPolygons_Store(vmpolygons_t *polys)
 		mesh.texture = polys->begin_texture;
 		mesh.num_vertices = polys->begin_vertices;
 		mesh.num_triangles = polys->begin_vertices-2;
-		mesh.data_element3s = polygonelements;
+		mesh.data_element3i = polygonelement3i;
+		mesh.data_element3s = polygonelement3s;
 		mesh.data_vertex3f = polys->begin_vertex[0];
 		mesh.data_color4f = polys->begin_color[0];
 		mesh.data_texcoord2f = polys->begin_texcoord[0];
@@ -3190,7 +3202,7 @@ void VM_CL_R_PolygonBegin (void)
 	sf = NULL;
 	if(*picname)
 	{
-		tf = TEXF_ALPHA;
+		tf = TEXF_PRECACHE | TEXF_ALPHA;
 		if((int)PRVM_G_FLOAT(OFS_PARM1) & DRAWFLAG_MIPMAP)
 			tf |= TEXF_MIPMAP;
 
@@ -3599,8 +3611,8 @@ static void VM_CL_checkpvs (void)
 #if 1
 	unsigned char *pvs;
 #else
-	static int fatpvsbytes;
-	static unsigned char fatpvs[MAX_MAP_LEAFS/8];
+	int fatpvsbytes;
+	unsigned char fatpvs[MAX_MAP_LEAFS/8];
 #endif
 
 	VM_SAFEPARMCOUNT(2, VM_SV_checkpvs);
@@ -3650,6 +3662,315 @@ static void VM_CL_checkpvs (void)
 	PRVM_G_FLOAT(OFS_RETURN) = sv.worldmodel->brush.BoxTouchingPVS(sv.worldmodel, fatpvs, mi, ma);
 #endif
 }
+
+// #263 float(float modlindex) skel_create = #263; // (FTE_CSQC_SKELETONOBJECTS) create a skeleton (be sure to assign this value into .skeletonindex for use), returns skeleton index (1 or higher) on success, returns 0 on failure  (for example if the modelindex is not skeletal), it is recommended that you create a new skeleton if you change modelindex.
+static void VM_CL_skel_create(void)
+{
+	int modelindex = (int)PRVM_G_FLOAT(OFS_PARM0);
+	dp_model_t *model = CL_GetModelByIndex(modelindex);
+	skeleton_t *skeleton;
+	int i;
+	PRVM_G_FLOAT(OFS_RETURN) = 0;
+	if (!model || !model->num_bones)
+		return;
+	for (i = 0;i < MAX_EDICTS;i++)
+		if (!prog->skeletons[i])
+			break;
+	if (i == MAX_EDICTS)
+		return;
+	prog->skeletons[i] = skeleton = Mem_Alloc(cls.levelmempool, sizeof(skeleton_t) + model->num_bones * sizeof(matrix4x4_t));
+	skeleton->model = model;
+	skeleton->relativetransforms = (matrix4x4_t *)(skeleton+1);
+	// initialize to identity matrices
+	for (i = 0;i < skeleton->model->num_bones;i++)
+		skeleton->relativetransforms[i] = identitymatrix;
+	PRVM_G_FLOAT(OFS_RETURN) = i + 1;
+}
+
+// #264 float(float skel, entity ent, float modlindex, float retainfrac, float firstbone, float lastbone) skel_build = #264; // (FTE_CSQC_SKELETONOBJECTS) blend in a percentage of standard animation, 0 replaces entirely, 1 does nothing, 0.5 blends half, etc, and this only alters the bones in the specified range for which out of bounds values like 0,100000 are safe (uses .frame, .frame2, .frame3, .frame4, .lerpfrac, .lerpfrac3, .lerpfrac4, .frame1time, .frame2time, .frame3time, .frame4time), returns skel on success, 0 on failure
+static void VM_CL_skel_build(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	skeleton_t *skeleton;
+	prvm_edict_t *ed = PRVM_G_EDICT(OFS_PARM1);
+	int modelindex = (int)PRVM_G_FLOAT(OFS_PARM2);
+	float retainfrac = PRVM_G_FLOAT(OFS_PARM3);
+	int firstbone = PRVM_G_FLOAT(OFS_PARM4);
+	int lastbone = PRVM_G_FLOAT(OFS_PARM5);
+	dp_model_t *model = CL_GetModelByIndex(modelindex);
+	float blendfrac;
+	int numblends;
+	int bonenum;
+	int blendindex;
+	framegroupblend_t framegroupblend[MAX_FRAMEGROUPBLENDS];
+	frameblend_t frameblend[MAX_FRAMEBLENDS];
+	matrix4x4_t blendedmatrix;
+	matrix4x4_t matrix;
+	PRVM_G_FLOAT(OFS_RETURN) = 0;
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	firstbone = max(0, firstbone);
+	lastbone = min(lastbone, model->num_bones - 1);
+	lastbone = min(lastbone, skeleton->model->num_bones - 1);
+	VM_GenerateFrameGroupBlend(framegroupblend, ed);
+	VM_FrameBlendFromFrameGroupBlend(frameblend, framegroupblend, model);
+	blendfrac = 1.0f - retainfrac;
+	for (numblends = 0;numblends < MAX_FRAMEBLENDS && frameblend[numblends].lerp;numblends++)
+		frameblend[numblends].lerp *= blendfrac;
+	for (bonenum = firstbone;bonenum <= lastbone;bonenum++)
+	{
+		memset(&blendedmatrix, 0, sizeof(blendedmatrix));
+		Matrix4x4_Accumulate(&blendedmatrix, &skeleton->relativetransforms[bonenum], retainfrac);
+		for (blendindex = 0;blendindex < numblends;blendindex++)
+		{
+			Matrix4x4_FromArray12FloatD3D(&matrix, model->data_poses + 12 * (frameblend[blendindex].subframe * model->num_bones + bonenum));
+			Matrix4x4_Accumulate(&blendedmatrix, &matrix, frameblend[blendindex].lerp);
+		}
+		skeleton->relativetransforms[bonenum] = blendedmatrix;
+	}
+	PRVM_G_FLOAT(OFS_RETURN) = skeletonindex;
+}
+
+// #265 float(float skel) skel_get_numbones = #265; // (FTE_CSQC_SKELETONOBJECTS) returns how many bones exist in the created skeleton
+static void VM_CL_skel_get_numbones(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	skeleton_t *skeleton;
+	PRVM_G_FLOAT(OFS_RETURN) = 0;
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	PRVM_G_FLOAT(OFS_RETURN) = skeleton->model->num_bones;
+}
+
+// #266 string(float skel, float bonenum) skel_get_bonename = #266; // (FTE_CSQC_SKELETONOBJECTS) returns name of bone (as a tempstring)
+static void VM_CL_skel_get_bonename(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	int bonenum = (int)PRVM_G_FLOAT(OFS_PARM1) - 1;
+	skeleton_t *skeleton;
+	PRVM_G_INT(OFS_RETURN) = 0;
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	if (bonenum < 0 || bonenum >= skeleton->model->num_bones)
+		return;
+	PRVM_G_INT(OFS_RETURN) = PRVM_SetTempString(skeleton->model->data_bones[bonenum].name);
+}
+
+// #267 float(float skel, float bonenum) skel_get_boneparent = #267; // (FTE_CSQC_SKELETONOBJECTS) returns parent num for supplied bonenum, 0 if bonenum has no parent or bone does not exist (returned value is always less than bonenum, you can loop on this)
+static void VM_CL_skel_get_boneparent(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	int bonenum = (int)PRVM_G_FLOAT(OFS_PARM1) - 1;
+	skeleton_t *skeleton;
+	PRVM_G_FLOAT(OFS_RETURN) = 0;
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	if (bonenum < 0 || bonenum >= skeleton->model->num_bones)
+		return;
+	PRVM_G_FLOAT(OFS_RETURN) = skeleton->model->data_bones[bonenum].parent + 1;
+}
+
+// #268 float(float skel, string tagname) skel_find_bone = #268; // (FTE_CSQC_SKELETONOBJECTS) get number of bone with specified name, 0 on failure, tagindex (bonenum+1) on success, same as using gettagindex on the modelindex
+static void VM_CL_skel_find_bone(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	const char *tagname = PRVM_G_STRING(OFS_PARM1);
+	skeleton_t *skeleton;
+	PRVM_G_FLOAT(OFS_RETURN) = 0;
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	PRVM_G_FLOAT(OFS_RETURN) = Mod_Alias_GetTagIndexForName(skeleton->model, 0, tagname) + 1;
+}
+
+// #269 vector(float skel, float bonenum) skel_get_bonerel = #269; // (FTE_CSQC_SKELETONOBJECTS) get matrix of bone in skeleton relative to its parent - sets v_forward, v_right, v_up, returns origin (relative to parent bone)
+static void VM_CL_skel_get_bonerel(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	int bonenum = (int)PRVM_G_FLOAT(OFS_PARM1) - 1;
+	skeleton_t *skeleton;
+	matrix4x4_t matrix;
+	vec3_t forward, left, up, origin;
+	VectorClear(PRVM_G_VECTOR(OFS_RETURN));
+	VectorClear(prog->globals.client->v_forward);
+	VectorClear(prog->globals.client->v_right);
+	VectorClear(prog->globals.client->v_up);
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	if (bonenum < 0 || bonenum >= skeleton->model->num_bones)
+		return;
+	matrix = skeleton->relativetransforms[bonenum];
+	Matrix4x4_ToVectors(&matrix, forward, left, up, origin);
+	VectorCopy(forward, prog->globals.client->v_forward);
+	VectorNegate(left, prog->globals.client->v_right);
+	VectorCopy(up, prog->globals.client->v_up);
+	VectorCopy(origin, PRVM_G_VECTOR(OFS_RETURN));
+}
+
+// #270 vector(float skel, float bonenum) skel_get_boneabs = #270; // (FTE_CSQC_SKELETONOBJECTS) get matrix of bone in skeleton in model space - sets v_forward, v_right, v_up, returns origin (relative to entity)
+static void VM_CL_skel_get_boneabs(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	int bonenum = (int)PRVM_G_FLOAT(OFS_PARM1) - 1;
+	skeleton_t *skeleton;
+	matrix4x4_t matrix;
+	matrix4x4_t temp;
+	vec3_t forward, left, up, origin;
+	VectorClear(PRVM_G_VECTOR(OFS_RETURN));
+	VectorClear(prog->globals.client->v_forward);
+	VectorClear(prog->globals.client->v_right);
+	VectorClear(prog->globals.client->v_up);
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	if (bonenum < 0 || bonenum >= skeleton->model->num_bones)
+		return;
+	matrix = skeleton->relativetransforms[bonenum];
+	// convert to absolute
+	while ((bonenum = skeleton->model->data_bones[bonenum].parent) >= 0)
+	{
+		temp = matrix;
+		Matrix4x4_Concat(&matrix, &skeleton->relativetransforms[bonenum], &temp);
+	}
+	Matrix4x4_ToVectors(&matrix, forward, left, up, origin);
+	VectorCopy(forward, prog->globals.client->v_forward);
+	VectorNegate(left, prog->globals.client->v_right);
+	VectorCopy(up, prog->globals.client->v_up);
+	VectorCopy(origin, PRVM_G_VECTOR(OFS_RETURN));
+}
+
+// #271 void(float skel, float bonenum, vector org) skel_set_bone = #271; // (FTE_CSQC_SKELETONOBJECTS) set matrix of bone relative to its parent, reads v_forward, v_right, v_up, takes origin as parameter (relative to parent bone)
+static void VM_CL_skel_set_bone(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	int bonenum = (int)PRVM_G_FLOAT(OFS_PARM1) - 1;
+	vec3_t forward, left, up, origin;
+	skeleton_t *skeleton;
+	matrix4x4_t matrix;
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	if (bonenum < 0 || bonenum >= skeleton->model->num_bones)
+		return;
+	VectorCopy(prog->globals.client->v_forward, forward);
+	VectorNegate(prog->globals.client->v_right, left);
+	VectorCopy(prog->globals.client->v_up, up);
+	VectorCopy(PRVM_G_VECTOR(OFS_PARM2), origin);
+	Matrix4x4_FromVectors(&matrix, forward, left, up, origin);
+	skeleton->relativetransforms[bonenum] = matrix;
+}
+
+// #272 void(float skel, float bonenum, vector org) skel_mul_bone = #272; // (FTE_CSQC_SKELETONOBJECTS) transform bone matrix (relative to its parent) by the supplied matrix in v_forward, v_right, v_up, takes origin as parameter (relative to parent bone)
+static void VM_CL_skel_mul_bone(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	int bonenum = (int)PRVM_G_FLOAT(OFS_PARM1) - 1;
+	vec3_t forward, left, up, origin;
+	skeleton_t *skeleton;
+	matrix4x4_t matrix;
+	matrix4x4_t temp;
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	if (bonenum < 0 || bonenum >= skeleton->model->num_bones)
+		return;
+	VectorCopy(PRVM_G_VECTOR(OFS_PARM2), origin);
+	VectorCopy(prog->globals.client->v_forward, forward);
+	VectorNegate(prog->globals.client->v_right, left);
+	VectorCopy(prog->globals.client->v_up, up);
+	Matrix4x4_FromVectors(&matrix, forward, left, up, origin);
+	temp = skeleton->relativetransforms[bonenum];
+	Matrix4x4_Concat(&skeleton->relativetransforms[bonenum], &matrix, &temp);
+}
+
+// #273 void(float skel, float startbone, float endbone, vector org) skel_mul_bones = #273; // (FTE_CSQC_SKELETONOBJECTS) transform bone matrices (relative to their parents) by the supplied matrix in v_forward, v_right, v_up, takes origin as parameter (relative to parent bones)
+static void VM_CL_skel_mul_bones(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	int firstbone = PRVM_G_FLOAT(OFS_PARM1) - 1;
+	int lastbone = PRVM_G_FLOAT(OFS_PARM2) - 1;
+	int bonenum;
+	vec3_t forward, left, up, origin;
+	skeleton_t *skeleton;
+	matrix4x4_t matrix;
+	matrix4x4_t temp;
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	VectorCopy(PRVM_G_VECTOR(OFS_PARM3), origin);
+	VectorCopy(prog->globals.client->v_forward, forward);
+	VectorNegate(prog->globals.client->v_right, left);
+	VectorCopy(prog->globals.client->v_up, up);
+	Matrix4x4_FromVectors(&matrix, forward, left, up, origin);
+	firstbone = max(0, firstbone);
+	lastbone = min(lastbone, skeleton->model->num_bones - 1);
+	for (bonenum = firstbone;bonenum <= lastbone;bonenum++)
+	{
+		temp = skeleton->relativetransforms[bonenum];
+		Matrix4x4_Concat(&skeleton->relativetransforms[bonenum], &matrix, &temp);
+	}
+}
+
+// #274 void(float skeldst, float skelsrc, float startbone, float endbone) skel_copybones = #274; // (FTE_CSQC_SKELETONOBJECTS) copy bone matrices (relative to their parents) from one skeleton to another, useful for copying a skeleton to a corpse
+static void VM_CL_skel_copybones(void)
+{
+	int skeletonindexdst = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	int skeletonindexsrc = (int)PRVM_G_FLOAT(OFS_PARM1) - 1;
+	int firstbone = PRVM_G_FLOAT(OFS_PARM2) - 1;
+	int lastbone = PRVM_G_FLOAT(OFS_PARM3) - 1;
+	int bonenum;
+	skeleton_t *skeletondst;
+	skeleton_t *skeletonsrc;
+	if (skeletonindexdst < 0 || skeletonindexdst >= MAX_EDICTS || !(skeletondst = prog->skeletons[skeletonindexdst]))
+		return;
+	if (skeletonindexsrc < 0 || skeletonindexsrc >= MAX_EDICTS || !(skeletonsrc = prog->skeletons[skeletonindexsrc]))
+		return;
+	firstbone = max(0, firstbone);
+	lastbone = min(lastbone, skeletondst->model->num_bones - 1);
+	lastbone = min(lastbone, skeletonsrc->model->num_bones - 1);
+	for (bonenum = firstbone;bonenum <= lastbone;bonenum++)
+		skeletondst->relativetransforms[bonenum] = skeletonsrc->relativetransforms[bonenum];
+}
+
+// #275 void(float skel) skel_delete = #275; // (FTE_CSQC_SKELETONOBJECTS) deletes skeleton at the beginning of the next frame (you can add the entity, delete the skeleton, renderscene, and it will still work)
+static void VM_CL_skel_delete(void)
+{
+	int skeletonindex = (int)PRVM_G_FLOAT(OFS_PARM0) - 1;
+	skeleton_t *skeleton;
+	if (skeletonindex < 0 || skeletonindex >= MAX_EDICTS || !(skeleton = prog->skeletons[skeletonindex]))
+		return;
+	Mem_Free(skeleton);
+	prog->skeletons[skeletonindex] = NULL;
+}
+
+// #276 float(float modlindex, string framename) frameforname = #276; // (FTE_CSQC_SKELETONOBJECTS) finds number of a specified frame in the animation, returns -1 if no match found
+static void VM_CL_frameforname(void)
+{
+	int modelindex = (int)PRVM_G_FLOAT(OFS_PARM0);
+	dp_model_t *model = CL_GetModelByIndex(modelindex);
+	const char *name = PRVM_G_STRING(OFS_PARM1);
+	int i;
+	PRVM_G_FLOAT(OFS_RETURN) = -1;
+	if (!model || !model->animscenes)
+		return;
+	for (i = 0;i < model->numframes;i++)
+	{
+		if (!strcasecmp(model->animscenes[i].name, name))
+		{
+			PRVM_G_FLOAT(OFS_RETURN) = i;
+			break;
+		}
+	}
+}
+
+// #277 float(float modlindex, float framenum) frameduration = #277; // (FTE_CSQC_SKELETONOBJECTS) returns the intended play time (in seconds) of the specified framegroup, if it does not exist the result is 0, if it is a single frame it may be a small value around 0.1 or 0.
+static void VM_CL_frameduration(void)
+{
+	int modelindex = (int)PRVM_G_FLOAT(OFS_PARM0);
+	dp_model_t *model = CL_GetModelByIndex(modelindex);
+	int framenum = (int)PRVM_G_FLOAT(OFS_PARM1);
+	PRVM_G_FLOAT(OFS_RETURN) = 0;
+	if (!model || !model->animscenes || framenum < 0 || framenum >= model->numframes)
+		return;
+	if (model->animscenes[framenum].framerate)
+		PRVM_G_FLOAT(OFS_RETURN) = model->animscenes[framenum].framecount / model->animscenes[framenum].framerate;
+}
+
 //============================================================================
 
 // To create a almost working builtin file from this replace:
@@ -3925,21 +4246,21 @@ NULL,							// #259
 NULL,							// #260
 NULL,							// #261
 NULL,							// #262
-NULL,							// #263
-NULL,							// #264
-NULL,							// #265
-NULL,							// #266
-NULL,							// #267
-NULL,							// #268
-NULL,							// #269
-NULL,							// #270
-NULL,							// #271
-NULL,							// #272
-NULL,							// #273
-NULL,							// #274
-NULL,							// #275
-NULL,							// #276
-NULL,							// #277
+VM_CL_skel_create,				// #263 float(float modlindex) skel_create = #263; // (FTE_CSQC_SKELETONOBJECTS) create a skeleton (be sure to assign this value into .skeletonindex for use), returns skeleton index (1 or higher) on success, returns 0 on failure  (for example if the modelindex is not skeletal), it is recommended that you create a new skeleton if you change modelindex.
+VM_CL_skel_build,				// #264 float(float skel, entity ent, float modlindex, float retainfrac, float firstbone, float lastbone) skel_build = #264; // (FTE_CSQC_SKELETONOBJECTS) blend in a percentage of standard animation, 0 replaces entirely, 1 does nothing, 0.5 blends half, etc, and this only alters the bones in the specified range for which out of bounds values like 0,100000 are safe (uses .frame, .frame2, .frame3, .frame4, .lerpfrac, .lerpfrac3, .lerpfrac4, .frame1time, .frame2time, .frame3time, .frame4time), returns skel on success, 0 on failure
+VM_CL_skel_get_numbones,		// #265 float(float skel) skel_get_numbones = #265; // (FTE_CSQC_SKELETONOBJECTS) returns how many bones exist in the created skeleton
+VM_CL_skel_get_bonename,		// #266 string(float skel, float bonenum) skel_get_bonename = #266; // (FTE_CSQC_SKELETONOBJECTS) returns name of bone (as a tempstring)
+VM_CL_skel_get_boneparent,		// #267 float(float skel, float bonenum) skel_get_boneparent = #267; // (FTE_CSQC_SKELETONOBJECTS) returns parent num for supplied bonenum, -1 if bonenum has no parent or bone does not exist (returned value is always less than bonenum, you can loop on this)
+VM_CL_skel_find_bone,			// #268 float(float skel, string tagname) skel_find_bone = #268; // (FTE_CSQC_SKELETONOBJECTS) get number of bone with specified name, 0 on failure, tagindex (bonenum+1) on success, same as using gettagindex on the modelindex
+VM_CL_skel_get_bonerel,			// #269 vector(float skel, float bonenum) skel_get_bonerel = #269; // (FTE_CSQC_SKELETONOBJECTS) get matrix of bone in skeleton relative to its parent - sets v_forward, v_right, v_up, returns origin (relative to parent bone)
+VM_CL_skel_get_boneabs,			// #270 vector(float skel, float bonenum) skel_get_boneabs = #270; // (FTE_CSQC_SKELETONOBJECTS) get matrix of bone in skeleton in model space - sets v_forward, v_right, v_up, returns origin (relative to entity)
+VM_CL_skel_set_bone,			// #271 void(float skel, float bonenum, vector org) skel_set_bone = #271; // (FTE_CSQC_SKELETONOBJECTS) set matrix of bone relative to its parent, reads v_forward, v_right, v_up, takes origin as parameter (relative to parent bone)
+VM_CL_skel_mul_bone,			// #272 void(float skel, float bonenum, vector org) skel_mul_bone = #272; // (FTE_CSQC_SKELETONOBJECTS) transform bone matrix (relative to its parent) by the supplied matrix in v_forward, v_right, v_up, takes origin as parameter (relative to parent bone)
+VM_CL_skel_mul_bones,			// #273 void(float skel, float startbone, float endbone, vector org) skel_mul_bones = #273; // (FTE_CSQC_SKELETONOBJECTS) transform bone matrices (relative to their parents) by the supplied matrix in v_forward, v_right, v_up, takes origin as parameter (relative to parent bones)
+VM_CL_skel_copybones,			// #274 void(float skeldst, float skelsrc, float startbone, float endbone) skel_copybones = #274; // (FTE_CSQC_SKELETONOBJECTS) copy bone matrices (relative to their parents) from one skeleton to another, useful for copying a skeleton to a corpse
+VM_CL_skel_delete,				// #275 void(float skel) skel_delete = #275; // (FTE_CSQC_SKELETONOBJECTS) deletes skeleton at the beginning of the next frame (you can add the entity, delete the skeleton, renderscene, and it will still work)
+VM_CL_frameforname,				// #276 float(float modlindex, string framename) frameforname = #276; // (FTE_CSQC_SKELETONOBJECTS) finds number of a specified frame in the animation, returns -1 if no match found
+VM_CL_frameduration,			// #277 float(float modlindex, float framenum) frameduration = #277; // (FTE_CSQC_SKELETONOBJECTS) returns the intended play time (in seconds) of the specified framegroup, if it does not exist the result is 0, if it is a single frame it may be a small value around 0.1 or 0.
 NULL,							// #278
 NULL,							// #279
 NULL,							// #280
@@ -4193,10 +4514,10 @@ VM_CL_ParticleThemeSave,		// #525 void() particlethemesave, void(float theme) pa
 VM_CL_ParticleThemeFree,		// #526 void() particlethemefree (DP_CSQC_SPAWNPARTICLE)
 VM_CL_SpawnParticle,			// #527 float(vector org, vector vel, [float theme]) particle (DP_CSQC_SPAWNPARTICLE)
 VM_CL_SpawnParticleDelayed,		// #528 float(vector org, vector vel, float delay, float collisiondelay, [float theme]) delayedparticle (DP_CSQC_SPAWNPARTICLE)
-NULL,							// #529
-NULL,							// #530
+VM_loadfromdata,				// #529
+VM_loadfromfile,				// #530
 NULL,							// #531
-NULL,							// #532
+VM_log,							// #532
 NULL,							// #533
 NULL,							// #534
 NULL,							// #535
@@ -4269,15 +4590,15 @@ NULL,							// #601
 NULL,							// #602
 NULL,							// #603
 NULL,							// #604
-NULL,							// #605
-NULL,							// #606
-NULL,							// #607
+VM_callfunction,				// #605
+VM_writetofile,					// #606
+VM_isfunction,					// #607
 NULL,							// #608
 NULL,							// #609
 NULL,							// #610
 NULL,							// #611
 NULL,							// #612
-NULL,							// #613
+VM_parseentitydata,				// #613
 NULL,							// #614
 NULL,							// #615
 NULL,							// #616
@@ -4288,7 +4609,7 @@ NULL,							// #620
 NULL,							// #621
 NULL,							// #622
 NULL,							// #623
-VM_getextresponse,				// #624 string getextresponse(void)
+VM_CL_getextresponse,			// #624 string getextresponse(void)
 NULL,							// #625
 };
 

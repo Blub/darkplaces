@@ -391,10 +391,12 @@ void CL_ParseEntityLump(char *entdata)
 			r_refdef.fog_start = 0;
 			r_refdef.fog_alpha = 1;
 			r_refdef.fog_end = 16384;
+			r_refdef.fog_height = 1<<30;
+			r_refdef.fog_fadedepth = 128;
 #if _MSC_VER >= 1400
 #define sscanf sscanf_s
 #endif
-			sscanf(value, "%f %f %f %f %f %f %f", &r_refdef.fog_density, &r_refdef.fog_red, &r_refdef.fog_green, &r_refdef.fog_blue, &r_refdef.fog_alpha, &r_refdef.fog_start, &r_refdef.fog_end);
+			sscanf(value, "%f %f %f %f %f %f %f %f %f", &r_refdef.fog_density, &r_refdef.fog_red, &r_refdef.fog_green, &r_refdef.fog_blue, &r_refdef.fog_alpha, &r_refdef.fog_start, &r_refdef.fog_end, &r_refdef.fog_height, &r_refdef.fog_fadedepth);
 		}
 		else if (!strcmp("fog_density", key))
 			r_refdef.fog_density = atof(value);
@@ -410,6 +412,10 @@ void CL_ParseEntityLump(char *entdata)
 			r_refdef.fog_start = atof(value);
 		else if (!strcmp("fog_end", key))
 			r_refdef.fog_end = atof(value);
+		else if (!strcmp("fog_height", key))
+			r_refdef.fog_height = atof(value);
+		else if (!strcmp("fog_fadedepth", key))
+			r_refdef.fog_fadedepth = atof(value);
 	}
 }
 
@@ -420,7 +426,7 @@ static const vec3_t defaultmaxs = {4096, 4096, 4096};
 static void CL_SetupWorldModel(void)
 {
 	// update the world model
-	cl.entities[0].render.model = cl.worldmodel = cl.model_precache[1];
+	cl.entities[0].render.model = cl.worldmodel = CL_GetModelByIndex(1);
 	CL_UpdateRenderEntity(&cl.entities[0].render);
 
 	// set up csqc world for collision culling
@@ -1374,7 +1380,7 @@ void CL_StopDownload(int size, int crc)
 void CL_ParseDownload(void)
 {
 	int i, start, size;
-	unsigned char data[65536];
+	unsigned char data[NET_MAXMESSAGE];
 	start = MSG_ReadLong();
 	size = (unsigned short)MSG_ReadShort();
 
@@ -1840,7 +1846,7 @@ void CL_ValidateState(entity_state_t *s)
 	if (!(s->flags & RENDER_COLORMAPPED) && s->colormap > cl.maxclients)
 		Con_DPrintf("CL_ValidateState: colormap (%i) > cl.maxclients (%i)\n", s->colormap, cl.maxclients);
 
-	model = cl.model_precache[s->modelindex];
+	model = CL_GetModelByIndex(s->modelindex);
 	if (model && model->type && s->frame >= model->numframes)
 		Con_DPrintf("CL_ValidateState: no such frame %i in \"%s\" (which has %i frames)\n", s->frame, model->name, model->numframes);
 	if (model && model->type && s->skin > 0 && s->skin >= model->numskins && !(s->lightpflags & PFLAGS_FULLDYNAMIC))
@@ -2125,7 +2131,7 @@ void CL_ParseStatic (int large)
 	}
 
 // copy it to the current state
-	ent->render.model = cl.model_precache[ent->state_baseline.modelindex];
+	ent->render.model = CL_GetModelByIndex(ent->state_baseline.modelindex);
 	ent->render.framegroupblend[0].frame = ent->state_baseline.frame;
 	ent->render.framegroupblend[0].lerp = 1;
 	// make torchs play out of sync
@@ -2138,6 +2144,7 @@ void CL_ParseStatic (int large)
 	//VectorCopy (ent->state_baseline.angles, ent->render.angles);
 
 	Matrix4x4_CreateFromQuakeEntity(&ent->render.matrix, ent->state_baseline.origin[0], ent->state_baseline.origin[1], ent->state_baseline.origin[2], ent->state_baseline.angles[0], ent->state_baseline.angles[1], ent->state_baseline.angles[2], 1);
+	ent->render.allowdecals = true;
 	CL_UpdateRenderEntity(&ent->render);
 }
 
