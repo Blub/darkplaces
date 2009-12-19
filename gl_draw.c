@@ -1416,7 +1416,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 						{
 							// switching from freetype to non-freetype rendering
 							GL_LockArrays(0, batchcount * 4);
-							R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+							R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, quadelement3i, quadelement3s, 0, 0);
 							GL_LockArrays(0, 0);
 							batchcount = 0;
 							ac = color4f;
@@ -1456,7 +1456,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				if (batchcount >= QUADELEMENTS_MAXQUADS)
 				{
 					GL_LockArrays(0, batchcount * 4);
-					R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+					R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, quadelement3i, quadelement3s, 0, 0);
 					GL_LockArrays(0, 0);
 					batchcount = 0;
 					ac = color4f;
