@@ -183,6 +183,10 @@ ifeq ($(DP_MAKE_TARGET), mingw)
 	EXE_SDLNEXUIZ=$(EXE_WINSDLNEXUIZ)
 endif
 
+ifeq ($(WIN32RELEASE), 1)
+	CPUOPTIMIZATIONS=-march=i686 -DSUPPORTDIRECTX -DUSE_WSPIAPI_H
+endif
+
 ##### Sound configuration #####
 
 ifndef DP_SOUND_API

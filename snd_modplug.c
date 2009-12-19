@@ -192,13 +192,6 @@ void ModPlug_CloseLibrary (void)
 =================================================================
 */
 
-#define STREAM_BUFFER_DURATION 1.5f	// 1.5 sec
-#define STREAM_BUFFER_SIZE(format_ptr) ((int)(ceil (STREAM_BUFFER_DURATION * ((format_ptr)->speed * (format_ptr)->width * (format_ptr)->channels))))
-// We work with 1 sec sequences, so this buffer must be able to contain
-// 1 sec of sound of the highest quality (48 KHz, 16 bit samples, stereo)
-static unsigned char resampling_buffer [48000 * 2 * 2];
-
-
 // Per-sfx data structure
 typedef struct
 {
@@ -336,16 +329,17 @@ static const snd_buffer_t* ModPlug_FetchSound (void *sfxfetcher, void **chfetche
 
 	per_ch->sb_offset = real_start;
 
-	// We add exactly 1 sec of sound to the buffer:
-	// 1- to ensure we won't lose any sample during the resampling process
-	// 2- to force one call to ModPlug_FetchSound per second to regulate the workload
-	if (sb->format.speed + sb->nbframes > sb->maxframes)
+	// We add more than one frame of sound to the buffer:
+	// 1- to ensure we won't lose many samples during the resampling process
+	// 2- to reduce calls to ModPlug_FetchSound to regulate workload
+	newlength = (int)(per_sfx->format.speed*STREAM_BUFFER_FILL);
+	if (newlength + sb->nbframes > sb->maxframes)
 	{
 		Con_Printf ("ModPlug_FetchSound: stream buffer overflow (%u sample frames / %u)\n",
 					sb->format.speed + sb->nbframes, sb->maxframes);
 		return NULL;
 	}
-	newlength = per_sfx->format.speed * factor;  // -> 1 sec of sound before resampling
+	newlength *= factor; // convert from sample frames to bytes
 	if(newlength > (int)sizeof(resampling_buffer))
 		newlength = sizeof(resampling_buffer);
 

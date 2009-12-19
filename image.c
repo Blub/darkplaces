@@ -8,6 +8,14 @@
 int		image_width;
 int		image_height;
 
+void Image_CopyAlphaFromBlueBGRA(unsigned char *outpixels, const unsigned char *inpixels, int w, int h)
+{
+	int i, n;
+	n = w * h;
+	for(i = 0; i < n; ++i)
+		outpixels[4*i+3] = inpixels[4*i]; // blue channel
+}
+
 #if 1
 // written by LordHavoc in a readable way, optimized by Vic, further optimized by LordHavoc (the non-special index case), readable version preserved below this
 void Image_CopyMux(unsigned char *outpixels, const unsigned char *inpixels, int inputwidth, int inputheight, qboolean inputflipx, qboolean inputflipy, qboolean inputflipdiagonal, int numoutputcomponents, int numinputcomponents, int *outputinputcomponentindices)
@@ -850,10 +858,10 @@ unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qbo
 {
 	fs_offset_t filesize;
 	imageformat_t *firstformat, *format;
-	unsigned char *f, *data = NULL;
-	char basename[MAX_QPATH], name[MAX_QPATH], *c;
-	if (developer_memorydebug.integer)
-		Mem_CheckSentinelsGlobal();
+	unsigned char *f, *data = NULL, *data2 = NULL;
+	char basename[MAX_QPATH], name[MAX_QPATH], name2[MAX_QPATH], *c;
+	//if (developer_memorydebug.integer)
+	//	Mem_CheckSentinelsGlobal();
 	if (developer_texturelogging.integer)
 		Log_Printf("textures.log", "%s\n", filename);
 	Image_StripImageExtension(filename, basename, sizeof(basename)); // strip filename extensions to allow replacement by other types
@@ -890,12 +898,24 @@ unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qbo
 		{
 			data = format->loadfunc(f, filesize);
 			Mem_Free(f);
+			if(format->loadfunc == JPEG_LoadImage_BGRA) // jpeg can't do alpha, so let's simulate it by loading another jpeg
+			{
+				dpsnprintf (name2, sizeof(name2), format->formatstring, va("%s_alpha", basename));
+				f = FS_LoadFile(name2, tempmempool, true, &filesize);
+				if(f)
+				{
+					data2 = format->loadfunc(f, filesize);
+					Mem_Free(f);
+					Image_CopyAlphaFromBlueBGRA(data, data2, image_width, image_height);
+					Mem_Free(data2);
+				}
+			}
 			if (data)
 			{
 				if (developer.integer >= 10)
 					Con_Printf("loaded image %s (%dx%d)\n", name, image_width, image_height);
-				if (developer_memorydebug.integer)
-					Mem_CheckSentinelsGlobal();
+				//if (developer_memorydebug.integer)
+				//	Mem_CheckSentinelsGlobal();
 				if(allowFixtrans && r_fixtrans_auto.integer)
 				{
 					int n = fixtransparentpixels(data, image_width, image_height);
@@ -931,8 +951,8 @@ unsigned char *loadimagepixelsbgra (const char *filename, qboolean complain, qbo
 	// texture loading can take a while, so make sure we're sending keepalives
 	CL_KeepaliveMessage(false);
 
-	if (developer_memorydebug.integer)
-		Mem_CheckSentinelsGlobal();
+	//if (developer_memorydebug.integer)
+	//	Mem_CheckSentinelsGlobal();
 	return NULL;
 }
 

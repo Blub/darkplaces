@@ -2,13 +2,12 @@
 #ifndef GL_BACKEND_H
 #define GL_BACKEND_H
 
-// how many texture units to track state on (backendunits/backendimageunits/backendarrayunits are limited to this value)
-#define MAX_TEXTUREUNITS 64
-
 #define POLYGONELEMENTS_MAXPOINTS 258
-extern unsigned short polygonelements[(POLYGONELEMENTS_MAXPOINTS-2)*3];
+extern int polygonelement3i[(POLYGONELEMENTS_MAXPOINTS-2)*3];
+extern unsigned short polygonelement3s[(POLYGONELEMENTS_MAXPOINTS-2)*3];
 #define QUADELEMENTS_MAXQUADS 128
-extern unsigned short quadelements[QUADELEMENTS_MAXQUADS*6];
+extern int quadelement3i[QUADELEMENTS_MAXQUADS*6];
+extern unsigned short quadelement3s[QUADELEMENTS_MAXQUADS*6];
 
 void R_Viewport_TransformToScreen(const r_viewport_t *v, const vec4_t in, vec4_t out);
 void R_Viewport_InitOrtho(r_viewport_t *v, const matrix4x4_t *cameramatrix, int x, int y, int width, int height, double x1, double y1, double x2, double y2, double zNear, double zFar, const double *nearplane);
@@ -47,7 +46,6 @@ extern cvar_t gl_printcheckerror;
 typedef struct rmeshstate_s
 {
 	// textures
-	int tex1d[MAX_TEXTUREUNITS];
 	int tex[MAX_TEXTUREUNITS];
 	int tex3d[MAX_TEXTUREUNITS];
 	int texcubemap[MAX_TEXTUREUNITS];
@@ -100,14 +98,9 @@ void R_Mesh_ColorPointer(const float *color4f, int bufferobject, size_t bufferof
 // sets the texcoord array pointer for an array unit
 void R_Mesh_TexCoordPointer(unsigned int unitnum, unsigned int numcomponents, const float *texcoord, int bufferobject, size_t bufferoffset);
 // sets all textures bound to an image unit (multiple can be non-zero at once, according to OpenGL rules the highest one overrides the others)
-void R_Mesh_TexBindAll(unsigned int unitnum, int tex1d, int tex2d, int tex3d, int texcubemap, int texrectangle);
-// sets these are like TexBindAll with only one of the texture indices non-zero
-// (binds one texture type and unbinds all other types)
-void R_Mesh_TexBind1D(unsigned int unitnum, int texnum);
+void R_Mesh_TexBindAll(unsigned int unitnum, int tex2d, int tex3d, int texcubemap, int texrectangle);
+// equivalent to R_Mesh_TexBindAll(unitnum,tex2d,0,0,0)
 void R_Mesh_TexBind(unsigned int unitnum, int texnum);
-void R_Mesh_TexBind3D(unsigned int unitnum, int texnum);
-void R_Mesh_TexBindCubeMap(unsigned int unitnum, int texnum);
-void R_Mesh_TexBindRectangle(unsigned int unitnum, int texnum);
 // sets the texcoord matrix for a texenv unit
 void R_Mesh_TexMatrix(unsigned int unitnum, const matrix4x4_t *matrix);
 // sets the combine state for a texenv unit

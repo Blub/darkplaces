@@ -371,7 +371,7 @@ struct dxJointNode;
 struct dxJointGroup;
 struct dxTriMeshData;
 
-#define dInfinity FLT_MAX
+#define dInfinity 3.402823466e+38f
 
 typedef struct dxWorld *dWorldID;
 typedef struct dxSpace *dSpaceID;
@@ -526,7 +526,7 @@ typedef void dNearCallback (void *data, dGeomID o1, dGeomID o2);
 #define dSAP_AXES_ZYX  ((2)|(1<<2)|(0<<4))
 
 //const char*     (ODE_API *dGetConfiguration)(void);
-//int             (ODE_API *dCheckConfiguration)( const char* token );
+int             (ODE_API *dCheckConfiguration)( const char* token );
 int             (ODE_API *dInitODE)(void);
 //int             (ODE_API *dInitODE2)(unsigned int uiInitFlags);
 //int             (ODE_API *dAllocateODEDataForThread)(unsigned int uiAllocateFlags);
@@ -691,7 +691,7 @@ dJointID        (ODE_API *dJointCreateUniversal)(dWorldID, dJointGroupID);
 //dJointID        (ODE_API *dJointCreatePR)(dWorldID, dJointGroupID);
 //dJointID        (ODE_API *dJointCreatePU)(dWorldID, dJointGroupID);
 //dJointID        (ODE_API *dJointCreatePiston)(dWorldID, dJointGroupID);
-//dJointID        (ODE_API *dJointCreateFixed)(dWorldID, dJointGroupID);
+dJointID        (ODE_API *dJointCreateFixed)(dWorldID, dJointGroupID);
 //dJointID        (ODE_API *dJointCreateNull)(dWorldID, dJointGroupID);
 //dJointID        (ODE_API *dJointCreateAMotor)(dWorldID, dJointGroupID);
 //dJointID        (ODE_API *dJointCreateLMotor)(dWorldID, dJointGroupID);
@@ -992,7 +992,7 @@ dGeomID         (ODE_API *dCreateTriMesh)(dSpaceID space, dTriMeshDataID Data, d
 static dllfunction_t odefuncs[] =
 {
 //	{"dGetConfiguration",							(void **) &dGetConfiguration},
-//	{"dCheckConfiguration",							(void **) &dCheckConfiguration},
+	{"dCheckConfiguration",							(void **) &dCheckConfiguration},
 	{"dInitODE",									(void **) &dInitODE},
 //	{"dInitODE2",									(void **) &dInitODE2},
 //	{"dAllocateODEDataForThread",					(void **) &dAllocateODEDataForThread},
@@ -1156,7 +1156,7 @@ static dllfunction_t odefuncs[] =
 //	{"dJointCreatePR",								(void **) &dJointCreatePR},
 //	{"dJointCreatePU",								(void **) &dJointCreatePU},
 //	{"dJointCreatePiston",							(void **) &dJointCreatePiston},
-//	{"dJointCreateFixed",							(void **) &dJointCreateFixed},
+	{"dJointCreateFixed",							(void **) &dJointCreateFixed},
 //	{"dJointCreateNull",							(void **) &dJointCreateNull},
 //	{"dJointCreateAMotor",							(void **) &dJointCreateAMotor},
 //	{"dJointCreateLMotor",							(void **) &dJointCreateLMotor},
@@ -1484,7 +1484,7 @@ static void World_Physics_Init(void)
 	{
 		dInitODE();
 //		dInitODE2(0);
-#ifdef ODE_DNYAMIC
+#ifdef ODE_DYNAMIC
 # ifdef dSINGLE
 		if (!dCheckConfiguration("ODE_single_precision"))
 # else
@@ -1618,6 +1618,9 @@ void World_Physics_RemoveFromEntity(world_t *world, prvm_edict_t *ed)
 		Mem_Free(ed->priv.server->ode_element3i);
 	ed->priv.server->ode_element3i = NULL;
 	ed->priv.server->ode_numtriangles = 0;
+	if(ed->priv.server->ode_massbuf)
+		Mem_Free(ed->priv.server->ode_massbuf);
+	ed->priv.server->ode_massbuf = NULL;
 }
 
 #ifdef USEODE
@@ -1658,6 +1661,8 @@ static void World_Physics_Frame_BodyToEntity(world_t *world, prvm_edict_t *ed)
 			case JOINTTYPE_UNIVERSAL:
 				break;
 			case JOINTTYPE_HINGE2:
+				break;
+			case JOINTTYPE_FIXED:
 				break;
 		}
 		return;
@@ -1732,11 +1737,12 @@ static void World_Physics_Frame_JointFromEntity(world_t *world, prvm_edict_t *ed
 	int jointtype = 0;
 	int enemy = 0, aiment = 0;
 	vec3_t origin, velocity, angles, forward, left, up, movedir;
+	vec_t CFM, ERP, FMax, Stop, Vel;
 	prvm_eval_t *val;
-	float H = (!strcmp(prog->name, "server") ? sv.frametime : cl.mtime[0] - cl.mtime[1]) / bound(1, physics_ode_iterationsperframe.integer, 1000);
 	VectorClear(origin);
 	VectorClear(velocity);
 	VectorClear(angles);
+	VectorClear(movedir);
 	val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.movetype);if (val) movetype = (int)val->_float;
 	val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.jointtype);if (val) jointtype = (int)val->_float;
 	val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.enemy);if (val) enemy = val->_int;
@@ -1752,19 +1758,35 @@ static void World_Physics_Frame_JointFromEntity(world_t *world, prvm_edict_t *ed
 	if(aiment <= 0 || aiment >= prog->num_edicts || prog->edicts[aiment].priv.required->free || prog->edicts[aiment].priv.server->ode_body == 0)
 		aiment = 0;
 	// see http://www.ode.org/old_list_archives/2006-January/017614.html
-	if(movedir[0] > 0)
 	// we want to set ERP? make it fps independent and work like a spring constant
 	// note: if movedir[2] is 0, it becomes ERP = 1, CFM = 1.0 / (H * K)
+	if(movedir[0] > 0 && movedir[1] > 0)
 	{
 		float K = movedir[0];
-		float D = movedir[2];
+		float D = movedir[1];
 		float R = 2.0 * D * sqrt(K); // we assume D is premultiplied by sqrt(sprungMass)
-		float ERP = (H * K) / (H * K + R);
-		float CFM = 1.0 / (H * K + R);
-		movedir[0] = CFM;
-		movedir[2] = ERP;
+		CFM = 1.0 / (world->physics.ode_step * K + R); // always > 0
+		ERP = world->physics.ode_step * K * CFM;
+		Vel = 0;
+		FMax = 0;
+		Stop = movedir[2];
 	}
-	movedir[1] *= H; // make movedir[1] actually "force per second" to allow this to be used for non-springs
+	else if(movedir[1] < 0)
+	{
+		CFM = 0;
+		ERP = 0;
+		Vel = movedir[0];
+		FMax = -movedir[1]; // TODO do we need to multiply with world.physics.ode_step?
+		Stop = movedir[2] > 0 ? movedir[2] : dInfinity;
+	}
+	else // movedir[0] > 0, movedir[1] == 0 or movedir[0] < 0, movedir[1] >= 0
+	{
+		CFM = 0;
+		ERP = 0;
+		Vel = 0;
+		FMax = 0;
+		Stop = dInfinity;
+	}
 	if(jointtype == ed->priv.server->ode_joint_type && VectorCompare(origin, ed->priv.server->ode_joint_origin) && VectorCompare(velocity, ed->priv.server->ode_joint_velocity) && VectorCompare(angles, ed->priv.server->ode_joint_angles) && enemy == ed->priv.server->ode_joint_enemy && aiment == ed->priv.server->ode_joint_aiment && VectorCompare(movedir, ed->priv.server->ode_joint_movedir))
 		return; // nothing to do
 	AngleVectorsFLU(angles, forward, left, up);
@@ -1784,6 +1806,9 @@ static void World_Physics_Frame_JointFromEntity(world_t *world, prvm_edict_t *ed
 			break;
 		case JOINTTYPE_HINGE2:
 			j = dJointCreateHinge2(world->physics.ode_world, 0);
+			break;
+		case JOINTTYPE_FIXED:
+			j = dJointCreateFixed(world->physics.ode_world, 0);
 			break;
 		case 0:
 		default:
@@ -1814,21 +1839,7 @@ static void World_Physics_Frame_JointFromEntity(world_t *world, prvm_edict_t *ed
 		if(aiment)
 			b2 = (dBodyID)prog->edicts[aiment].priv.server->ode_body;
 		dJointAttach(j, b1, b2);
-#define SETPARAMS(t,id) \
-				dJointSet##t##Param(j, dParamStopCFM##id, movedir[0]); \
-				if(movedir[1] > 0) \
-				{ \
-					dJointSet##t##Param(j, dParamLoStop##id, 0); \
-					dJointSet##t##Param(j, dParamHiStop##id, 0); \
-					dJointSet##t##Param(j, dParamFMax##id, movedir[1]); \
-				} \
-				else \
-				{ \
-					dJointSet##t##Param(j, dParamLoStop##id, -dInfinity); \
-					dJointSet##t##Param(j, dParamHiStop##id, dInfinity); \
-					dJointSet##t##Param(j, dParamFMax##id, -movedir[1]); \
-				} \
-				dJointSet##t##Param(j, dParamStopERP##id, movedir[2])
+
 		switch(jointtype)
 		{
 			case JOINTTYPE_POINT:
@@ -1837,31 +1848,65 @@ static void World_Physics_Frame_JointFromEntity(world_t *world, prvm_edict_t *ed
 			case JOINTTYPE_HINGE:
 				dJointSetHingeAnchor(j, origin[0], origin[1], origin[2]);
 				dJointSetHingeAxis(j, forward[0], forward[1], forward[2]);
-				SETPARAMS(Hinge,);
+				dJointSetHingeParam(j, dParamFMax, FMax);
+				dJointSetHingeParam(j, dParamHiStop, Stop);
+				dJointSetHingeParam(j, dParamLoStop, -Stop);
+				dJointSetHingeParam(j, dParamStopCFM, CFM);
+				dJointSetHingeParam(j, dParamStopERP, ERP);
+				dJointSetHingeParam(j, dParamVel, Vel);
 				break;
 			case JOINTTYPE_SLIDER:
 				dJointSetSliderAxis(j, forward[0], forward[1], forward[2]);
-				SETPARAMS(Slider,);
+				dJointSetSliderParam(j, dParamFMax, FMax);
+				dJointSetSliderParam(j, dParamHiStop, Stop);
+				dJointSetSliderParam(j, dParamLoStop, -Stop);
+				dJointSetSliderParam(j, dParamStopCFM, CFM);
+				dJointSetSliderParam(j, dParamStopERP, ERP);
+				dJointSetSliderParam(j, dParamVel, Vel);
 				break;
 			case JOINTTYPE_UNIVERSAL:
 				dJointSetUniversalAnchor(j, origin[0], origin[1], origin[2]);
 				dJointSetUniversalAxis1(j, forward[0], forward[1], forward[2]);
 				dJointSetUniversalAxis2(j, up[0], up[1], up[2]);
-				SETPARAMS(Universal,);
-				SETPARAMS(Universal,2);
+				dJointSetUniversalParam(j, dParamFMax, FMax);
+				dJointSetUniversalParam(j, dParamHiStop, Stop);
+				dJointSetUniversalParam(j, dParamLoStop, -Stop);
+				dJointSetUniversalParam(j, dParamStopCFM, CFM);
+				dJointSetUniversalParam(j, dParamStopERP, ERP);
+				dJointSetUniversalParam(j, dParamVel, Vel);
+				dJointSetUniversalParam(j, dParamFMax2, FMax);
+				dJointSetUniversalParam(j, dParamHiStop2, Stop);
+				dJointSetUniversalParam(j, dParamLoStop2, -Stop);
+				dJointSetUniversalParam(j, dParamStopCFM2, CFM);
+				dJointSetUniversalParam(j, dParamStopERP2, ERP);
+				dJointSetUniversalParam(j, dParamVel2, Vel);
 				break;
 			case JOINTTYPE_HINGE2:
 				dJointSetHinge2Anchor(j, origin[0], origin[1], origin[2]);
 				dJointSetHinge2Axis1(j, forward[0], forward[1], forward[2]);
 				dJointSetHinge2Axis2(j, velocity[0], velocity[1], velocity[2]);
-				SETPARAMS(Hinge2,);
-				SETPARAMS(Hinge2,2);
+				dJointSetHinge2Param(j, dParamFMax, FMax);
+				dJointSetHinge2Param(j, dParamHiStop, Stop);
+				dJointSetHinge2Param(j, dParamLoStop, -Stop);
+				dJointSetHinge2Param(j, dParamStopCFM, CFM);
+				dJointSetHinge2Param(j, dParamStopERP, ERP);
+				dJointSetHinge2Param(j, dParamVel, Vel);
+				dJointSetHinge2Param(j, dParamFMax2, FMax);
+				dJointSetHinge2Param(j, dParamHiStop2, Stop);
+				dJointSetHinge2Param(j, dParamLoStop2, -Stop);
+				dJointSetHinge2Param(j, dParamStopCFM2, CFM);
+				dJointSetHinge2Param(j, dParamStopERP2, ERP);
+				dJointSetHinge2Param(j, dParamVel2, Vel);
+				break;
+			case JOINTTYPE_FIXED:
 				break;
 			case 0:
 			default:
-				Host_Error("what? but above the joint was valid...\n");
+				Sys_Error("what? but above the joint was valid...\n");
 				break;
 		}
+#undef SETPARAMS
+
 	}
 }
 
@@ -1916,28 +1961,24 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 	val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.movetype);if (val) movetype = (int)val->_float;
 	val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.scale);if (val && val->_float) scale = val->_float;
 	modelindex = 0;
+	if (world == &sv.world)
+		mempool = sv_mempool;
+	else if (world == &cl.world)
+		mempool = cls.levelmempool;
+	else
+		mempool = NULL;
 	switch(solid)
 	{
 	case SOLID_BSP:
 		val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.modelindex);
 		if (val)
 			modelindex = (int)val->_float;
-		if (world == &sv.world && modelindex >= 1 && modelindex < MAX_MODELS)
-		{
-			model = sv.models[modelindex];
-			mempool = sv_mempool;
-		}
-		else if (world == &cl.world && modelindex >= 1 && modelindex < MAX_MODELS)
-		{
-			model = cl.model_precache[modelindex];
-			mempool = cls.levelmempool;
-		}
+		if (world == &sv.world)
+			model = SV_GetModelByIndex(modelindex);
+		else if (world == &cl.world)
+			model = CL_GetModelByIndex(modelindex);
 		else
-		{
 			model = NULL;
-			mempool = NULL;
-			modelindex = 0;
-		}
 		if (model)
 		{
 			VectorScale(model->normalmins, scale, entmins);
@@ -2091,6 +2132,8 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 			Sys_Error("World_Physics_BodyFromEntity: unrecognized solid value %i was accepted by filter\n", solid);
 		}
 		Matrix4x4_Invert_Simple(&ed->priv.server->ode_offsetimatrix, &ed->priv.server->ode_offsetmatrix);
+		ed->priv.server->ode_massbuf = Mem_Alloc(mempool, sizeof(mass));
+		memcpy(ed->priv.server->ode_massbuf, &mass, sizeof(dMass));
 	}
 
 	if(ed->priv.server->ode_geom)
@@ -2102,12 +2145,20 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 			ed->priv.server->ode_body = (void *)(body = dBodyCreate(world->physics.ode_world));
 			dGeomSetBody(ed->priv.server->ode_geom, body);
 			dBodySetData(body, (void*)ed);
-			dBodySetMass(body, &mass);
+			dBodySetMass(body, (dMass *) ed->priv.server->ode_massbuf);
+			modified = true;
 		}
 	}
 	else
 	{
-		// let's keep the body around in case we need it again (in case QC toggles between MOVETYPE_PHYSICS and MOVETYPE_NONE)
+		if (ed->priv.server->ode_body != NULL)
+		{
+			if(ed->priv.server->ode_geom)
+				dGeomSetBody(ed->priv.server->ode_geom, 0);
+			dBodyDestroy((dBodyID) ed->priv.server->ode_body);
+			ed->priv.server->ode_body = NULL;
+			modified = true;
+		}
 	}
 
 	// get current data from entity
@@ -2135,10 +2186,26 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 	// compatibility for legacy entities
 	//if (!VectorLength2(forward) || solid == SOLID_BSP)
 	{
-		AngleVectorsFLU(angles, forward, left, up);
+		float pitchsign = 1;
+		vec3_t qangles, qavelocity;
+		VectorCopy(angles, qangles);
+		VectorCopy(avelocity, qavelocity);
+
+		if(!strcmp(prog->name, "server")) // FIXME some better way?
+		{
+			pitchsign = SV_GetPitchSign(ed);
+		}
+		else if(!strcmp(prog->name, "client"))
+		{
+			pitchsign = CL_GetPitchSign(ed);
+		}
+		qangles[PITCH] *= pitchsign;
+		qavelocity[PITCH] *= pitchsign;
+
+		AngleVectorsFLU(qangles, forward, left, up);
 		// convert single-axis rotations in avelocity to spinvelocity
 		// FIXME: untested math - check signs
-		VectorSet(spinvelocity, DEG2RAD(avelocity[PITCH]), DEG2RAD(avelocity[ROLL]), DEG2RAD(avelocity[YAW]));
+		VectorSet(spinvelocity, DEG2RAD(qavelocity[PITCH]), DEG2RAD(qavelocity[ROLL]), DEG2RAD(qavelocity[YAW]));
 	}
 
 	// compatibility for legacy entities
@@ -2194,7 +2261,7 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 
 	// store the qc values into the physics engine
 	body = ed->priv.server->ode_body;
-	if (modified)
+	if (modified && ed->priv.server->ode_geom)
 	{
 		dVector3 r[3];
 		matrix4x4_t entitymatrix;
@@ -2221,20 +2288,6 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 		VectorCopy(avelocity, ed->priv.server->ode_avelocity);
 		ed->priv.server->ode_gravity = gravity;
 
-		{
-			float pitchsign = 1;
-			if(!strcmp(prog->name, "server")) // FIXME some better way?
-			{
-				pitchsign = SV_GetPitchSign(ed);
-			}
-			else if(!strcmp(prog->name, "client"))
-			{
-				pitchsign = CL_GetPitchSign(ed);
-			}
-			angles[PITCH] *= pitchsign;
-			avelocity[PITCH] *= pitchsign;
-		}
-
 		Matrix4x4_FromVectors(&entitymatrix, forward, left, up, origin);
 		Matrix4x4_Concat(&bodymatrix, &entitymatrix, &ed->priv.server->ode_offsetmatrix);
 		Matrix4x4_ToVectors(&bodymatrix, forward, left, up, origin);
@@ -2251,7 +2304,7 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 		{
 			if(movetype == MOVETYPE_PHYSICS)
 			{
-				dGeomSetBody(ed->priv.server->ode_geom, ed->priv.server->ode_body);
+				dGeomSetBody(ed->priv.server->ode_geom, body);
 				dBodySetPosition(body, origin[0], origin[1], origin[2]);
 				dBodySetRotation(body, r[0]);
 				dBodySetLinearVel(body, velocity[0], velocity[1], velocity[2]);
@@ -2260,9 +2313,13 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 			}
 			else
 			{
+				dGeomSetBody(ed->priv.server->ode_geom, body);
+				dBodySetPosition(body, origin[0], origin[1], origin[2]);
+				dBodySetRotation(body, r[0]);
+				dBodySetLinearVel(body, velocity[0], velocity[1], velocity[2]);
+				dBodySetAngularVel(body, spinvelocity[0], spinvelocity[1], spinvelocity[2]);
+				dBodySetGravityMode(body, gravity);
 				dGeomSetBody(ed->priv.server->ode_geom, 0);
-				dGeomSetPosition(ed->priv.server->ode_geom, origin[0], origin[1], origin[2]);
-				dGeomSetRotation(ed->priv.server->ode_geom, r[0]);
 			}
 		}
 		else
@@ -2427,6 +2484,10 @@ void World_Physics_Frame(world_t *world, double frametime, double gravity)
 		int i;
 		prvm_edict_t *ed;
 
+		world->physics.ode_iterations = bound(1, physics_ode_iterationsperframe.integer, 1000);
+		world->physics.ode_step = frametime / world->physics.ode_iterations;
+		world->physics.ode_movelimit = physics_ode_movelimit.value / world->physics.ode_step;
+
 		// copy physics properties from entities to physics engine
 		if (prog)
 		{
@@ -2439,9 +2500,6 @@ void World_Physics_Frame(world_t *world, double frametime, double gravity)
 					World_Physics_Frame_JointFromEntity(world, ed);
 		}
 
-		world->physics.ode_iterations = bound(1, physics_ode_iterationsperframe.integer, 1000);
-		world->physics.ode_step = frametime / world->physics.ode_iterations;
-		world->physics.ode_movelimit = physics_ode_movelimit.value / world->physics.ode_step;
 		for (i = 0;i < world->physics.ode_iterations;i++)
 		{
 			// set the gravity

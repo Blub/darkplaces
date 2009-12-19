@@ -40,8 +40,6 @@ extern cvar_t v_glslgamma;
 /* Support Routines */
 
 #define FONT_FILESIZE 13468
-#define MAX_CACHED_PICS 1024
-#define CACHEPICHASHSIZE 256
 static cachepic_t *cachepichash[CACHEPICHASHSIZE];
 static cachepic_t cachepics[MAX_CACHED_PICS];
 static int numcachepics;
@@ -275,120 +273,6 @@ static const embeddedpic_t embeddedpics[] =
 	".3............3."
 	"................"
 	},
-	{
-	"gfx/editlights/cursor", 16, 16,
-	"................"
-	".3............3."
-	"..5...2332...5.."
-	"...7.3....3.7..."
-	"....7......7...."
-	"...3.7....7.3..."
-	"..2...7..7...2.."
-	"..3..........3.."
-	"..3..........3.."
-	"..2...7..7...2.."
-	"...3.7....7.3..."
-	"....7......7...."
-	"...7.3....3.7..."
-	"..5...2332...5.."
-	".3............3."
-	"................"
-	},
-	{
-	"gfx/editlights/light", 16, 16,
-	"................"
-	"................"
-	"......1111......"
-	"....11233211...."
-	"...1234554321..."
-	"...1356776531..."
-	"..124677776421.."
-	"..135777777531.."
-	"..135777777531.."
-	"..124677776421.."
-	"...1356776531..."
-	"...1234554321..."
-	"....11233211...."
-	"......1111......"
-	"................"
-	"................"
-	},
-	{
-	"gfx/editlights/noshadow", 16, 16,
-	"................"
-	"................"
-	"......1111......"
-	"....11233211...."
-	"...1234554321..."
-	"...1356226531..."
-	"..12462..26421.."
-	"..1352....2531.."
-	"..1352....2531.."
-	"..12462..26421.."
-	"...1356226531..."
-	"...1234554321..."
-	"....11233211...."
-	"......1111......"
-	"................"
-	"................"
-	},
-	{
-	"gfx/editlights/selection", 16, 16,
-	"................"
-	".777752..257777."
-	".742........247."
-	".72..........27."
-	".7............7."
-	".5............5."
-	".2............2."
-	"................"
-	"................"
-	".2............2."
-	".5............5."
-	".7............7."
-	".72..........27."
-	".742........247."
-	".777752..257777."
-	"................"
-	},
-	{
-	"gfx/editlights/cubemaplight", 16, 16,
-	"................"
-	"................"
-	"......2772......"
-	"....27755772...."
-	"..277533335772.."
-	"..753333333357.."
-	"..777533335777.."
-	"..735775577537.."
-	"..733357753337.."
-	"..733337733337.."
-	"..753337733357.."
-	"..277537735772.."
-	"....27777772...."
-	"......2772......"
-	"................"
-	"................"
-	},
-	{
-	"gfx/editlights/cubemapnoshadowlight", 16, 16,
-	"................"
-	"................"
-	"......2772......"
-	"....27722772...."
-	"..2772....2772.."
-	"..72........27.."
-	"..7772....2777.."
-	"..7.27722772.7.."
-	"..7...2772...7.."
-	"..7....77....7.."
-	"..72...77...27.."
-	"..2772.77.2772.."
-	"....27777772...."
-	"......2772......"
-	"................"
-	"................"
-	},
 	{NULL, 0, 0, NULL}
 };
 
@@ -417,8 +301,8 @@ Draw_CachePic
 cachepic_t *Draw_CachePic_Flags(const char *path, unsigned int cachepicflags)
 {
 	int crc, hashkey;
+	unsigned char *pixels;
 	cachepic_t *pic;
-	int flags;
 	fs_offset_t lmpsize;
 	unsigned char *lmpdata;
 	char lmpname[MAX_QPATH];
@@ -452,27 +336,30 @@ cachepic_t *Draw_CachePic_Flags(const char *path, unsigned int cachepicflags)
 		return pic;
 	}
 
-	flags = TEXF_ALPHA;
-	if (!(cachepicflags & CACHEPICFLAG_NOTPERSISTENT))
-		flags |= TEXF_PRECACHE;
+	pic->texflags = TEXF_ALPHA | TEXF_PRECACHE;
 	if (!(cachepicflags & CACHEPICFLAG_NOCLAMP))
-		flags |= TEXF_CLAMP;
+		pic->texflags |= TEXF_CLAMP;
 	if (!(cachepicflags & CACHEPICFLAG_NOCOMPRESSION) && gl_texturecompression_2d.integer)
-		flags |= TEXF_COMPRESS;
+		pic->texflags |= TEXF_COMPRESS;
+
+	pic->autoload = (cachepicflags & CACHEPICFLAG_NOTPERSISTENT);
 
 	// load a high quality image from disk if possible
-	pic->tex = loadtextureimage(drawtexturepool, path, false, flags, true);
-	if (pic->tex == NULL && !strncmp(path, "gfx/", 4))
+	pixels = loadimagepixelsbgra(path, false, true);
+	if (pixels == NULL && !strncmp(path, "gfx/", 4))
+		pixels = loadimagepixelsbgra(path+4, false, true);
+	if (pixels)
 	{
-		// compatibility with older versions which did not require gfx/ prefix
-		pic->tex = loadtextureimage(drawtexturepool, path + 4, false, flags, true);
+		pic->width = image_width;
+		pic->height = image_height;
+		if (!pic->autoload)
+			pic->tex = R_LoadTexture2D(drawtexturepool, path, image_width, image_height, pixels, TEXTYPE_BGRA, pic->texflags, NULL);
 	}
-	// if a high quality image was loaded, set the pic's size to match it, just
-	// in case there's no low quality version to get the size from
-	if (pic->tex)
+	else
 	{
-		pic->width = R_TextureWidth(pic->tex);
-		pic->height = R_TextureHeight(pic->tex);
+		pic->autoload = false;
+		// never compress the fallback images
+		pic->texflags &= ~TEXF_COMPRESS;
 	}
 
 	// now read the low quality version (wad or lmp file), and take the pic
@@ -490,8 +377,8 @@ cachepic_t *Draw_CachePic_Flags(const char *path, unsigned int cachepicflags)
 			pic->width = lmpdata[0] + lmpdata[1] * 256 + lmpdata[2] * 65536 + lmpdata[3] * 16777216;
 			pic->height = lmpdata[4] + lmpdata[5] * 256 + lmpdata[6] * 65536 + lmpdata[7] * 16777216;
 			// if no high quality replacement image was found, upload the original low quality texture
-			if (!pic->tex)
-				pic->tex = R_LoadTexture2D(drawtexturepool, path, pic->width, pic->height, lmpdata + 8, TEXTYPE_PALETTE, flags & ~TEXF_COMPRESS, palette_bgra_transparent);
+			if (!pixels)
+				pic->tex = R_LoadTexture2D(drawtexturepool, path, pic->width, pic->height, lmpdata + 8, TEXTYPE_PALETTE, pic->texflags, palette_bgra_transparent);
 		}
 		Mem_Free(lmpdata);
 	}
@@ -506,22 +393,27 @@ cachepic_t *Draw_CachePic_Flags(const char *path, unsigned int cachepicflags)
 			pic->width = 128;
 			pic->height = 128;
 			// if no high quality replacement image was found, upload the original low quality texture
-			if (!pic->tex)
-				pic->tex = R_LoadTexture2D(drawtexturepool, path, 128, 128, lmpdata, TEXTYPE_PALETTE, flags & ~TEXF_COMPRESS, palette_bgra_font);
+			if (!pixels)
+				pic->tex = R_LoadTexture2D(drawtexturepool, path, 128, 128, lmpdata, TEXTYPE_PALETTE, pic->texflags, palette_bgra_font);
 		}
 		else
 		{
 			pic->width = lmpdata[0] + lmpdata[1] * 256 + lmpdata[2] * 65536 + lmpdata[3] * 16777216;
 			pic->height = lmpdata[4] + lmpdata[5] * 256 + lmpdata[6] * 65536 + lmpdata[7] * 16777216;
 			// if no high quality replacement image was found, upload the original low quality texture
-			if (!pic->tex)
-				pic->tex = R_LoadTexture2D(drawtexturepool, path, pic->width, pic->height, lmpdata + 8, TEXTYPE_PALETTE, flags & ~TEXF_COMPRESS, palette_bgra_transparent);
+			if (!pixels)
+				pic->tex = R_LoadTexture2D(drawtexturepool, path, pic->width, pic->height, lmpdata + 8, TEXTYPE_PALETTE, pic->texflags, palette_bgra_transparent);
 		}
 	}
 
-	// if it's not found on disk, generate an image
-	if (pic->tex == NULL)
+	if (pixels)
 	{
+		Mem_Free(pixels);
+		pixels = NULL;
+	}
+	else if (pic->tex == NULL)
+	{
+		// if it's not found on disk, generate an image
 		pic->tex = draw_generatepic(path, (cachepicflags & CACHEPICFLAG_QUIET) != 0);
 		pic->width = R_TextureWidth(pic->tex);
 		pic->height = R_TextureHeight(pic->tex);
@@ -533,6 +425,43 @@ cachepic_t *Draw_CachePic_Flags(const char *path, unsigned int cachepicflags)
 cachepic_t *Draw_CachePic (const char *path)
 {
 	return Draw_CachePic_Flags (path, 0);
+}
+
+int draw_frame = 1;
+
+rtexture_t *Draw_GetPicTexture(cachepic_t *pic)
+{
+	if (pic->autoload && !pic->tex)
+	{
+		pic->tex = loadtextureimage(drawtexturepool, pic->name, false, pic->texflags, true);
+		if (pic->tex == NULL && !strncmp(pic->name, "gfx/", 4))
+			pic->tex = loadtextureimage(drawtexturepool, pic->name+4, false, pic->texflags, true);
+		if (pic->tex == NULL)
+			pic->tex = draw_generatepic(pic->name, true);
+	}
+	pic->lastusedframe = draw_frame;
+	return pic->tex;
+}
+
+void Draw_Frame(void)
+{
+	int i;
+	cachepic_t *pic;
+	static double nextpurgetime;
+	int purgeframe;
+	if (nextpurgetime > realtime)
+		return;
+	nextpurgetime = realtime + 0.05;
+	purgeframe = draw_frame - 1;
+	for (i = 0, pic = cachepics;i < numcachepics;i++, pic++)
+	{
+		if (pic->autoload && pic->tex && pic->lastusedframe < draw_frame)
+		{
+			R_FreeTexture(pic->tex);
+			pic->tex = NULL;
+		}
+	}
+	draw_frame++;
 }
 
 cachepic_t *Draw_NewPic(const char *picname, int width, int height, int alpha, unsigned char *pixels_bgra)
@@ -576,7 +505,7 @@ cachepic_t *Draw_NewPic(const char *picname, int width, int height, int alpha, u
 	pic->height = height;
 	if (pic->tex)
 		R_FreeTexture(pic->tex);
-	pic->tex = R_LoadTexture2D(drawtexturepool, picname, width, height, pixels_bgra, TEXTYPE_BGRA, alpha ? TEXF_ALPHA : 0, NULL);
+	pic->tex = R_LoadTexture2D(drawtexturepool, picname, width, height, pixels_bgra, TEXTYPE_BGRA, TEXF_PRECACHE | (alpha ? TEXF_ALPHA : 0), NULL);
 	return pic;
 }
 
@@ -593,6 +522,7 @@ void Draw_FreePic(const char *picname)
 		if (!strcmp (picname, pic->name) && pic->tex)
 		{
 			R_FreeTexture(pic->tex);
+			pic->tex = NULL;
 			pic->width = 0;
 			pic->height = 0;
 			return;
@@ -985,7 +915,7 @@ void DrawQ_Pic(float x, float y, cachepic_t *pic, float width, float height, flo
 			width = pic->width;
 		if (height == 0)
 			height = pic->height;
-		R_Mesh_TexBind(0, R_GetTexture(pic->tex));
+		R_Mesh_TexBind(0, R_GetTexture(Draw_GetPicTexture(pic)));
 		R_Mesh_TexCoordPointer(0, 2, floats + 12, 0, 0);
 
 #if 1
@@ -1013,7 +943,7 @@ void DrawQ_Pic(float x, float y, cachepic_t *pic, float width, float height, flo
 	floats[3] = floats[6] = x + width;
 	floats[7] = floats[10] = y + height;
 
-	R_Mesh_Draw(0, 4, 0, 2, NULL, polygonelements, 0, 0);
+	R_Mesh_Draw(0, 4, 0, 2, polygonelement3i, polygonelement3s, 0, 0);
 }
 
 void DrawQ_RotPic(float x, float y, cachepic_t *pic, float width, float height, float org_x, float org_y, float angle, float red, float green, float blue, float alpha, int flags)
@@ -1039,7 +969,7 @@ void DrawQ_RotPic(float x, float y, cachepic_t *pic, float width, float height, 
 			width = pic->width;
 		if (height == 0)
 			height = pic->height;
-		R_Mesh_TexBind(0, R_GetTexture(pic->tex));
+		R_Mesh_TexBind(0, R_GetTexture(Draw_GetPicTexture(pic)));
 		R_Mesh_TexCoordPointer(0, 2, floats + 12, 0, 0);
 
 		floats[12] = 0.0f;floats[13] = 0.0f;
@@ -1066,7 +996,7 @@ void DrawQ_RotPic(float x, float y, cachepic_t *pic, float width, float height, 
 	floats[9]  = x - cosaf*org_x + cosar*(height-org_y);
 	floats[10] = y - sinaf*org_x + sinar*(height-org_y);
 
-	R_Mesh_Draw(0, 4, 0, 2, NULL, polygonelements, 0, 0);
+	R_Mesh_Draw(0, 4, 0, 2, polygonelement3i, polygonelement3s, 0, 0);
 }
 
 void DrawQ_Fill(float x, float y, float width, float height, float red, float green, float blue, float alpha, int flags)
@@ -1087,7 +1017,7 @@ void DrawQ_Fill(float x, float y, float width, float height, float red, float gr
 	floats[3] = floats[6] = x + width;
 	floats[7] = floats[10] = y + height;
 
-	R_Mesh_Draw(0, 4, 0, 2, NULL, polygonelements, 0, 0);
+	R_Mesh_Draw(0, 4, 0, 2, polygonelement3i, polygonelement3s, 0, 0);
 }
 
 /// color tag printing
@@ -1542,7 +1472,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 					{
 						// we need a different character map, render what we currently have:
 						GL_LockArrays(0, batchcount * 4);
-						R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+						R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, quadelement3i, quadelement3s, 0, 0);
 						GL_LockArrays(0, 0);
 						batchcount = 0;
 						ac = color4f;
@@ -1604,7 +1534,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 				if (batchcount >= QUADELEMENTS_MAXQUADS)
 				{
 					GL_LockArrays(0, batchcount * 4);
-					R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+					R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, quadelement3i, quadelement3s, 0, 0);
 					GL_LockArrays(0, 0);
 					batchcount = 0;
 					ac = color4f;
@@ -1625,7 +1555,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 	if (batchcount > 0)
 	{
 		GL_LockArrays(0, batchcount * 4);
-		R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, NULL, quadelements, 0, 0);
+		R_Mesh_Draw(0, batchcount * 4, 0, batchcount * 2, quadelement3i, quadelement3s, 0, 0);
 		GL_LockArrays(0, 0);
 	}
 
@@ -1722,7 +1652,7 @@ void DrawQ_SuperPic(float x, float y, cachepic_t *pic, float width, float height
 			width = pic->width;
 		if (height == 0)
 			height = pic->height;
-		R_Mesh_TexBind(0, R_GetTexture(pic->tex));
+		R_Mesh_TexBind(0, R_GetTexture(Draw_GetPicTexture(pic)));
 		R_Mesh_TexCoordPointer(0, 2, floats + 12, 0, 0);
 		floats[12] = s1;floats[13] = t1;
 		floats[14] = s2;floats[15] = t2;
@@ -1740,7 +1670,7 @@ void DrawQ_SuperPic(float x, float y, cachepic_t *pic, float width, float height
 	floats[28] = r4;floats[29] = g4;floats[30] = b4;floats[31] = a4;
 	floats[32] = r3;floats[33] = g3;floats[34] = b3;floats[35] = a3;
 
-	R_Mesh_Draw(0, 4, 0, 2, NULL, polygonelements, 0, 0);
+	R_Mesh_Draw(0, 4, 0, 2, polygonelement3i, polygonelement3s, 0, 0);
 }
 
 void DrawQ_Mesh (drawqueuemesh_t *mesh, int flags)
@@ -1755,7 +1685,7 @@ void DrawQ_Mesh (drawqueuemesh_t *mesh, int flags)
 	R_SetupGenericShader(mesh->texture != NULL);
 
 	GL_LockArrays(0, mesh->num_vertices);
-	R_Mesh_Draw(0, mesh->num_vertices, 0, mesh->num_triangles, NULL, mesh->data_element3s, 0, 0);
+	R_Mesh_Draw(0, mesh->num_vertices, 0, mesh->num_triangles, mesh->data_element3i, mesh->data_element3s, 0, 0);
 	GL_LockArrays(0, 0);
 }
 
@@ -1828,49 +1758,58 @@ static float blendvertex3f[9] = {-5000, -5000, 10, 10000, -5000, 10, -5000, 1000
 void R_DrawGamma(void)
 {
 	float c[4];
-	if (!vid_usinghwgamma && !(r_glsl.integer && v_glslgamma.integer))
+	switch(vid.renderpath)
 	{
-		// all the blends ignore depth
-		R_Mesh_VertexPointer(blendvertex3f, 0, 0);
-		R_Mesh_ColorPointer(NULL, 0, 0);
-		R_Mesh_ResetTextureState();
-		R_SetupGenericShader(false);
-		GL_DepthMask(true);
-		GL_DepthRange(0, 1);
-		GL_PolygonOffset(0, 0);
-		GL_DepthTest(false);
-		if (v_color_enable.integer)
+	case RENDERPATH_GL20:
+		if (vid_usinghwgamma || v_glslgamma.integer)
+			return;
+		break;
+	case RENDERPATH_GL13:
+	case RENDERPATH_GL11:
+		if (vid_usinghwgamma)
+			return;
+		break;
+	}
+	// all the blends ignore depth
+	R_Mesh_VertexPointer(blendvertex3f, 0, 0);
+	R_Mesh_ColorPointer(NULL, 0, 0);
+	R_Mesh_ResetTextureState();
+	R_SetupGenericShader(false);
+	GL_DepthMask(true);
+	GL_DepthRange(0, 1);
+	GL_PolygonOffset(0, 0);
+	GL_DepthTest(false);
+	if (v_color_enable.integer)
+	{
+		c[0] = v_color_white_r.value;
+		c[1] = v_color_white_g.value;
+		c[2] = v_color_white_b.value;
+	}
+	else
+		c[0] = c[1] = c[2] = v_contrast.value;
+	if (c[0] >= 1.01f || c[1] >= 1.01f || c[2] >= 1.01f)
+	{
+		GL_BlendFunc(GL_DST_COLOR, GL_ONE);
+		while (c[0] >= 1.01f || c[1] >= 1.01f || c[2] >= 1.01f)
 		{
-			c[0] = v_color_white_r.value;
-			c[1] = v_color_white_g.value;
-			c[2] = v_color_white_b.value;
+			GL_Color(bound(0, c[0] - 1, 1), bound(0, c[1] - 1, 1), bound(0, c[2] - 1, 1), 1);
+			R_Mesh_Draw(0, 3, 0, 1, polygonelement3i, polygonelement3s, 0, 0);
+			VectorScale(c, 0.5, c);
 		}
-		else
-			c[0] = c[1] = c[2] = v_contrast.value;
-		if (c[0] >= 1.01f || c[1] >= 1.01f || c[2] >= 1.01f)
-		{
-			GL_BlendFunc(GL_DST_COLOR, GL_ONE);
-			while (c[0] >= 1.01f || c[1] >= 1.01f || c[2] >= 1.01f)
-			{
-				GL_Color(bound(0, c[0] - 1, 1), bound(0, c[1] - 1, 1), bound(0, c[2] - 1, 1), 1);
-				R_Mesh_Draw(0, 3, 0, 1, NULL, polygonelements, 0, 0);
-				VectorScale(c, 0.5, c);
-			}
-		}
-		if (v_color_enable.integer)
-		{
-			c[0] = v_color_black_r.value;
-			c[1] = v_color_black_g.value;
-			c[2] = v_color_black_b.value;
-		}
-		else
-			c[0] = c[1] = c[2] = v_brightness.value;
-		if (c[0] >= 0.01f || c[1] >= 0.01f || c[2] >= 0.01f)
-		{
-			GL_BlendFunc(GL_ONE, GL_ONE);
-			GL_Color(c[0], c[1], c[2], 1);
-			R_Mesh_Draw(0, 3, 0, 1, NULL, polygonelements, 0, 0);
-		}
+	}
+	if (v_color_enable.integer)
+	{
+		c[0] = v_color_black_r.value;
+		c[1] = v_color_black_g.value;
+		c[2] = v_color_black_b.value;
+	}
+	else
+		c[0] = c[1] = c[2] = v_brightness.value;
+	if (c[0] >= 0.01f || c[1] >= 0.01f || c[2] >= 0.01f)
+	{
+		GL_BlendFunc(GL_ONE, GL_ONE);
+		GL_Color(c[0], c[1], c[2], 1);
+		R_Mesh_Draw(0, 3, 0, 1, polygonelement3i, polygonelement3s, 0, 0);
 	}
 }
 

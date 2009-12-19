@@ -30,6 +30,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define JOINTTYPE_SLIDER 3
 #define JOINTTYPE_UNIVERSAL 4
 #define JOINTTYPE_HINGE2 5
+#define JOINTTYPE_FIXED -1
 
 typedef struct edict_engineprivate_s
 {
@@ -75,6 +76,10 @@ typedef struct edict_engineprivate_s
 	vec3_t moved_from;
 	vec3_t moved_fromangles;
 
+	framegroupblend_t framegroupblend[MAX_FRAMEGROUPBLENDS];
+	frameblend_t frameblend[MAX_FRAMEBLENDS];
+	skeleton_t skeleton;
+
 	// physics parameters
 	qboolean ode_physics;
 	void *ode_body;
@@ -103,6 +108,7 @@ typedef struct edict_engineprivate_s
 	vec3_t ode_joint_angles; // joint axis
 	vec3_t ode_joint_velocity; // second joint axis
 	vec3_t ode_joint_movedir; // parameters
+	void *ode_massbuf;
 }
 edict_engineprivate_t;
 

@@ -80,7 +80,7 @@ typedef struct prvm_edict_s
 	union
 	{
 		prvm_edict_private_t *required;
-		void *vp;
+		vec_t *vp;
 		// FIXME: this server pointer really means world, not server
 		// (it is used by both server qc and client qc, but not menu qc)
 		edict_engineprivate_t *server;
@@ -104,7 +104,7 @@ typedef struct prvm_edict_s
 	// QuakeC fields (stored in dynamically resized array)
 	union
 	{
-		void *vp;
+		vec_t *vp;
 		entvars_t		*server;
 		cl_entvars_t	*client;
 	} fields;
@@ -222,6 +222,7 @@ typedef struct prvm_prog_fieldoffsets_s
 	int rendermode; // ssqc - HalfLife support
 	int scale; // ssqc / csqc
 	int shadertime; // csqc
+	int skeletonindex; // csqc / ssqc FTE_CSQC_SKELETONOBJECTS / DP_SKELETONOBJECTS
 	int style; // ssqc
 	int tag_entity; // ssqc / csqc
 	int tag_index; // ssqc / csqc
@@ -357,6 +358,7 @@ prvm_stringbuffer_t;
 typedef struct prvm_prog_s
 {
 	double              starttime;
+	unsigned int		id; // increasing unique id of progs instance
 	dprograms_t			*progs;
 	mfunction_t			*functions;
 	char				*strings;
@@ -364,15 +366,15 @@ typedef struct prvm_prog_s
 	ddef_t				*fielddefs;
 	ddef_t				*globaldefs;
 	dstatement_t		*statements;
-	int					edict_size;			// in bytes
-	int					edictareasize;		// LordHavoc: in bytes (for bound checking)
+	int					entityfields;			// number of vec_t fields in progs (some variables are 3)
+	int					entityfieldsarea;		// LordHavoc: equal to max_edicts * entityfields (for bounds checking)
 
 	int					*statement_linenums; // NULL if not available
 
 	double				*statement_profile; // only incremented if prvm_statementprofiling is on
 
 	union {
-		float *generic;
+		vec_t *generic;
 		globalvars_t *server;
 		cl_globalvars_t *client;
 	} globals;
@@ -422,6 +424,7 @@ typedef struct prvm_prog_s
 	fssearch_t			*opensearches[PRVM_MAX_OPENSEARCHES];
 	const char *         opensearches_origin[PRVM_MAX_OPENSEARCHES];
 	struct clgecko_s		*opengeckoinstances[PRVM_MAX_GECKOINSTANCES];
+	skeleton_t			*skeletons[MAX_EDICTS];
 
 	// copies of some vars that were former read from sv
 	int					num_edicts;
@@ -434,7 +437,7 @@ typedef struct prvm_prog_s
 	int					reserved_edicts; // [INIT]
 
 	prvm_edict_t		*edicts;
-	void					*edictsfields;
+	vec_t				*edictsfields;
 	void					*edictprivate;
 
 	// size of the engine private struct
@@ -626,6 +629,7 @@ void PRVM_ED_PrintNum (int ent, const char *wildcard_fieldname);
 
 const char *PRVM_GetString(int num);
 int PRVM_SetEngineString(const char *s);
+const char *PRVM_ChangeEngineString(int i, const char *s);
 int PRVM_SetTempString(const char *s);
 int PRVM_AllocString(size_t bufferlength, char **pointer);
 void PRVM_FreeString(int num);
@@ -678,5 +682,10 @@ void VM_Warning(const char *fmt, ...) DP_FUNC_PRINTF(1);
 
 // TODO: fill in the params
 //void PRVM_Create();
+
+void VM_GenerateFrameGroupBlend(framegroupblend_t *framegroupblend, const prvm_edict_t *ed);
+void VM_FrameBlendFromFrameGroupBlend(frameblend_t *frameblend, const framegroupblend_t *framegroupblend, const dp_model_t *model);
+void VM_UpdateEdictSkeleton(prvm_edict_t *ed, const dp_model_t *edmodel, const frameblend_t *frameblend);
+void VM_RemoveEdictSkeleton(prvm_edict_t *ed);
 
 #endif

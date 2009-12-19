@@ -812,7 +812,6 @@ static void M_SinglePlayer_Key (int key, int ascii)
 
 static int		load_cursor;		///< 0 < load_cursor < MAX_SAVEGAMES
 
-#define	MAX_SAVEGAMES		12
 static char	m_filenames[MAX_SAVEGAMES][SAVEGAME_COMMENT_LENGTH+1];
 static int		loadable[MAX_SAVEGAMES];
 
@@ -2885,7 +2884,7 @@ static void M_Video_Draw (void)
 	// Current and Proposed Resolution
 	M_Print(16, video_cursor_table[t] - 12, "    Current Resolution");
 	if (vid_supportrefreshrate && vid.userefreshrate && vid.fullscreen)
-		M_Print(220, video_cursor_table[t] - 12, va("%dx%d %dhz", vid.width, vid.height, vid.refreshrate));
+		M_Print(220, video_cursor_table[t] - 12, va("%dx%d %.2fhz", vid.width, vid.height, vid.refreshrate));
 	else
 		M_Print(220, video_cursor_table[t] - 12, va("%dx%d", vid.width, vid.height));
 	M_Print(16, video_cursor_table[t], "        New Resolution");
@@ -2910,7 +2909,7 @@ static void M_Video_Draw (void)
 
 	// Refresh Rate
 	M_ItemPrint(16, video_cursor_table[t], "          Refresh Rate", vid_supportrefreshrate && vid_userefreshrate.integer);
-	M_DrawSlider(220, video_cursor_table[t], vid_refreshrate.integer, 60, 150);
+	M_DrawSlider(220, video_cursor_table[t], vid_refreshrate.value, 50, 150);
 	t++;
 
 	// Fullscreen
@@ -2919,19 +2918,19 @@ static void M_Video_Draw (void)
 	t++;
 
 	// Vertical Sync
-	M_ItemPrint(16, video_cursor_table[t], "         Vertical Sync", gl_videosyncavailable);
+	M_ItemPrint(16, video_cursor_table[t], "         Vertical Sync", true);
 	M_DrawCheckbox(220, video_cursor_table[t], vid_vsync.integer);
 	t++;
 
-	M_ItemPrint(16, video_cursor_table[t], "    Anisotropic Filter", gl_support_anisotropy);
-	M_DrawSlider(220, video_cursor_table[t], gl_texture_anisotropy.integer, 1, gl_max_anisotropy);
+	M_ItemPrint(16, video_cursor_table[t], "    Anisotropic Filter", vid.support.ext_texture_filter_anisotropic);
+	M_DrawSlider(220, video_cursor_table[t], gl_texture_anisotropy.integer, 1, vid.max_anisotropy);
 	t++;
 
 	M_ItemPrint(16, video_cursor_table[t], "       Texture Quality", true);
 	M_DrawSlider(220, video_cursor_table[t], gl_picmip.value, 3, 0);
 	t++;
 
-	M_ItemPrint(16, video_cursor_table[t], "   Texture Compression", gl_support_texture_compression);
+	M_ItemPrint(16, video_cursor_table[t], "   Texture Compression", vid.support.arb_texture_compression);
 	M_DrawCheckbox(220, video_cursor_table[t], gl_texturecompression.integer);
 	t++;
 
@@ -2973,13 +2972,13 @@ static void M_Menu_Video_AdjustSliders (int dir)
 	else if (video_cursor == t++)
 		Cvar_SetValueQuick (&vid_userefreshrate, !vid_userefreshrate.integer);
 	else if (video_cursor == t++)
-		Cvar_SetValueQuick (&vid_refreshrate, bound(60, vid_refreshrate.integer + dir, 150));
+		Cvar_SetValueQuick (&vid_refreshrate, bound(50, vid_refreshrate.value + dir, 150));
 	else if (video_cursor == t++)
 		Cvar_SetValueQuick (&vid_fullscreen, !vid_fullscreen.integer);
 	else if (video_cursor == t++)
 		Cvar_SetValueQuick (&vid_vsync, !vid_vsync.integer);
 	else if (video_cursor == t++)
-		Cvar_SetValueQuick (&gl_texture_anisotropy, bound(1, gl_texture_anisotropy.value * (dir < 0 ? 0.5 : 2.0), gl_max_anisotropy));
+		Cvar_SetValueQuick (&gl_texture_anisotropy, bound(1, gl_texture_anisotropy.value * (dir < 0 ? 0.5 : 2.0), vid.max_anisotropy));
 	else if (video_cursor == t++)
 		Cvar_SetValueQuick (&gl_picmip, bound(0, gl_picmip.value - dir, 3));
 	else if (video_cursor == t++)

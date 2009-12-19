@@ -110,12 +110,6 @@ struct snd_fetcher_s
 	snd_fetcher_getfmt_t	getfmt;
 };
 
-// 0 to NUM_AMBIENTS - 1 = water, etc
-// NUM_AMBIENTS to NUM_AMBIENTS + MAX_DYNAMIC_CHANNELS - 1 = normal entity sounds
-// NUM_AMBIENTS + MAX_DYNAMIC_CHANNELS to total_channels = static sounds
-#define	MAX_DYNAMIC_CHANNELS	512
-#define	MAX_CHANNELS			1028
-
 extern unsigned int total_channels;
 extern channel_t channels[MAX_CHANNELS];
 
@@ -125,7 +119,6 @@ extern qboolean snd_usethreadedmixing; // if true, the main thread does not mix 
 
 extern cvar_t _snd_mixahead;
 extern cvar_t snd_swapstereo;
-extern cvar_t snd_streaming;
 
 #define SND_CHANNELLAYOUT_AUTO		0
 #define SND_CHANNELLAYOUT_STANDARD	1
@@ -140,6 +133,15 @@ extern mempool_t *snd_mempool;
 // More generally, all arch-dependent operations are skipped or emulated.
 // Used for isolating performance in the renderer.
 extern qboolean simsound;
+
+
+#define STREAM_BUFFER_DURATION 0.3f // in seconds
+#define STREAM_BUFFER_FILL 0.2f // in seconds
+#define STREAM_BUFFER_SIZE(format_ptr) ((int)ceil (STREAM_BUFFER_DURATION * (format_ptr)->speed) * (format_ptr)->width * (format_ptr)->channels)
+
+// We work with 1 sec sequences, so this buffer must be able to contain
+// 1 sec of sound of the highest quality (48 KHz, 16 bit samples, stereo)
+extern unsigned char resampling_buffer [48000 * 2 * 2];
 
 
 // ====================================================================
