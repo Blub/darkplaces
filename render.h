@@ -33,7 +33,7 @@ extern void FOG_clear(void);
 extern cvar_t r_sky;
 extern cvar_t r_skyscroll1;
 extern cvar_t r_skyscroll2;
-extern int skyrendernow, skyrendermasked;
+extern int skyrenderlater, skyrendermasked;
 extern int R_SetSkyBox(const char *sky);
 extern void R_SkyStartFrame(void);
 extern void R_Sky(void);
@@ -140,9 +140,9 @@ void R_SkinFrame_Purge(void);
 skinframe_t *R_SkinFrame_FindNextByName( skinframe_t *last, const char *name );
 skinframe_t *R_SkinFrame_Find(const char *name, int textureflags, int comparewidth, int compareheight, int comparecrc, qboolean add);
 skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboolean complain);
-skinframe_t *R_SkinFrame_LoadExternal_CheckAlpha(const char *name, int textureflags, qboolean complain, qboolean *has_alpha);
 skinframe_t *R_SkinFrame_LoadInternalBGRA(const char *name, int textureflags, const unsigned char *skindata, int width, int height);
 skinframe_t *R_SkinFrame_LoadInternalQuake(const char *name, int textureflags, int loadpantsandshirt, int loadglowtexture, const unsigned char *skindata, int width, int height);
+skinframe_t *R_SkinFrame_LoadInternal8bit(const char *name, int textureflags, const unsigned char *skindata, int width, int height, const unsigned int *palette, const unsigned int *alphapalette);
 skinframe_t *R_SkinFrame_LoadMissing(void);
 
 void R_View_WorldVisibility(qboolean forcenovis);
@@ -160,6 +160,17 @@ int R_CullBoxCustomPlanes(const vec3_t mins, const vec3_t maxs, int numplanes, c
 
 #include "meshqueue.h"
 
+extern qboolean r_framedata_failed;
+void R_FrameData_Reset(void);
+void R_FrameData_NewFrame(void);
+void *R_FrameData_Alloc(size_t size);
+void *R_FrameData_Store(size_t size, void *data);
+
+void R_AnimCache_Free(void);
+void R_AnimCache_ClearCache(void);
+qboolean R_AnimCache_GetEntity(entity_render_t *ent, qboolean wantnormals, qboolean wanttangents);
+void R_AnimCache_CacheVisibleEntities(void);
+
 #include "r_lerpanim.h"
 
 extern cvar_t r_render;
@@ -167,7 +178,7 @@ extern cvar_t r_renderview;
 extern cvar_t r_waterwarp;
 
 extern cvar_t r_textureunits;
-extern cvar_t r_glsl;
+
 extern cvar_t r_glsl_offsetmapping;
 extern cvar_t r_glsl_offsetmapping_reliefmapping;
 extern cvar_t r_glsl_offsetmapping_scale;
@@ -194,8 +205,7 @@ extern rtexture_t *r_texture_normalizationcube;
 extern rtexture_t *r_texture_fogattenuation;
 //extern rtexture_t *r_texture_fogintensity;
 
-#define R_MAX_OCCLUSION_QUERIES 4096
-extern unsigned int r_queries[R_MAX_OCCLUSION_QUERIES];
+extern unsigned int r_queries[MAX_OCCLUSION_QUERIES];
 extern unsigned int r_numqueries;
 extern unsigned int r_maxqueries;
 
@@ -205,7 +215,7 @@ void R_TimeReport(char *name);
 void R_Stain(const vec3_t origin, float radius, int cr1, int cg1, int cb1, int ca1, int cr2, int cg2, int cb2, int ca2);
 
 void R_CalcBeam_Vertex3f(float *vert, const vec3_t org1, const vec3_t org2, float width);
-void R_DrawSprite(int blendfunc1, int blendfunc2, rtexture_t *texture, rtexture_t *fogtexture, qboolean depthdisable, qboolean depthshort, const vec3_t origin, const vec3_t left, const vec3_t up, float scalex1, float scalex2, float scaley1, float scaley2, float cr, float cg, float cb, float ca);
+void R_CalcSprite_Vertex3f(float *vertex3f, const vec3_t origin, const vec3_t left, const vec3_t up, float scalex1, float scalex2, float scaley1, float scaley2);
 
 extern mempool_t *r_main_mempool;
 
@@ -240,35 +250,35 @@ typedef struct rsurfacestate_s
 	// this indicates the model* arrays are pointed at array_model* buffers
 	// (in other words, the model has been animated in software)
 	qboolean generatedvertex;
-	float *modelvertex3f;
+	const float *modelvertex3f;
 	int modelvertex3f_bufferobject;
 	size_t modelvertex3f_bufferoffset;
-	float *modelsvector3f;
+	const float *modelsvector3f;
 	int modelsvector3f_bufferobject;
 	size_t modelsvector3f_bufferoffset;
-	float *modeltvector3f;
+	const float *modeltvector3f;
 	int modeltvector3f_bufferobject;
 	size_t modeltvector3f_bufferoffset;
-	float *modelnormal3f;
+	const float *modelnormal3f;
 	int modelnormal3f_bufferobject;
 	size_t modelnormal3f_bufferoffset;
-	float *modellightmapcolor4f;
+	const float *modellightmapcolor4f;
 	int modellightmapcolor4f_bufferobject;
 	size_t modellightmapcolor4f_bufferoffset;
-	float *modeltexcoordtexture2f;
+	const float *modeltexcoordtexture2f;
 	int modeltexcoordtexture2f_bufferobject;
 	size_t modeltexcoordtexture2f_bufferoffset;
-	float *modeltexcoordlightmap2f;
+	const float *modeltexcoordlightmap2f;
 	int modeltexcoordlightmap2f_bufferobject;
 	size_t modeltexcoordlightmap2f_bufferoffset;
-	int *modelelement3i;
-	unsigned short *modelelement3s;
+	const int *modelelement3i;
+	const unsigned short *modelelement3s;
 	int modelelement3i_bufferobject;
 	int modelelement3s_bufferobject;
-	int *modellightmapoffsets;
+	const int *modellightmapoffsets;
 	int modelnum_vertices;
 	int modelnum_triangles;
-	msurface_t *modelsurfaces;
+	const msurface_t *modelsurfaces;
 	// current rendering array pointers
 	// these may point to any of several different buffers depending on how
 	// much processing was needed to prepare this model for rendering
@@ -279,32 +289,43 @@ typedef struct rsurfacestate_s
 	// the exception is the color array which is often generated based on
 	// colormod, alpha fading, and fogging, it may also come from q3bsp vertex
 	// lighting of certain surfaces
-	float *vertex3f;
+	const float *vertex3f;
 	int vertex3f_bufferobject;
 	size_t vertex3f_bufferoffset;
-	float *svector3f;
+	const float *svector3f;
 	int svector3f_bufferobject;
 	size_t svector3f_bufferoffset;
-	float *tvector3f;
+	const float *tvector3f;
 	int tvector3f_bufferobject;
 	size_t tvector3f_bufferoffset;
-	float *normal3f;
+	const float *normal3f;
 	int normal3f_bufferobject;
 	size_t normal3f_bufferoffset;
-	float *lightmapcolor4f;
+	const float *lightmapcolor4f;
 	int lightmapcolor4f_bufferobject;
 	size_t lightmapcolor4f_bufferoffset;
-	float *texcoordtexture2f;
+	const float *texcoordtexture2f;
 	int texcoordtexture2f_bufferobject;
 	size_t texcoordtexture2f_bufferoffset;
-	float *texcoordlightmap2f;
+	const float *texcoordlightmap2f;
 	int texcoordlightmap2f_bufferobject;
 	size_t texcoordlightmap2f_bufferoffset;
+	// some important fields from the entity
+	int ent_skinnum;
+	int ent_qwskin;
+	int ent_flags;
+	float ent_shadertime;
+	float ent_color[4];
+	int ent_alttextures; // used by q1bsp animated textures (pressed buttons)
 	// transform matrices to render this entity and effects on this entity
 	matrix4x4_t matrix;
 	matrix4x4_t inversematrix;
+	// scale factors for transforming lengths into/out of entity space
+	float matrixscale;
+	float inversematrixscale;
 	// animation blending state from entity
 	frameblend_t frameblend[MAX_FRAMEBLENDS];
+	skeleton_t *skeleton;
 	// directional model shading state from entity
 	vec3_t modellight_ambient;
 	vec3_t modellight_diffuse;
@@ -315,7 +336,7 @@ typedef struct rsurfacestate_s
 	// special coloring of glow textures
 	vec3_t glowmod;
 	// view location in model space
-	vec3_t modelorg; // TODO: rename this
+	vec3_t localvieworigin;
 	// polygon offset data for submodels
 	float basepolygonfactor;
 	float basepolygonoffset;
@@ -324,16 +345,16 @@ typedef struct rsurfacestate_s
 	// whether lightmapping is active on this batch
 	// (otherwise vertex colored)
 	qboolean uselightmaptexture;
+	// fog plane in model space for direct application to vertices
+	float fograngerecip;
+	float fogmasktabledistmultiplier;
+	float fogplane[4];
+	float fogheightfade;
+	float fogplaneviewdist;
 
 	// rtlight rendering
 	// light currently being rendered
 	const rtlight_t *rtlight;
-	// current light's cull box (copied out of an rtlight or calculated by GetLightInfo)
-	vec3_t rtlight_cullmins;
-	vec3_t rtlight_cullmaxs;
-	// current light's culling planes
-	int rtlight_numfrustumplanes;
-	mplane_t rtlight_frustumplanes[12+6+6]; // see R_Shadow_ComputeShadowCasterCullingPlanes
 
 	// this is the location of the light in entity space
 	vec3_t entitylightorigin;
@@ -357,23 +378,28 @@ extern rsurfacestate_t rsurface;
 
 void RSurf_ActiveWorldEntity(void);
 void RSurf_ActiveModelEntity(const entity_render_t *ent, qboolean wantnormals, qboolean wanttangents);
+void RSurf_ActiveCustomEntity(const matrix4x4_t *matrix, const matrix4x4_t *inversematrix, int entflags, double shadertime, float r, float g, float b, float a, int numvertices, const float *vertex3f, const float *texcoord2f, const float *normal3f, const float *svector3f, const float *tvector3f, const float *color4f, int numtriangles, const int *element3i, const unsigned short *element3s, qboolean wantnormals, qboolean wanttangents);
 void RSurf_SetupDepthAndCulling(void);
 
 void R_Mesh_ResizeArrays(int newvertices);
 
 texture_t *R_GetCurrentTexture(texture_t *t);
-void R_DrawWorldSurfaces(qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug);
-void R_DrawModelSurfaces(entity_render_t *ent, qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug);
+void R_DrawWorldSurfaces(qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug, qboolean prepass);
+void R_DrawModelSurfaces(entity_render_t *ent, qboolean skysurfaces, qboolean writedepth, qboolean depthonly, qboolean debug, qboolean prepass);
 void R_AddWaterPlanes(entity_render_t *ent);
+void R_DrawCustomSurface(skinframe_t *skinframe, const matrix4x4_t *texmatrix, int materialflags, int firstvertex, int numvertices, int firsttriangle, int numtriangles, qboolean writedepth, qboolean prepass);
 
-void RSurf_PrepareVerticesForBatch(qboolean generatenormals, qboolean generatetangents, int texturenumsurfaces, msurface_t **texturesurfacelist);
-void RSurf_DrawBatch_Simple(int texturenumsurfaces, msurface_t **texturesurfacelist);
+void RSurf_PrepareVerticesForBatch(qboolean generatenormals, qboolean generatetangents, int texturenumsurfaces, const msurface_t **texturesurfacelist);
+void RSurf_DrawBatch_Simple(int texturenumsurfaces, const msurface_t **texturesurfacelist);
+
+void R_DecalSystem_SplatEntities(const vec3_t org, const vec3_t normal, float r, float g, float b, float a, float s1, float t1, float s2, float t2, float size);
 
 typedef enum rsurfacepass_e
 {
 	RSURFPASS_BASE,
 	RSURFPASS_BACKGROUND,
-	RSURFPASS_RTLIGHT
+	RSURFPASS_RTLIGHT,
+	RSURFPASS_DEFERREDGEOMETRY,
 }
 rsurfacepass_t;
 
@@ -414,7 +440,13 @@ typedef enum gl20_texunit_e
 	GL20TU_SHADOWMAPRECT = 11,
 	GL20TU_SHADOWMAPCUBE = 11,
 	GL20TU_SHADOWMAP2D = 11,
-	GL20TU_CUBEPROJECTION = 12
+	GL20TU_CUBEPROJECTION = 12,
+	// rtlight prepass data (screenspace depth and normalmap)
+	GL20TU_SCREENDEPTH = 13,
+	GL20TU_SCREENNORMALMAP = 14,
+	// lightmap prepass data (screenspace diffuse and specular from lights)
+	GL20TU_SCREENDIFFUSE = 11,
+	GL20TU_SCREENSPECULAR = 12,
 }
 gl20_texunit;
 
@@ -430,12 +462,10 @@ typedef struct r_waterstate_waterplane_s
 	rtexture_t *texture_reflection;
 	mplane_t plane;
 	int materialflags; // combined flags of all water surfaces on this plane
-	unsigned char pvsbits[(32768+7)>>3]; // FIXME: buffer overflow on huge maps
+	unsigned char pvsbits[(MAX_MAP_LEAFS+7)>>3]; // FIXME: buffer overflow on huge maps
 	qboolean pvsvalid;
 }
 r_waterstate_waterplane_t;
-
-#define MAX_WATERPLANES 16
 
 typedef struct r_waterstate_s
 {

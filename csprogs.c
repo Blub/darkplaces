@@ -153,7 +153,8 @@ void CSQC_Think (prvm_edict_t *ed)
 }
 
 extern cvar_t cl_noplayershadow;
-qboolean CSQC_AddRenderEdict(prvm_edict_t *ed)
+extern cvar_t r_equalize_entities_fullbright;
+qboolean CSQC_AddRenderEdict(prvm_edict_t *ed, int edictnum)
 {
 	int renderflags;
 	int c;
@@ -167,9 +168,26 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed)
 	if (!model)
 		return false;
 
-	entrender = CL_NewTempEntity(0);
-	if (!entrender)
-		return false;
+	if (edictnum)
+	{
+		if (r_refdef.scene.numentities >= r_refdef.scene.maxentities)
+			return false;
+		entrender = cl.csqcrenderentities + edictnum;
+		r_refdef.scene.entities[r_refdef.scene.numentities++] = entrender;
+		entrender->entitynumber = edictnum;
+		//entrender->shadertime = 0; // shadertime was set by spawn()
+		entrender->alpha = 1;
+		entrender->scale = 1;
+		VectorSet(entrender->colormod, 1, 1, 1);
+		VectorSet(entrender->glowmod, 1, 1, 1);
+		entrender->allowdecals = true;
+	}
+	else
+	{
+		entrender = CL_NewTempEntity(0);
+		if (!entrender)
+			return false;
+	}
 
 	entrender->model = model;
 	entrender->skinnum = (int)ed->fields.client->skin;
@@ -218,28 +236,10 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed)
 	}
 
 	// set up the animation data
-	// self.frame is the interpolation target (new frame)
-	// self.frame1time is the animation base time for the interpolation target
-	// self.frame2 is the interpolation start (previous frame)
-	// self.frame2time is the animation base time for the interpolation start
-	// self.lerpfrac is the interpolation strength for self.frame
-	// 3+ are for additional blends (the main use for this feature is lerping
-	// pitch angle on a player model where the animator set up 5 sets of
-	// animations and the csqc simply lerps between sets)
-	entrender->framegroupblend[0].frame = entrender->framegroupblend[1].frame = (int) ed->fields.client->frame;
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.frame2))) entrender->framegroupblend[1].frame = (int) val->_float;
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.frame3))) entrender->framegroupblend[2].frame = (int) val->_float;
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.frame4))) entrender->framegroupblend[3].frame = (int) val->_float;
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.frame1time))) entrender->framegroupblend[0].start = val->_float;
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.frame2time))) entrender->framegroupblend[1].start = val->_float;
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.frame3time))) entrender->framegroupblend[2].start = val->_float;
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.frame4time))) entrender->framegroupblend[3].start = val->_float;
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.lerpfrac))) entrender->framegroupblend[0].lerp = val->_float;
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.lerpfrac3))) entrender->framegroupblend[2].lerp = val->_float;
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.lerpfrac4))) entrender->framegroupblend[3].lerp = val->_float;
+	VM_GenerateFrameGroupBlend(ed->priv.server->framegroupblend, ed);
+	VM_FrameBlendFromFrameGroupBlend(ed->priv.server->frameblend, ed->priv.server->framegroupblend, model);
+	VM_UpdateEdictSkeleton(ed, model, ed->priv.server->frameblend);
 	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.shadertime))) entrender->shadertime = val->_float;
-	// assume that the (missing) lerpfrac2 is whatever remains after lerpfrac+lerpfrac3+lerpfrac4 are summed
-	entrender->framegroupblend[1].lerp = 1 - entrender->framegroupblend[0].lerp - entrender->framegroupblend[2].lerp - entrender->framegroupblend[3].lerp;
 
 	// concat the matrices to make the entity relative to its tag
 	Matrix4x4_Concat(&entrender->matrix, &tagmatrix, &matrix2);
@@ -250,11 +250,11 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed)
 
 	if(renderflags)
 	{
-		if(renderflags & RF_VIEWMODEL)	entrender->flags |= RENDER_VIEWMODEL;
+		if(renderflags & RF_VIEWMODEL)	entrender->flags |= RENDER_VIEWMODEL | RENDER_NODEPTHTEST;
 		if(renderflags & RF_EXTERNALMODEL)entrender->flags |= RENDER_EXTERIORMODEL;
 		if(renderflags & RF_NOCULL)		entrender->flags |= RENDER_NOCULL;
-		if(renderflags & RF_DEPTHHACK)	entrender->effects |= EF_NODEPTHTEST;
-		if(renderflags & RF_ADDITIVE)		entrender->effects |= EF_ADDITIVE;
+		if(renderflags & RF_DEPTHHACK)	entrender->flags |= RENDER_NODEPTHTEST;
+		if(renderflags & RF_ADDITIVE)		entrender->flags |= RENDER_ADDITIVE;
 
 	}
 
@@ -268,8 +268,13 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed)
 
 	entrender->flags &= ~(RENDER_SHADOW | RENDER_LIGHT | RENDER_NOSELFSHADOW);
 	// either fullbright or lit
-	if (!(entrender->effects & EF_FULLBRIGHT) && !r_fullbright.integer)
-		entrender->flags |= RENDER_LIGHT;
+	if(!r_fullbright.integer)
+	{
+		if (!(entrender->effects & EF_FULLBRIGHT))
+			entrender->flags |= RENDER_LIGHT;
+		else if(r_equalize_entities_fullbright.integer)
+			entrender->flags |= RENDER_LIGHT | RENDER_EQUALIZE;
+	}
 	// hide player shadow during intermission or nehahra movie
 	if (!(entrender->effects & (EF_NOSHADOW | EF_ADDITIVE | EF_NODEPTHTEST))
 	 &&  (entrender->alpha >= 1)
@@ -280,9 +285,22 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed)
 		entrender->flags |= RENDER_NOSELFSHADOW;
 	if (entrender->effects & EF_NOSELFSHADOW)
 		entrender->flags |= RENDER_NOSELFSHADOW;
+	if (entrender->effects & EF_NODEPTHTEST)
+		entrender->flags |= RENDER_NODEPTHTEST;
+	if (entrender->effects & EF_ADDITIVE)
+		entrender->flags |= RENDER_ADDITIVE;
+	if (entrender->effects & EF_DOUBLESIDED)
+		entrender->flags |= RENDER_DOUBLESIDED;
 
 	// make the other useful stuff
+	memcpy(entrender->framegroupblend, ed->priv.server->framegroupblend, sizeof(ed->priv.server->framegroupblend));
 	CL_UpdateRenderEntity(entrender);
+	// override animation data with full control
+	memcpy(entrender->frameblend, ed->priv.server->frameblend, sizeof(ed->priv.server->frameblend));
+	if (ed->priv.server->skeleton.relativetransforms)
+		entrender->skeleton = &ed->priv.server->skeleton;
+	else
+		entrender->skeleton = NULL;
 
 	return true;
 }
@@ -724,13 +742,25 @@ void CL_VM_CB_EndIncreaseEdicts(void)
 
 void CL_VM_CB_InitEdict(prvm_edict_t *e)
 {
+	int edictnum = PRVM_NUM_FOR_EDICT(e);
+	entity_render_t *entrender;
+	CL_ExpandCSQCRenderEntities(edictnum);
+	entrender = cl.csqcrenderentities + edictnum;
 	e->priv.server->move = false; // don't move on first frame
+	memset(entrender, 0, sizeof(*entrender));
+	entrender->shadertime = cl.time;
 }
+
+extern void R_DecalSystem_Reset(decalsystem_t *decalsystem);
 
 void CL_VM_CB_FreeEdict(prvm_edict_t *ed)
 {
+	entity_render_t *entrender = cl.csqcrenderentities + PRVM_NUM_FOR_EDICT(ed);
+	R_DecalSystem_Reset(&entrender->decalsystem);
+	memset(entrender, 0, sizeof(*entrender));
 	World_UnlinkEdict(ed);
 	memset(ed->fields.client, 0, sizeof(*ed->fields.client));
+	VM_RemoveEdictSkeleton(ed);
 	World_Physics_RemoveFromEntity(&cl.world, ed);
 	World_Physics_RemoveJointFromEntity(&cl.world, ed);
 }
@@ -995,7 +1025,7 @@ qboolean CL_VM_GetEntitySoundOrigin(int entnum, vec3_t out)
 
 	// FIXME consider attachments here!
 
-	ed = PRVM_EDICT_NUM(entnum - 32768);
+	ed = PRVM_EDICT_NUM(entnum - MAX_EDICTS);
 
 	if(!ed->priv.required->free)
 	{

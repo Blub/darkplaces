@@ -21,20 +21,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #ifndef ZONE_H
 #define ZONE_H
 
-// LordHavoc: this is pointless with a good C library
-//#define MEMCLUMPING
-
 // div0: heap overflow detection paranoia
-//#define MEMPARANOIA 1
-
-#if MEMCLUMPING
-// give malloc padding so we can't waste most of a page at the end
-#define MEMCLUMPSIZE (65536 - 1536)
-// smallest unit we care about is this many bytes
-#define MEMUNIT 8
-#define MEMBITS (MEMCLUMPSIZE / MEMUNIT)
-#define MEMBITINTS (MEMBITS / 32)
-#endif
+#define MEMPARANOIA 0
 
 #define POOLNAMESIZE 128
 // if set this pool will be printed in memlist reports
@@ -42,59 +30,30 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 typedef struct memheader_s
 {
+	// address returned by Chunk_Alloc (may be significantly before this header to satisify alignment)
+	void *baseaddress;
 	// next and previous memheaders in chain belonging to pool
 	struct memheader_s *next;
 	struct memheader_s *prev;
 	// pool this memheader belongs to
 	struct mempool_s *pool;
-#if MEMCLUMPING
-	// clump this memheader lives in, NULL if not in a clump
-	struct memclump_s *clump;
-#endif
 	// size of the memory after the header (excluding header and sentinel2)
 	size_t size;
 	// file name and line where Mem_Alloc was called
 	const char *filename;
 	int fileline;
-	// should always be MEMHEADER_SENTINEL1
-	unsigned int sentinel1;
-	// immediately followed by data, which is followed by a MEMHEADER_SENTINEL2 byte
+	// should always be equal to MEMHEADER_SENTINEL_FOR_ADDRESS()
+	unsigned int sentinel;
+	// immediately followed by data, which is followed by another copy of mem_sentinel[]
 }
 memheader_t;
 
-#if MEMCLUMPING
-typedef struct memclump_s
-{
-	// contents of the clump
-	unsigned char block[MEMCLUMPSIZE];
-	// should always be MEMCLUMP_SENTINEL
-	unsigned int sentinel1;
-	// if a bit is on, it means that the MEMUNIT bytes it represents are
-	// allocated, otherwise free
-	int bits[MEMBITINTS];
-	// should always be MEMCLUMP_SENTINEL
-	unsigned int sentinel2;
-	// if this drops to 0, the clump is freed
-	size_t blocksinuse;
-	// largest block of memory available (this is reset to an optimistic
-	// number when anything is freed, and updated when alloc fails the clump)
-	size_t largestavailable;
-	// next clump in the chain
-	struct memclump_s *chain;
-}
-memclump_t;
-#endif
-
 typedef struct mempool_s
 {
-	// should always be MEMHEADER_SENTINEL1
+	// should always be MEMPOOL_SENTINEL
 	unsigned int sentinel1;
 	// chain of individual memory allocations
 	struct memheader_s *chain;
-#if MEMCLUMPING
-	// chain of clumps (if any)
-	struct memclump_s *clumpchain;
-#endif
 	// POOLFLAG_*
 	int flags;
 	// total memory allocated in this pool (inside memheaders)
@@ -112,12 +71,14 @@ typedef struct mempool_s
 	int fileline;
 	// name of the pool
 	char name[POOLNAMESIZE];
-	// should always be MEMHEADER_SENTINEL1
+	// should always be MEMPOOL_SENTINEL
 	unsigned int sentinel2;
 }
 mempool_t;
 
-#define Mem_Alloc(pool,size) _Mem_Alloc(pool, size, __FILE__, __LINE__)
+#define Mem_Alloc(pool,size) _Mem_Alloc(pool, NULL, size, 16, __FILE__, __LINE__)
+#define Mem_Memalign(pool,alignment,size) _Mem_Alloc(pool, NULL, size, alignment, __FILE__, __LINE__)
+#define Mem_Realloc(pool,data,size) _Mem_Alloc(pool, data, size, 16, __FILE__, __LINE__)
 #define Mem_Free(mem) _Mem_Free(mem, __FILE__, __LINE__)
 #define Mem_CheckSentinels(data) _Mem_CheckSentinels(data, __FILE__, __LINE__)
 #define Mem_CheckSentinelsGlobal() _Mem_CheckSentinelsGlobal(__FILE__, __LINE__)
@@ -125,7 +86,7 @@ mempool_t;
 #define Mem_FreePool(pool) _Mem_FreePool(pool, __FILE__, __LINE__)
 #define Mem_EmptyPool(pool) _Mem_EmptyPool(pool, __FILE__, __LINE__)
 
-void *_Mem_Alloc(mempool_t *pool, size_t size, const char *filename, int fileline);
+void *_Mem_Alloc(mempool_t *pool, void *data, size_t size, size_t alignment, const char *filename, int fileline);
 void _Mem_Free(void *data, const char *filename, int fileline);
 mempool_t *_Mem_AllocPool(const char *name, int flags, mempool_t *parent, const char *filename, int fileline);
 void _Mem_FreePool(mempool_t **pool, const char *filename, int fileline);

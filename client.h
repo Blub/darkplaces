@@ -25,15 +25,42 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "matrixlib.h"
 #include "snd_main.h"
 
-// LordHavoc: 256 dynamic lights
-#define MAX_DLIGHTS 256
-
-/// this is the maximum number of input packets that can be predicted
-#define CL_MAX_USERCMDS 128
-
 // flags for rtlight rendering
 #define LIGHTFLAG_NORMALMODE 1
 #define LIGHTFLAG_REALTIMEMODE 2
+
+typedef struct tridecal_s
+{
+	// color and initial alpha value
+	float			texcoord2f[3][2];
+	float			vertex3f[3][3];
+	unsigned char	color4ub[3][4];
+	// how long this decal has lived so far (the actual fade begins at cl_decals_time)
+	float			lived;
+	// if >= 0 this indicates the decal should follow an animated triangle
+	int				triangleindex;
+	// for visibility culling
+	int				surfaceindex;
+	// old decals are killed to obey cl_decals_max
+	int				decalsequence;
+}
+tridecal_t;
+
+typedef struct decalsystem_s
+{
+	dp_model_t *model;
+	double lastupdatetime;
+	int maxdecals;
+	int freedecal;
+	int numdecals;
+	tridecal_t *decals;
+	float *vertex3f;
+	float *texcoord2f;
+	float *color4f;
+	int *element3i;
+	unsigned short *element3s;
+}
+decalsystem_t;
 
 typedef struct effect_s
 {
@@ -116,6 +143,29 @@ typedef struct rtlight_s
 	unsigned int corona_queryindex_allpixels;
 	/// this is R_Shadow_Cubemap(rtlight->cubemapname)
 	rtexture_t *currentcubemap;
+	/// set by R_Shadow_PrepareLight to decide whether R_Shadow_DrawLight should draw it
+	qboolean draw;
+	/// these fields are set by R_Shadow_PrepareLight for later drawing
+	int cached_numlightentities;
+	int cached_numlightentities_noselfshadow;
+	int cached_numshadowentities;
+	int cached_numshadowentities_noselfshadow;
+	int cached_numsurfaces;
+	struct entity_render_s **cached_lightentities;
+	struct entity_render_s **cached_lightentities_noselfshadow;
+	struct entity_render_s **cached_shadowentities;
+	struct entity_render_s **cached_shadowentities_noselfshadow;
+	unsigned char *cached_shadowtrispvs;
+	unsigned char *cached_lighttrispvs;
+	int *cached_surfacelist;
+	// reduced light cullbox from GetLightInfo
+	vec3_t cached_cullmins;
+	vec3_t cached_cullmaxs;
+	// current shadow-caster culling planes based on view
+	// (any geometry outside these planes can not contribute to the visible
+	//  shadows in any way, and thus can be culled safely)
+	int cached_numfrustumplanes;
+	mplane_t cached_frustumplanes[5]; // see R_Shadow_ComputeShadowCasterCullingPlanes
 
 	/// static light info
 	/// true if this light should be compiled as a static light
@@ -244,7 +294,7 @@ framegroupblend_t;
 // note: technically each framegroupblend can produce two of these, but that
 // never happens in practice because no one blends between more than 2
 // framegroups at once
-#define MAX_FRAMEBLENDS MAX_FRAMEGROUPBLENDS
+#define MAX_FRAMEBLENDS (MAX_FRAMEGROUPBLENDS * 2)
 typedef struct frameblend_s
 {
 	int subframe;
@@ -309,14 +359,25 @@ typedef struct entity_render_s
 	vec3_t mins, maxs;
 	// subframe numbers (-1 if not used) and their blending scalers (0-1), if interpolation is not desired, use subframeblend[0].subframe
 	frameblend_t frameblend[MAX_FRAMEBLENDS];
+	// skeletal animation data (if skeleton.relativetransforms is not NULL, it overrides frameblend)
+	skeleton_t *skeleton;
 
-	// animation cache index
-	int animcacheindex;
+	// animation cache (pointers allocated using R_FrameData_Alloc)
+	// ONLY valid during R_RenderView!  may be NULL (not cached)
+	float *animcache_vertex3f;
+	float *animcache_normal3f;
+	float *animcache_svector3f;
+	float *animcache_tvector3f;
 
 	// current lighting from map (updated ONLY by client code, not renderer)
 	vec3_t modellight_ambient;
 	vec3_t modellight_diffuse; // q3bsp
 	vec3_t modellight_lightdir; // q3bsp
+
+	// storage of decals on this entity
+	// (note: if allowdecals is set, be sure to call R_DecalSystem_Reset on removal!)
+	int allowdecals;
+	decalsystem_t decalsystem;
 
 	// FIELDS UPDATED BY RENDERER:
 	// last time visible during trace culling
@@ -444,9 +505,6 @@ typedef struct cshift_s
 //
 
 #define	SIGNONS		4			// signon messages to receive before connected
-
-#define	MAX_DEMOS		8
-#define	MAX_DEMONAME	16
 
 typedef enum cactive_e
 {
@@ -710,6 +768,7 @@ typedef struct decal_s
 	// fields used by rendering:  (44 bytes)
 	unsigned short	typeindex;
 	unsigned short	texnum;
+	int				decalsequence;
 	vec3_t			org;
 	vec3_t			normal;
 	float			size;
@@ -999,7 +1058,11 @@ typedef struct client_state_s
 	vec3_t playercrouchmins;
 	vec3_t playercrouchmaxs;
 
+	// old decals are killed based on this
+	int decalsequence;
+
 	int max_entities;
+	int max_csqcrenderentities;
 	int max_static_entities;
 	int max_effects;
 	int max_beams;
@@ -1011,6 +1074,7 @@ typedef struct client_state_s
 	int max_showlmps;
 
 	entity_t *entities;
+	entity_render_t *csqcrenderentities;
 	unsigned char *entities_active;
 	entity_t *static_entities;
 	cl_effect_t *effects;
@@ -1266,6 +1330,7 @@ void CL_Effect(vec3_t org, int modelindex, int startframe, int framecount, float
 
 void CL_ClearState (void);
 void CL_ExpandEntities(int num);
+void CL_ExpandCSQCRenderEntities(int num);
 void CL_SetInfo(const char *key, const char *value, qboolean send, qboolean allowstarkey, qboolean allowmodel, qboolean quiet);
 
 
@@ -1410,9 +1475,8 @@ void Debug_PolygonEnd(void);
 
 extern qboolean sb_showscores;
 
-float FogPoint_World(const vec3_t p);
-float FogPoint_Model(const vec3_t p);
-float FogForDistance(vec_t dist);
+float RSurf_FogVertex(const vec3_t p);
+float RSurf_FogPoint(const vec3_t p);
 
 typedef struct r_refdef_stats_s
 {
@@ -1427,7 +1491,8 @@ typedef struct r_refdef_stats_s
 	int lightmapupdates;
 	int lightmapupdatepixels;
 	int particles;
-	int decals;
+	int drawndecals;
+	int totaldecals;
 	int meshes;
 	int meshes_elements;
 	int lights;
@@ -1454,7 +1519,7 @@ r_viewport_type_t;
 
 typedef struct r_viewport_s
 {
-	double m[16];
+	float m[16];
 	matrix4x4_t cameramatrix; // from entity (transforms from camera entity to world)
 	matrix4x4_t viewmatrix; // actual matrix for rendering (transforms to viewspace)
 	matrix4x4_t projectmatrix; // actual projection matrix (transforms from viewspace to screen)
@@ -1465,6 +1530,7 @@ typedef struct r_viewport_s
 	int height;
 	int depth;
 	r_viewport_type_t type;
+	float screentodepth[2]; // used by deferred renderer to calculate linear depth from device depth coordinates
 }
 r_viewport_t;
 
@@ -1533,19 +1599,24 @@ r_refdef_view_t;
 
 typedef struct r_refdef_viewcache_s
 {
+	// updated by gl_main_newmap()
+	int maxentities;
+	int world_numclusters;
+	int world_numclusterbytes;
+	int world_numleafs;
+	int world_numsurfaces;
+
 	// these properties are generated by R_View_Update()
 
 	// which entities are currently visible for this viewpoint
 	// (the used range is 0...r_refdef.scene.numentities)
-	unsigned char entityvisible[MAX_EDICTS];
+	unsigned char *entityvisible;
+
 	// flag arrays used for visibility checking on world model
 	// (all other entities have no per-surface/per-leaf visibility checks)
-	// TODO: dynamic resize according to r_refdef.scene.worldmodel->brush.num_clusters
-	unsigned char world_pvsbits[(32768+7)>>3]; // FIXME: buffer overflow on huge maps
-	// TODO: dynamic resize according to r_refdef.scene.worldmodel->brush.num_leafs
-	unsigned char world_leafvisible[32768]; // FIXME: buffer overflow on huge maps
-	// TODO: dynamic resize according to r_refdef.scene.worldmodel->num_surfaces
-	unsigned char world_surfacevisible[262144]; // FIXME: buffer overflow on huge maps
+	unsigned char *world_pvsbits;
+	unsigned char *world_leafvisible;
+	unsigned char *world_surfacevisible;
 	// if true, the view is currently in a leaf without pvs data
 	qboolean world_novis;
 }
@@ -1582,10 +1653,10 @@ typedef struct r_refdef_scene_s {
 	int numlights;
 
 	// intensities for light styles right now, controls rtlights
-	float rtlightstylevalue[256];	// float fraction of base light value
+	float rtlightstylevalue[MAX_LIGHTSTYLES];	// float fraction of base light value
 	// 8.8bit fixed point intensities for light styles
 	// controls intensity lightmap layers
-	unsigned short lightstylevalue[256];	// 8.8 fraction of base light value
+	unsigned short lightstylevalue[MAX_LIGHTSTYLES];	// 8.8 fraction of base light value
 
 	float ambient;
 
@@ -1620,10 +1691,14 @@ typedef struct r_refdef_s
 
 	r_refdef_scene_t scene;
 
-	vec3_t fogcolor;
-	vec_t fogrange;
-	vec_t fograngerecip;
-	vec_t fogmasktabledistmultiplier;
+	float fogplane[4];
+	float fogplaneviewdist;
+	qboolean fogplaneviewabove;
+	float fogheightfade;
+	float fogcolor[3];
+	float fogrange;
+	float fograngerecip;
+	float fogmasktabledistmultiplier;
 #define FOGMASKTABLEWIDTH 1024
 	float fogmasktable[FOGMASKTABLEWIDTH];
 	float fogmasktable_start, fogmasktable_alpha, fogmasktable_range, fogmasktable_density;
@@ -1634,6 +1709,8 @@ typedef struct r_refdef_s
 	float fog_alpha;
 	float fog_start;
 	float fog_end;
+	float fog_height;
+	float fog_fadedepth;
 	qboolean fogenabled;
 	qboolean oldgl_fogenable;
 

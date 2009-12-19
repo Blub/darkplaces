@@ -38,8 +38,6 @@ char		*keybindings[MAX_BINDMAPS][MAX_KEYS];
 int         history_line;
 char		history_savedline[MAX_INPUTLINE];
 conbuffer_t history;
-#define HIST_TEXTSIZE 262144
-#define HIST_MAXLINES 4096
 
 extern cvar_t	con_textsize;
 
@@ -1318,7 +1316,7 @@ Key_WriteBindings (qfile_t *f)
 			p = keybindings[j][i];
 			if (p)
 			{
-				Cmd_QuoteString(bindbuf, sizeof(bindbuf), p, "\"\\");
+				Cmd_QuoteString(bindbuf, sizeof(bindbuf), p, "\"\\"); // don't need to escape $ because cvars are not expanded inside bind
 				if (j == 0)
 					FS_Printf(f, "bind %s \"%s\"\n", Key_KeynumToString (i), bindbuf);
 				else
