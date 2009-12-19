@@ -59,7 +59,7 @@
 	ptrvalA = ((int *)(x) - (int *)prog->edictsfields),		\
 	ptrvalB = ((int *)(x) - (int *)prog->globals.generic),		\
 	ptrvalC = ((int *)(x) - (int *)/* TODO: fill in memory area*/ 0), \
-	(ptrvalA >= 0 && ptrvalA + 1 <= prog->edictareasize) ? 1 : \
+	(ptrvalA >= 0 && ptrvalA + 1 <= prog->entityfieldsarea) ? 1 : \
 	(ptrvalB >= 0 && ptrvalB + 1 <= GLOBALSIZE) ? 1 :	\
 	(ptrvalC >= 0 && ptrvalC + 1 <= /* TODO: fill in memory area size */0) ? 1 : \
 	0 )
