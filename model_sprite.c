@@ -47,6 +47,8 @@ static void Mod_SpriteSetupTexture(texture_t *texture, skinframe_t *skinframe, q
 {
 	if (!skinframe)
 		skinframe = R_SkinFrame_LoadMissing();
+	texture->specularscalemod = 1;
+	texture->specularpowermod = 1;
 	texture->basematerialflags = MATERIALFLAG_WALL;
 	if (fullbright)
 		texture->basematerialflags |= MATERIALFLAG_FULLBRIGHT;
@@ -71,7 +73,7 @@ static void Mod_Sprite_SharedSetup(const unsigned char *datapointer, int version
 	float				modelradius, interval;
 	char				name[MAX_QPATH], fogname[MAX_QPATH];
 	const void			*startframes;
-	int                 texflags = (r_mipsprites.integer ? TEXF_MIPMAP : 0) | (r_picmipsprites.integer ? TEXF_PICMIP : 0) | TEXF_ALPHA | TEXF_CLAMP | TEXF_PRECACHE;
+	int                 texflags = (r_mipsprites.integer ? TEXF_MIPMAP : 0) | (r_picmipsprites.integer ? TEXF_PICMIP : 0) | TEXF_ALPHA | TEXF_CLAMP;
 	modelradius = 0;
 
 	if (loadmodel->numframes < 1)
@@ -353,7 +355,7 @@ void Mod_IDS2_Load(dp_model_t *mod, void *buffer, void *bufferend)
 	const dsprite2_t *pinqsprite;
 	skinframe_t *skinframe;
 	float modelradius;
-	int texflags = (r_mipsprites.integer ? TEXF_MIPMAP : 0) | (r_picmipsprites.integer ? TEXF_PICMIP : 0) | TEXF_COMPRESS | TEXF_ALPHA | TEXF_CLAMP | TEXF_PRECACHE;
+	int texflags = (r_mipsprites.integer ? TEXF_MIPMAP : 0) | (r_picmipsprites.integer ? TEXF_PICMIP : 0) | TEXF_COMPRESS | TEXF_ALPHA | TEXF_CLAMP;
 
 	loadmodel->modeldatatypestring = "SPR2";
 

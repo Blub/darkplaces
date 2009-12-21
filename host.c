@@ -770,7 +770,10 @@ void Host_Main(void)
 					aborttime = realtime + 0.1;
 				}
 			}
-			advancetime = min(advancetime, 0.1);
+			if(slowmo.value > 0 && slowmo.value < 1)
+				advancetime = min(advancetime, 0.1 / slowmo.value);
+			else
+				advancetime = min(advancetime, 0.1);
 
 			if(advancetime > 0)
 			{
@@ -827,7 +830,7 @@ void Host_Main(void)
 	//
 	//-------------------
 
-		if (cls.state != ca_dedicated && (cl_timer > 0 || cls.timedemo || cl_maxfps.value < 1))
+		if (cls.state != ca_dedicated && (cl_timer > 0 || cls.timedemo || ((vid_activewindow ? cl_maxfps : cl_maxidlefps).value < 1)))
 		{
 			// decide the simulation time
 			if (cls.capturevideo.active)
