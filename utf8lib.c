@@ -387,6 +387,26 @@ size_t u8_prevbyte(const char *_s, size_t i)
 	return lastofs;
 }
 
+static int char_usefont[256] = {
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // specials
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // specials
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // shift+digit line
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // digits
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // caps
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // caps
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // small
+	1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // small
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // specials
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // faces
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
+
 /** Fetch a character from an utf-8 encoded string.
  * @param _s      The start of an utf-8 encoded multi-byte character.
  * @param _end    Will point to after the first multi-byte character.
@@ -401,7 +421,12 @@ Uchar u8_getchar(const char *_s, const char **_end)
 	{
 		if (_end)
 			*_end = _s + 1;
-		//return 0xE000 + (Uchar)*(const unsigned char*)_s;
+		/* Careful: if we disable utf8 but not freetype, we wish to see freetype chars
+		 * for normal letters. So use E000+x for special chars, but leave the freetype stuff for the
+		 * rest:
+		 */
+		if (char_usefont[(unsigned int)*(const unsigned char*)_s])
+			return 0xE000 + (Uchar)*(const unsigned char*)_s;
 		return (Uchar)*(const unsigned char*)_s;
 	}
 	
