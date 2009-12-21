@@ -34,6 +34,7 @@ char *vm_sv_extensions =
 "DP_EF_NOSELFSHADOW "
 "DP_EF_NOSHADOW "
 "DP_EF_RED "
+"DP_EF_RESTARTANIM_BIT "
 "DP_EF_STARDUST "
 "DP_EF_TELEPORT_BIT "
 "DP_ENT_ALPHA "
@@ -921,7 +922,7 @@ static void VM_SV_findradius (void)
 	vec3_t org, eorg, mins, maxs;
 	int i;
 	int numtouchedicts;
-	prvm_edict_t *touchedicts[MAX_EDICTS];
+	static prvm_edict_t *touchedicts[MAX_EDICTS];
 	int chainfield;
 
 	VM_SAFEPARMCOUNTRANGE(2, 3, VM_SV_findradius);

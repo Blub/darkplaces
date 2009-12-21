@@ -655,12 +655,13 @@ void Mod_BuildTriangleNeighbors(int *neighbors, const int *elements, int numtria
 		int element[2];
 	}
 	edgehashentry_t;
-	edgehashentry_t *edgehash[TRIANGLEEDGEHASH], *edgehashentries, edgehashentriesbuffer[TRIANGLEEDGEHASH*3], *hash;
+	static edgehashentry_t *edgehash[TRIANGLEEDGEHASH];
+	edgehashentry_t *edgehashentries, *hash;
+	if (!numtriangles)
+		return;
 	memset(edgehash, 0, sizeof(edgehash));
-	edgehashentries = edgehashentriesbuffer;
 	// if there are too many triangles for the stack array, allocate larger buffer
-	if (numtriangles > TRIANGLEEDGEHASH)
-		edgehashentries = (edgehashentry_t *)Mem_Alloc(tempmempool, numtriangles * 3 * sizeof(edgehashentry_t));
+	edgehashentries = (edgehashentry_t *)Mem_Alloc(tempmempool, numtriangles * 3 * sizeof(edgehashentry_t));
 	// find neighboring triangles
 	for (i = 0, e = elements, n = neighbors;i < numtriangles;i++, e += 3, n += 3)
 	{
@@ -709,8 +710,7 @@ void Mod_BuildTriangleNeighbors(int *neighbors, const int *elements, int numtria
 		CL_KeepaliveMessage(false);
 	}
 	// free the allocated buffer
-	if (edgehashentries != edgehashentriesbuffer)
-		Mem_Free(edgehashentries);
+	Mem_Free(edgehashentries);
 }
 #else
 // very slow but simple way
@@ -1797,7 +1797,7 @@ void Mod_LoadQ3Shaders(void)
 							shader.textureblendalpha = true;
 						}
 					}
-					layer->texflags = TEXF_ALPHA | TEXF_PRECACHE;
+					layer->texflags = TEXF_ALPHA;
 					if (!(shader.surfaceparms & Q3SURFACEPARM_NOMIPMAPS))
 						layer->texflags |= TEXF_MIPMAP;
 					if (!(shader.textureflags & Q3TEXTUREFLAG_NOPICMIP))
@@ -2068,6 +2068,9 @@ qboolean Mod_LoadTextureFromQ3Shader(texture_t *texture, const char *name, qbool
 		texflagsmask &= ~TEXF_COMPRESS;
 	texture->specularscalemod = 1; // unless later loaded from the shader
 	texture->specularpowermod = 1; // unless later loaded from the shader
+	// WHEN ADDING DEFAULTS HERE, REMEMBER TO SYNC TO SHADER LOADING ABOVE
+	// HERE, AND Q1BSP LOADING
+	// JUST GREP FOR "specularscalemod = 1".
 
 	if (shader)
 	{
@@ -2942,7 +2945,7 @@ void Mod_AllocLightmap_Init(mod_alloclightmap_state_t *state, int width, int hei
 	state->width = width;
 	state->height = height;
 	state->currentY = 0;
-	state->rows = Mem_Alloc(tempmempool, state->height * sizeof(*state->rows));
+	state->rows = Mem_Alloc(loadmodel->mempool, state->height * sizeof(*state->rows));
 	for (y = 0;y < state->height;y++)
 	{
 		state->rows[y].currentX = 0;
@@ -3737,8 +3740,8 @@ static void Mod_GenerateLightmaps_CreateLightmaps(dp_model_t *model)
 
 	for (lightmapindex = 0;lightmapindex < model->brushq3.num_mergedlightmaps;lightmapindex++)
 	{
-		model->brushq3.data_lightmaps[lightmapindex] = R_LoadTexture2D(model->texturepool, va("lightmap%i", lightmapindex), lm_texturesize, lm_texturesize, lightmappixels + lightmapindex * lm_texturesize * lm_texturesize * 4, TEXTYPE_BGRA, TEXF_FORCELINEAR | TEXF_PRECACHE, NULL);
-		model->brushq3.data_deluxemaps[lightmapindex] = R_LoadTexture2D(model->texturepool, va("deluxemap%i", lightmapindex), lm_texturesize, lm_texturesize, deluxemappixels + lightmapindex * lm_texturesize * lm_texturesize * 4, TEXTYPE_BGRA, TEXF_FORCELINEAR | TEXF_PRECACHE, NULL);
+		model->brushq3.data_lightmaps[lightmapindex] = R_LoadTexture2D(model->texturepool, va("lightmap%i", lightmapindex), lm_texturesize, lm_texturesize, lightmappixels + lightmapindex * lm_texturesize * lm_texturesize * 4, TEXTYPE_BGRA, TEXF_FORCELINEAR, NULL);
+		model->brushq3.data_deluxemaps[lightmapindex] = R_LoadTexture2D(model->texturepool, va("deluxemap%i", lightmapindex), lm_texturesize, lm_texturesize, deluxemappixels + lightmapindex * lm_texturesize * lm_texturesize * 4, TEXTYPE_BGRA, TEXF_FORCELINEAR, NULL);
 	}
 
 	if (lightmappixels)
