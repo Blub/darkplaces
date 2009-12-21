@@ -556,7 +556,7 @@ void R_Q1BSP_DrawAddWaterPlanes(entity_render_t *ent)
 	if (ent == r_refdef.scene.worldentity)
 		RSurf_ActiveWorldEntity();
 	else
-		RSurf_ActiveModelEntity(ent, false, false);
+		RSurf_ActiveModelEntity(ent, false, false, false);
 
 	surfaces = model->data_surfaces;
 	flagsmask = MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION | MATERIALFLAG_REFLECTION;
@@ -724,7 +724,7 @@ static void R_Q1BSP_RecursiveGetLightInfo(r_q1bsp_getlightinfo_t *info, mnode_t 
 	{
 		int i;
 		mportal_t *portal;
-		double points[128][3];
+		static double points[128][3];
 		for (portal = leaf->portals;portal;portal = portal->next)
 		{
 			for (i = 0;i < portal->numpoints;i++)
@@ -1171,6 +1171,7 @@ static void R_Q1BSP_DrawLight_TransparentCallback(const entity_render_t *ent, co
 
 #define RSURF_MAX_BATCHSURFACES 8192
 
+extern qboolean r_shadow_usingdeferredprepass;
 void R_Q1BSP_DrawLight(entity_render_t *ent, int numsurfaces, const int *surfacelist, const unsigned char *trispvs)
 {
 	dp_model_t *model = ent->model;
@@ -1178,8 +1179,8 @@ void R_Q1BSP_DrawLight(entity_render_t *ent, int numsurfaces, const int *surface
 	int i, k, kend, l, m, mend, endsurface, batchnumsurfaces, batchnumtriangles, batchfirstvertex, batchlastvertex, batchfirsttriangle;
 	qboolean usebufferobject, culltriangles;
 	const int *element3i;
-	msurface_t *batchsurfacelist[RSURF_MAX_BATCHSURFACES];
-	int batchelements[BATCHSIZE*3];
+	static msurface_t *batchsurfacelist[RSURF_MAX_BATCHSURFACES];
+	static int batchelements[BATCHSIZE*3];
 	texture_t *tex;
 	CHECKGLERROR
 	culltriangles = r_shadow_culltriangles.integer && !(ent->flags & RENDER_NOSELFSHADOW);
@@ -1232,6 +1233,8 @@ void R_Q1BSP_DrawLight(entity_render_t *ent, int numsurfaces, const int *surface
 				}
 				continue;
 			}
+			if (r_shadow_usingdeferredprepass)
+				continue;
 			batchnumtriangles = 0;
 			batchfirsttriangle = surface->num_firsttriangle;
 			m = 0; // hush warning
@@ -1326,7 +1329,7 @@ void R_ReplaceWorldTexture (void)
 	{
 		if(/*t->width && !strcasecmp(t->name, r)*/ matchpattern( t->name, r, true ) )
 		{
-			if ((skinframe = R_SkinFrame_LoadExternal(newt, TEXF_MIPMAP | TEXF_ALPHA | TEXF_PRECACHE | TEXF_PICMIP, true)))
+			if ((skinframe = R_SkinFrame_LoadExternal(newt, TEXF_MIPMAP | TEXF_ALPHA | TEXF_PICMIP, true)))
 			{
 //				t->skinframes[0] = skinframe;
 				t->currentskinframe = skinframe;

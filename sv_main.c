@@ -938,6 +938,8 @@ void SV_SendServerinfo (client_t *client)
 	// clear movement info until client enters the new level properly
 	memset(&client->cmd, 0, sizeof(client->cmd));
 	client->movesequence = 0;
+	client->movement_highestsequence_seen = 0;
+	memset(&client->movement_count, 0, sizeof(client->movement_count));
 #ifdef NUM_PING_TIMES
 	for (i = 0;i < NUM_PING_TIMES;i++)
 		client->ping_times[i] = 0;
@@ -1354,7 +1356,7 @@ qboolean SV_CanSeeBox(int numtraces, vec_t enlarge, vec3_t eye, vec3_t entboxmin
 	matrix4x4_t matrix, imatrix;
 	dp_model_t *model;
 	prvm_edict_t *touch;
-	prvm_edict_t *touchedicts[MAX_EDICTS];
+	static prvm_edict_t *touchedicts[MAX_EDICTS];
 	vec3_t boxmins, boxmaxs;
 	vec3_t clipboxmins, clipboxmaxs;
 	vec3_t endpoints[MAX_LINEOFSIGHTTRACES];

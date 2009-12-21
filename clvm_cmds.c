@@ -437,7 +437,7 @@ static void VM_CL_findradius (void)
 	vec_t			radius, radius2;
 	vec3_t			org, eorg, mins, maxs;
 	int				i, numtouchedicts;
-	prvm_edict_t	*touchedicts[MAX_EDICTS];
+	static prvm_edict_t	*touchedicts[MAX_EDICTS];
 	int             chainfield;
 
 	VM_SAFEPARMCOUNTRANGE(2, 3, VM_CL_findradius);
@@ -1246,6 +1246,9 @@ static void VM_CL_getplayerkey (void)
 	else
 		if(!strcasecmp(c, "pl"))
 			dpsnprintf(t, sizeof(t), "%i", cl.scores[i].qw_packetloss);
+	else
+		if(!strcasecmp(c, "movementloss"))
+			dpsnprintf(t, sizeof(t), "%i", cl.scores[i].qw_movementloss);
 	else
 		if(!strcasecmp(c, "entertime"))
 			dpsnprintf(t, sizeof(t), "%f", cl.scores[i].qw_entertime);
@@ -3174,7 +3177,7 @@ void VM_CL_R_PolygonBegin (void)
 	sf = NULL;
 	if(*picname)
 	{
-		tf = TEXF_PRECACHE | TEXF_ALPHA;
+		tf = TEXF_ALPHA;
 		if((int)PRVM_G_FLOAT(OFS_PARM1) & DRAWFLAG_MIPMAP)
 			tf |= TEXF_MIPMAP;
 
