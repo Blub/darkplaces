@@ -8,7 +8,7 @@ Initialization of UTF-8 support and new cvars.
 */
 // TODO: should this default to 1? To enforce compatibilty
 //       TODO: If changed to 1, add 'utf8_disabled 0' to defaultNexuiz.cfg
-cvar_t    utf8_disabled = {CVAR_SAVE, "utf8_disabled", "0", "Disable UTF-8 support."};
+cvar_t    utf8_disabled = {CVAR_SAVE, "utf8_disabled", "1", "Disable UTF-8 support. For compatibility, this is disabled by default in most games."};
 
 void   u8_Init(void)
 {
@@ -401,7 +401,8 @@ Uchar u8_getchar(const char *_s, const char **_end)
 	{
 		if (_end)
 			*_end = _s + 1;
-		return 0xE000 + (Uchar)*(const unsigned char*)_s;
+		//return 0xE000 + (Uchar)*(const unsigned char*)_s;
+		return (Uchar)*(const unsigned char*)_s;
 	}
 	
 	if (!u8_analyze(_s, &st, &ln, &ch))

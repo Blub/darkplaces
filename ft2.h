@@ -15,7 +15,7 @@
  *   E000..F8FF; Private Use Area
  *   F0000..FFFFF; Supplementary Private Use Area-A
  *
- * TODO:
+ * We use:
  *   Range E000 - E0FF
  *     Contains the non-FreeType2 version of characters.
  */
