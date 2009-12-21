@@ -35,6 +35,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define MEMHEADER_SENTINEL_FOR_ADDRESS(p) ((sentinel_seed ^ (unsigned int) (uintptr_t) (p)) + sentinel_seed)
 unsigned int sentinel_seed;
 
+qboolean mem_bigendian = false;
+
 // LordHavoc: enables our own low-level allocator (instead of malloc)
 #define MEMCLUMPING 0
 #define MEMCLUMPING_FREECLUMPS 0
@@ -43,7 +45,7 @@ unsigned int sentinel_seed;
 // smallest unit we care about is this many bytes
 #define MEMUNIT 128
 // try to do 32MB clumps, but overhead eats into this
-#define MEMWANTCLUMPSIZE (1<<29)
+#define MEMWANTCLUMPSIZE (1<<27)
 // give malloc padding so we can't waste most of a page at the end
 #define MEMCLUMPSIZE (MEMWANTCLUMPSIZE - MEMWANTCLUMPSIZE/MEMUNIT/32 - 128)
 #define MEMBITS (MEMCLUMPSIZE / MEMUNIT)
@@ -81,6 +83,9 @@ cvar_t developer_memory = {0, "developer_memory", "0", "prints debugging informa
 cvar_t developer_memorydebug = {0, "developer_memorydebug", "0", "enables memory corruption checks (very slow)"};
 
 static mempool_t *poolchain = NULL;
+
+void Mem_PrintStats(void);
+void Mem_PrintList(size_t minallocationsize);
 
 #if MEMCLUMPING != 2
 // some platforms have a malloc that returns NULL but succeeds later
@@ -331,7 +336,13 @@ void *_Mem_Alloc(mempool_t *pool, void *olddata, size_t size, size_t alignment, 
 	pool->realsize += realsize;
 	base = (unsigned char *)Clump_AllocBlock(realsize);
 	if (base== NULL)
+	{
+		Mem_PrintList(0);
+		Mem_PrintStats();
+		Mem_PrintList(1<<30);
+		Mem_PrintStats();
 		Sys_Error("Mem_Alloc: out of memory (alloc at %s:%i)", filename, fileline);
+	}
 	// calculate address that aligns the end of the memheader_t to the specified alignment
 	mem = (memheader_t*)((((size_t)base + sizeof(memheader_t) + (alignment-1)) & ~(alignment-1)) - sizeof(memheader_t));
 	mem->baseaddress = (void*)base;
@@ -430,7 +441,13 @@ mempool_t *_Mem_AllocPool(const char *name, int flags, mempool_t *parent, const 
 	//	_Mem_CheckSentinelsGlobal(filename, fileline);
 	pool = (mempool_t *)Clump_AllocBlock(sizeof(mempool_t));
 	if (pool == NULL)
+	{
+		Mem_PrintList(0);
+		Mem_PrintStats();
+		Mem_PrintList(1<<30);
+		Mem_PrintStats();
 		Sys_Error("Mem_AllocPool: out of memory (allocpool at %s:%i)", filename, fileline);
+	}
 	memset(pool, 0, sizeof(mempool_t));
 	pool->sentinel1 = MEMHEADER_SENTINEL_FOR_ADDRESS(&pool->sentinel1);
 	pool->sentinel2 = MEMHEADER_SENTINEL_FOR_ADDRESS(&pool->sentinel2);
@@ -800,6 +817,10 @@ Memory_Init
 */
 void Memory_Init (void)
 {
+	static union {unsigned short s;unsigned char b[2];} u;
+	u.s = 0x100;
+	mem_bigendian = u.b[0];
+
 	sentinel_seed = rand();
 	poolchain = NULL;
 	tempmempool = Mem_AllocPool("Temporary Memory", POOLFLAG_TEMP, NULL);

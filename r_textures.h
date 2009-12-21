@@ -6,10 +6,6 @@
 #define TEXF_ALPHA 0x00000001
 // mipmapped
 #define TEXF_MIPMAP 0x00000002
-// upload if r_textureprecache >= 1, otherwise defer loading until it is used
-#define TEXF_PRECACHE 0x00000004
-// upload immediately, never defer (ignore r_textureprecache)
-#define TEXF_ALWAYSPRECACHE 0x00000008
 // indicates texture coordinates should be clamped rather than wrapping
 #define TEXF_CLAMP 0x00000020
 // indicates texture should be uploaded using GL_NEAREST or GL_NEAREST_MIPMAP_NEAREST mode
@@ -20,12 +16,16 @@
 #define TEXF_PICMIP 0x00000100
 // indicates texture should be compressed if possible
 #define TEXF_COMPRESS 0x00000200
-// use this flag to block R_PurgeTexture from freeing a texture
+// use this flag to block R_PurgeTexture from freeing a texture (only used by r_texture_white and similar which may be used in skinframe_t)
 #define TEXF_PERSISTENT 0x00000400
 // indicates texture should use GL_COMPARE_R_TO_TEXTURE mode
 #define TEXF_COMPARE 0x00000800
 // indicates texture should use lower precision where supported
 #define TEXF_LOWPRECISION 0x00001000
+// indicates texture should support R_UpdateTexture
+#define TEXF_ALLOWUPDATES 0x00002000
+// indicates texture should support R_FlushTexture (improving speed on multiple partial updates per draw)
+#define TEXF_MANUALFLUSHUPDATES 0x00004000
 // used for checking if textures mismatch
 #define TEXF_IMPORTANTBITS (TEXF_ALPHA | TEXF_MIPMAP | TEXF_CLAMP | TEXF_FORCENEAREST | TEXF_FORCELINEAR | TEXF_PICMIP | TEXF_COMPRESS | TEXF_COMPARE | TEXF_LOWPRECISION)
 
@@ -94,7 +94,11 @@ void R_FreeTexture(rtexture_t *rt);
 
 // update a portion of the image data of a texture, used by lightmap updates
 // and procedural textures such as video playback.
+// if TEXF_MANUALFLUSHUPDATES is used, you MUST call R_FlushTexture to apply the updates
 void R_UpdateTexture(rtexture_t *rt, const unsigned char *data, int x, int y, int width, int height);
+// if TEXF_MANUALFLUSHUPDATES is used, call this to apply the updates,
+// otherwise this function does nothing
+void R_FlushTexture(rtexture_t *rt);
 
 // returns the renderer dependent texture slot number (call this before each
 // use, as a texture might not have been precached)

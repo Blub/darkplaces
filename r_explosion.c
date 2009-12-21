@@ -63,7 +63,7 @@ extern qboolean r_loadfog;
 static void r_explosion_start(void)
 {
 	int x, y;
-	unsigned char noise1[128][128], noise2[128][128], noise3[128][128], data[128][128][4];
+	static unsigned char noise1[128][128], noise2[128][128], noise3[128][128], data[128][128][4];
 	explosiontexturepool = R_AllocTexturePool();
 	explosiontexture = NULL;
 	explosiontexturefog = NULL;
@@ -86,13 +86,13 @@ static void r_explosion_start(void)
 			data[y][x][3] = bound(0, a, 255);
 		}
 	}
-	explosiontexture = R_LoadTexture2D(explosiontexturepool, "explosiontexture", 128, 128, &data[0][0][0], TEXTYPE_BGRA, TEXF_MIPMAP | TEXF_ALPHA | TEXF_PRECACHE | TEXF_FORCELINEAR, NULL);
+	explosiontexture = R_LoadTexture2D(explosiontexturepool, "explosiontexture", 128, 128, &data[0][0][0], TEXTYPE_BGRA, TEXF_MIPMAP | TEXF_ALPHA | TEXF_FORCELINEAR, NULL);
 	if (r_loadfog)
 	{
 		for (y = 0;y < 128;y++)
 			for (x = 0;x < 128;x++)
 				data[y][x][0] = data[y][x][1] = data[y][x][2] = 255;
-		explosiontexturefog = R_LoadTexture2D(explosiontexturepool, "explosiontexture_fog", 128, 128, &data[0][0][0], TEXTYPE_BGRA, TEXF_MIPMAP | TEXF_ALPHA | TEXF_PRECACHE | TEXF_FORCELINEAR, NULL);
+		explosiontexturefog = R_LoadTexture2D(explosiontexturepool, "explosiontexture_fog", 128, 128, &data[0][0][0], TEXTYPE_BGRA, TEXF_MIPMAP | TEXF_ALPHA | TEXF_FORCELINEAR, NULL);
 	}
 	// note that explosions survive the restart
 }
@@ -204,7 +204,6 @@ static void R_DrawExplosion_TransparentCallback(const entity_render_t *ent, cons
 {
 	int surfacelistindex = 0;
 	const int numtriangles = EXPLOSIONTRIS, numverts = EXPLOSIONVERTS;
-	rmeshstate_t m;
 	GL_BlendFunc(GL_SRC_ALPHA, GL_ONE);
 	GL_DepthMask(false);
 	GL_DepthRange(0, 1);
@@ -215,10 +214,9 @@ static void R_DrawExplosion_TransparentCallback(const entity_render_t *ent, cons
 
 	R_SetupGenericShader(true);
 	R_Mesh_ColorPointer(NULL, 0, 0);
-	memset(&m, 0, sizeof(m));
-	m.tex[0] = R_GetTexture(explosiontexture);
-	m.pointer_texcoord[0] = explosiontexcoord2f[0];
-	R_Mesh_TextureState(&m);
+	R_Mesh_ResetTextureState();
+	R_Mesh_TexBind(0, R_GetTexture(explosiontexture));
+	R_Mesh_TexCoordPointer(0, 2, explosiontexcoord2f[0], 0, 0);
 	for (surfacelistindex = 0;surfacelistindex < numsurfaces;surfacelistindex++)
 	{
 		const explosion_t *e = explosion + surfacelist[surfacelistindex];

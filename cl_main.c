@@ -38,6 +38,8 @@ cvar_t csqc_progsize = {CVAR_READONLY, "csqc_progsize","-1","file size of csprog
 
 cvar_t cl_shownet = {0, "cl_shownet","0","1 = print packet size, 2 = print packet message list"};
 cvar_t cl_nolerp = {0, "cl_nolerp", "0","network update smoothing"};
+cvar_t cl_lerpanim_maxdelta_server = {0, "cl_lerpanim_maxdelta_server", "0.1","maximum frame delta for smoothing between server-controlled animation frames (when 0, one network frame)"};
+cvar_t cl_lerpanim_maxdelta_framegroups = {0, "cl_lerpanim_maxdelta_framegroups", "0.1","maximum frame delta for smoothing between framegroups (when 0, one network frame)"};
 
 cvar_t cl_itembobheight = {0, "cl_itembobheight", "0","how much items bob up and down (try 8)"};
 cvar_t cl_itembobspeed = {0, "cl_itembobspeed", "0.5","how frequently items bob up and down"};
@@ -72,7 +74,7 @@ cvar_t cl_beams_quakepositionhack = {CVAR_SAVE, "cl_beams_quakepositionhack", "1
 cvar_t cl_beams_instantaimhack = {CVAR_SAVE, "cl_beams_instantaimhack", "0", "makes your lightning gun aiming update instantly"};
 cvar_t cl_beams_lightatend = {CVAR_SAVE, "cl_beams_lightatend", "0", "make a light at the end of the beam"};
 
-cvar_t cl_deathfade = {CVAR_SAVE, "cl_deathfade", "0", "fade screen to dark red when dead, value = how fast the fade is"};
+cvar_t cl_deathfade = {CVAR_SAVE, "cl_deathfade", "0", "fade screen to dark red when dead, value represents how fast the fade is (higher is faster)"};
 
 cvar_t cl_noplayershadow = {CVAR_SAVE, "cl_noplayershadow", "0","hide player shadow"};
 
@@ -1056,7 +1058,13 @@ void CL_UpdateNetworkEntity(entity_t *e, int recursionlimit, qboolean interpolat
 			// make sure frame lerp won't last longer than 100ms
 			// (this mainly helps with models that use framegroups and
 			// switch between them infrequently)
-			e->render.framegroupblend[0].lerp = (cl.time - e->render.framegroupblend[0].start) / min(e->render.framegroupblend[0].start - e->render.framegroupblend[1].start, 0.1);
+			float maxdelta = cl_lerpanim_maxdelta_server.value;
+			if(e->render.model)
+			if(e->render.model->animscenes)
+			if(e->render.model->animscenes[e->render.framegroupblend[0].frame].framecount > 1 || e->render.model->animscenes[e->render.framegroupblend[1].frame].framecount > 1)
+				maxdelta = cl_lerpanim_maxdelta_framegroups.value;
+			maxdelta = max(maxdelta, cl.mtime[0] - cl.mtime[1]);
+			e->render.framegroupblend[0].lerp = (cl.time - e->render.framegroupblend[0].start) / min(e->render.framegroupblend[0].start - e->render.framegroupblend[1].start, maxdelta);
 			e->render.framegroupblend[0].lerp = bound(0, e->render.framegroupblend[0].lerp, 1);
 			e->render.framegroupblend[1].lerp = 1 - e->render.framegroupblend[0].lerp;
 		}
@@ -2319,6 +2327,8 @@ void CL_Init (void)
 	Cvar_RegisterVariable (&cl_anglespeedkey);
 	Cvar_RegisterVariable (&cl_shownet);
 	Cvar_RegisterVariable (&cl_nolerp);
+	Cvar_RegisterVariable (&cl_lerpanim_maxdelta_server);
+	Cvar_RegisterVariable (&cl_lerpanim_maxdelta_framegroups);
 	Cvar_RegisterVariable (&cl_deathfade);
 	Cvar_RegisterVariable (&lookspring);
 	Cvar_RegisterVariable (&lookstrafe);
