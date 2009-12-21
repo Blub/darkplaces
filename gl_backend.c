@@ -306,10 +306,10 @@ void R_Viewport_TransformToScreen(const r_viewport_t *v, const vec4_t in, vec4_t
 	out[2] = v->z + (out[2] * iw + 1.0f) * v->depth * 0.5f;
 }
 
-static void R_Viewport_ApplyNearClipPlane(r_viewport_t *v, double normalx, double normaly, double normalz, double dist)
+static void R_Viewport_ApplyNearClipPlane(r_viewport_t *v, float normalx, float normaly, float normalz, float dist)
 {
-	double q[4];
-	double d;
+	float q[4];
+	float d;
 	float clipPlane[4], v3[3], v4[3];
 	float normal[3];
 
@@ -354,7 +354,7 @@ static void R_Viewport_ApplyNearClipPlane(r_viewport_t *v, double normalx, doubl
 	v->m[14] = clipPlane[3] * d;
 }
 
-void R_Viewport_InitOrtho(r_viewport_t *v, const matrix4x4_t *cameramatrix, int x, int y, int width, int height, double x1, double y1, double x2, double y2, double nearclip, double farclip, const double *nearplane)
+void R_Viewport_InitOrtho(r_viewport_t *v, const matrix4x4_t *cameramatrix, int x, int y, int width, int height, float x1, float y1, float x2, float y2, float nearclip, float farclip, const float *nearplane)
 {
 	float left = x1, right = x2, bottom = y2, top = y1, zNear = nearclip, zFar = farclip;
 	memset(v, 0, sizeof(*v));
@@ -393,7 +393,7 @@ void R_Viewport_InitOrtho(r_viewport_t *v, const matrix4x4_t *cameramatrix, int 
 #endif
 }
 
-void R_Viewport_InitPerspective(r_viewport_t *v, const matrix4x4_t *cameramatrix, int x, int y, int width, int height, double frustumx, double frustumy, double nearclip, double farclip, const double *nearplane)
+void R_Viewport_InitPerspective(r_viewport_t *v, const matrix4x4_t *cameramatrix, int x, int y, int width, int height, float frustumx, float frustumy, float nearclip, float farclip, const float *nearplane)
 {
 	matrix4x4_t tempmatrix, basematrix;
 	memset(v, 0, sizeof(*v));
@@ -428,10 +428,10 @@ void R_Viewport_InitPerspective(r_viewport_t *v, const matrix4x4_t *cameramatrix
 		R_Viewport_ApplyNearClipPlane(v, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
 }
 
-void R_Viewport_InitPerspectiveInfinite(r_viewport_t *v, const matrix4x4_t *cameramatrix, int x, int y, int width, int height, double frustumx, double frustumy, double nearclip, const double *nearplane)
+void R_Viewport_InitPerspectiveInfinite(r_viewport_t *v, const matrix4x4_t *cameramatrix, int x, int y, int width, int height, float frustumx, float frustumy, float nearclip, const float *nearplane)
 {
 	matrix4x4_t tempmatrix, basematrix;
-	const double nudge = 1.0 - 1.0 / (1<<23);
+	const float nudge = 1.0 - 1.0 / (1<<23);
 	memset(v, 0, sizeof(*v));
 
 	if(v_flipped.integer)
@@ -1545,6 +1545,22 @@ void R_Mesh_TexCoordPointer(unsigned int unitnum, unsigned int numcomponents, co
 	}
 }
 
+int R_Mesh_TexBound(unsigned int unitnum, int id)
+{
+	gltextureunit_t *unit = gl_state.units + unitnum;
+	if (unitnum >= vid.teximageunits)
+		return 0;
+	if (id == GL_TEXTURE_2D)
+		return unit->t2d;
+	if (id == GL_TEXTURE_3D)
+		return unit->t3d;
+	if (id == GL_TEXTURE_CUBE_MAP_ARB)
+		return unit->tcubemap;
+	if (id == GL_TEXTURE_RECTANGLE_ARB)
+		return unit->trectangle;
+	return 0;
+}
+
 void R_Mesh_TexBindAll(unsigned int unitnum, int tex2d, int tex3d, int texcubemap, int texrectangle)
 {
 	gltextureunit_t *unit = gl_state.units + unitnum;
@@ -1726,7 +1742,7 @@ static const float gl_identitymatrix[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
 void R_Mesh_TexMatrix(unsigned int unitnum, const matrix4x4_t *matrix)
 {
 	gltextureunit_t *unit = gl_state.units + unitnum;
-	if (matrix->m[3][3])
+	if (matrix && matrix->m[3][3])
 	{
 		// texmatrix specified, check if it is different
 		if (!unit->texmatrixenabled || memcmp(&unit->matrix, matrix, sizeof(matrix4x4_t)))
@@ -1835,30 +1851,6 @@ void R_Mesh_TexCombine(unsigned int unitnum, int combinergb, int combinealpha, i
 		}
 		break;
 	}
-}
-
-void R_Mesh_TextureState(const rmeshstate_t *m)
-{
-	unsigned int i;
-
-	BACKENDACTIVECHECK
-
-	CHECKGLERROR
-	for (i = 0;i < vid.teximageunits;i++)
-		R_Mesh_TexBindAll(i, m->tex[i], m->tex3d[i], m->texcubemap[i], m->texrectangle[i]);
-	for (i = 0;i < vid.texarrayunits;i++)
-	{
-		if (m->pointer_texcoord3f[i])
-			R_Mesh_TexCoordPointer(i, 3, m->pointer_texcoord3f[i], m->pointer_texcoord_bufferobject[i], m->pointer_texcoord_bufferoffset[i]);
-		else
-			R_Mesh_TexCoordPointer(i, 2, m->pointer_texcoord[i], m->pointer_texcoord_bufferobject[i], m->pointer_texcoord_bufferoffset[i]);
-	}
-	for (i = 0;i < vid.texunits;i++)
-	{
-		R_Mesh_TexMatrix(i, &m->texmatrix[i]);
-		R_Mesh_TexCombine(i, m->texcombinergb[i], m->texcombinealpha[i], m->texrgbscale[i], m->texalphascale[i]);
-	}
-	CHECKGLERROR
 }
 
 void R_Mesh_ResetTextureState(void)

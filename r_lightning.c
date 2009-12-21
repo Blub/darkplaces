@@ -24,7 +24,7 @@ void r_lightningbeams_start(void)
 
 void r_lightningbeams_setupqmbtexture(void)
 {
-	r_lightningbeamqmbtexture = R_SkinFrame_LoadExternal("textures/particles/lightning.pcx", TEXF_ALPHA | TEXF_PRECACHE | TEXF_FORCELINEAR, false);
+	r_lightningbeamqmbtexture = R_SkinFrame_LoadExternal("textures/particles/lightning.pcx", TEXF_ALPHA | TEXF_FORCELINEAR, false);
 	if (r_lightningbeamqmbtexture == NULL)
 		Cvar_SetValueQuick(&r_lightningbeam_qmbtexture, false);
 }
@@ -106,7 +106,7 @@ void r_lightningbeams_setuptexture(void)
 		Image_WriteTGABGRA(va("lightningbeam%i.tga", imagenumber), BEAMWIDTH, BEAMHEIGHT, pixels);
 	}
 
-	r_lightningbeamtexture = R_LoadTexture2D(r_lightningbeamtexturepool, "lightningbeam", BEAMWIDTH, BEAMHEIGHT, pixels, TEXTYPE_BGRA, TEXF_PRECACHE | TEXF_FORCELINEAR, NULL);
+	r_lightningbeamtexture = R_LoadTexture2D(r_lightningbeamtexturepool, "lightningbeam", BEAMWIDTH, BEAMHEIGHT, pixels, TEXTYPE_BGRA, TEXF_FORCELINEAR, NULL);
 
 	Mem_Free(pixels);
 	Mem_Free(image);
@@ -144,7 +144,7 @@ void r_lightningbeams_setuptexture(void)
 		}
 	}
 
-	r_lightningbeamtexture = R_SkinFrame_LoadInternalBGRA("lightningbeam", TEXF_PRECACHE | TEXF_FORCELINEAR, data, BEAMWIDTH, BEAMHEIGHT);
+	r_lightningbeamtexture = R_SkinFrame_LoadInternalBGRA("lightningbeam", TEXF_FORCELINEAR, data, BEAMWIDTH, BEAMHEIGHT);
 	Mem_Free(noise1);
 	Mem_Free(noise2);
 	Mem_Free(data);
@@ -223,7 +223,7 @@ void R_DrawLightningBeam_TransparentCallback(const entity_render_t *ent, const r
 	float vertex3f[12*3];
 	float texcoord2f[12*2];
 
-	RSurf_ActiveCustomEntity(&identitymatrix, &identitymatrix, 0, 0, r_lightningbeam_color_red.value * r_refdef.view.colorscale, r_lightningbeam_color_green.value * r_refdef.view.colorscale, r_lightningbeam_color_blue.value * r_refdef.view.colorscale, 1, 12, vertex3f, texcoord2f, NULL, NULL, NULL, NULL, 6, r_lightningbeamelement3i, r_lightningbeamelement3s, false, false);
+	RSurf_ActiveCustomEntity(&identitymatrix, &identitymatrix, 0, 0, r_lightningbeam_color_red.value, r_lightningbeam_color_green.value, r_lightningbeam_color_blue.value, 1, 12, vertex3f, texcoord2f, NULL, NULL, NULL, NULL, 6, r_lightningbeamelement3i, r_lightningbeamelement3s, false, false);
 
 	if (r_lightningbeam_qmbtexture.integer && r_lightningbeamqmbtexture == NULL)
 		r_lightningbeams_setupqmbtexture();
