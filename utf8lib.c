@@ -425,7 +425,7 @@ Uchar u8_getchar(const char *_s, const char **_end)
 		 * for normal letters. So use E000+x for special chars, but leave the freetype stuff for the
 		 * rest:
 		 */
-		if (char_usefont[(unsigned int)*(const unsigned char*)_s])
+		if (!char_usefont[(unsigned int)*(const unsigned char*)_s])
 			return 0xE000 + (Uchar)*(const unsigned char*)_s;
 		return (Uchar)*(const unsigned char*)_s;
 	}
