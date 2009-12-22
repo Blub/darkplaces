@@ -1367,7 +1367,7 @@ void Con_DrawInput (void)
 	// add the cursor frame
 	if ((int)(realtime*con_cursorspeed) & 1)		// cursor is visible
 	{
-		if (utf8_disabled.integer)
+		if (!utf8_enable.integer)
 			text[key_linepos] = 11 + 130 * key_insert;	// either solid or triangle facing right
 		else if (y + 3 < (int)sizeof(editlinecopy)-1)
 		{

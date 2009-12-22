@@ -6,13 +6,12 @@
 Initialization of UTF-8 support and new cvars.
 ================================================================================
 */
-// TODO: should this default to 1? To enforce compatibilty
-//       TODO: If changed to 1, add 'utf8_disabled 0' to defaultNexuiz.cfg
-cvar_t    utf8_disabled = {CVAR_SAVE, "utf8_disabled", "1", "Disable UTF-8 support. For compatibility, this is disabled by default in most games."};
+// for compatibility this defaults to 0
+cvar_t    utf8_enable = {CVAR_SAVE, "utf8_enable", "0", "Enable UTF-8 support. For compatibility, this is disabled by default in most games."};
 
 void   u8_Init(void)
 {
-	Cvar_RegisterVariable(&utf8_disabled);
+	Cvar_RegisterVariable(&utf8_enable);
 }
 
 /*
@@ -125,7 +124,7 @@ size_t u8_strlen(const char *_s)
 	size_t len = 0;
 	const unsigned char *s = (const unsigned char*)_s;
 
-	if (utf8_disabled.integer)
+	if (!utf8_enable.integer)
 		return strlen(_s);
 
 	while (*s)
@@ -165,7 +164,7 @@ size_t u8_strnlen(const char *_s, size_t n)
 	size_t len = 0;
 	const unsigned char *s = (const unsigned char*)_s;
 
-	if (utf8_disabled.integer)
+	if (!utf8_enable.integer)
 	{
 		len = strlen(_s);
 		return (len < n) ? len : n;
@@ -213,7 +212,7 @@ size_t u8_bytelen(const char *_s, size_t n)
 	size_t len = 0;
 	const unsigned char *s = (const unsigned char*)_s;
 
-	if (utf8_disabled.integer)
+	if (!utf8_enable.integer)
 		return n;
 
 	while (*s && n)
@@ -256,7 +255,7 @@ int u8_byteofs(const char *_s, size_t i, size_t *len)
 	size_t ofs = 0;
 	const unsigned char *s = (const unsigned char*)_s;
 
-	if (utf8_disabled.integer)
+	if (!utf8_enable.integer)
 	{
 		if (len) *len = 1;
 		return i;
@@ -289,7 +288,7 @@ int u8_charidx(const char *_s, size_t i, size_t *len)
 	int idx = 0;
 	const unsigned char *s = (const unsigned char*)_s;
 
-	if (utf8_disabled.integer)
+	if (!utf8_enable.integer)
 	{
 		if (len) *len = 0;
 		return i;
@@ -351,7 +350,7 @@ size_t u8_prevbyte(const char *_s, size_t i)
 	size_t lastofs = 0;
 	size_t ofs = 0;
 
-	if (utf8_disabled.integer)
+	if (!utf8_enable.integer)
 	{
 		if (i > 0)
 			return i-1;
@@ -417,7 +416,7 @@ Uchar u8_getchar(const char *_s, const char **_end)
 	size_t st, ln;
 	Uchar ch;
 
-	if (utf8_disabled.integer)
+	if (!utf8_enable.integer)
 	{
 		if (_end)
 			*_end = _s + 1;
@@ -452,10 +451,10 @@ int u8_fromchar(Uchar w, char *to, size_t maxlen)
 	if (!w)
 		return -5;
 
-	if (w >= 0xE000 && utf8_disabled.integer)
+	if (w >= 0xE000 && !utf8_enable.integer)
 		w -= 0xE000;
 
-	if (w < 0x80 || utf8_disabled.integer)
+	if (w < 0x80 || !utf8_enable.integer)
 	{
 		to[0] = (char)w;
 		if (maxlen < 2)
@@ -596,7 +595,7 @@ u8_COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid)
 	const char *end;
 	size_t len = 0;
 
-	if (utf8_disabled.integer)
+	if (!utf8_enable.integer)
 		return COM_StringLengthNoColors(s, size_s, valid);
 
 	end = size_s ? (s + size_s) : NULL;
