@@ -26,7 +26,7 @@ typedef U_int32 Uchar;
 // a non-utf8 version to work: u8_strlen() will wrap to strlen()
 // u8_byteofs() and u8_charidx() will simply return whatever is passed as index parameter
 // u8_getchar() will will just return the next byte, u8_fromchar will write one byte, ...
-extern cvar_t    utf8_disabled;
+extern cvar_t    utf8_enable;
 void   u8_Init(void);
 
 size_t u8_strlen(const char*);
