@@ -1425,8 +1425,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 							at = texcoord2f;
 							av = vertex3f;
 						}
-						R_Mesh_TexBind(0, R_GetTexture(fnt->tex));
-						R_SetupGenericShader(true);
+						R_SetupShader_Generic(fnt->tex, NULL, GL_MODULATE, 1);
 						map = ft2_oldstyle_map;
 					}
 				}
@@ -1497,8 +1496,7 @@ float DrawQ_String_Font(float startx, float starty, const char *text, size_t max
 							break;
 						}
 					}
-					R_Mesh_TexBind(0, R_GetTexture(map->texture));
-					R_SetupGenericShader(true);
+					R_SetupShader_Generic(map->texture, NULL, GL_MODULATE, 1);
 				}
 
 				mapch = ch - map->start;
