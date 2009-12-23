@@ -627,7 +627,7 @@ void Mem_ExpandableArray_FreeArray(memexpandablearray_t *l)
 	memset(l, 0, sizeof(*l));
 }
 
-void *Mem_ExpandableArray_AllocRecord_Id(memexpandablearray_t *l, size_t *out_id)
+void *Mem_ExpandableArray_AllocRecord(memexpandablearray_t *l)
 {
 	size_t i, j;
 	for (i = 0;;i++)
@@ -659,18 +659,11 @@ void *Mem_ExpandableArray_AllocRecord_Id(memexpandablearray_t *l, size_t *out_id
 					l->arrays[i].allocflags[j] = true;
 					l->arrays[i].numflaggedrecords++;
 					memset(l->arrays[i].data + l->recordsize * j, 0, l->recordsize);
-					if (out_id)
-						*out_id = i * l->numrecordsperarray + j;
 					return (void *)(l->arrays[i].data + l->recordsize * j);
 				}
 			}
 		}
 	}
-}
-
-void *Mem_ExpandableArray_AllocRecord(memexpandablearray_t *l)
-{
-	return Mem_ExpandableArray_AllocRecord_Id(l, NULL);
 }
 
 /*****************************************************************************
