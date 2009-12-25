@@ -169,9 +169,7 @@ qboolean Font_OpenLibrary (void)
 {
 	const char* dllnames [] =
 	{
-#if defined(WIN64)
-		#error path for freetype 2 dll
-#elif defined(WIN32)
+#if defined(WIN32)
 		"freetype6.dll",
 #elif defined(MACOSX)
 		"libfreetype.dylib",

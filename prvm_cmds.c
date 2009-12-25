@@ -3216,6 +3216,21 @@ void VM_freepic(void)
 	Draw_FreePic(s);
 }
 
+void getdrawfontscale(float *sx, float *sy)
+{
+	vec3_t v;
+	*sx = *sy = 1;
+	if(prog->globaloffsets.drawfontscale >= 0)
+	{
+		VectorCopy(PRVM_G_VECTOR(prog->globaloffsets.drawfontscale), v);
+		if(VectorLength2(v) > 0)
+		{
+			*sx = v[0];
+			*sy = v[1];
+		}
+	}
+}
+
 dp_font_t *getdrawfont(void)
 {
 	if(prog->globaloffsets.drawfont >= 0)
@@ -3241,6 +3256,7 @@ void VM_drawcharacter(void)
 	float *pos,*scale,*rgb;
 	char   character;
 	int flag;
+	float sx, sy;
 	VM_SAFEPARMCOUNT(6,VM_drawcharacter);
 
 	character = (char) PRVM_G_FLOAT(OFS_PARM1);
@@ -3273,7 +3289,8 @@ void VM_drawcharacter(void)
 		return;
 	}
 
-	DrawQ_String_Font(pos[0], pos[1], &character, 1, scale[0], scale[1], rgb[0], rgb[1], rgb[2], PRVM_G_FLOAT(OFS_PARM4), flag, NULL, true, getdrawfont());
+	getdrawfontscale(&sx, &sy);
+	DrawQ_String_Font_Scale(pos[0], pos[1], &character, 1, scale[0], scale[1], sx, sy, rgb[0], rgb[1], rgb[2], PRVM_G_FLOAT(OFS_PARM4), flag, NULL, true, getdrawfont());
 	PRVM_G_FLOAT(OFS_RETURN) = 1;
 }
 
@@ -3289,6 +3306,7 @@ void VM_drawstring(void)
 	float *pos,*scale,*rgb;
 	const char  *string;
 	int flag;
+	float sx, sy;
 	VM_SAFEPARMCOUNT(6,VM_drawstring);
 
 	string = PRVM_G_STRING(OFS_PARM1);
@@ -3314,7 +3332,8 @@ void VM_drawstring(void)
 	if(pos[2] || scale[2])
 		Con_Printf("VM_drawstring: z value%s from %s discarded\n",(pos[2] && scale[2]) ? "s" : " ",((pos[2] && scale[2]) ? "pos and scale" : (pos[2] ? "pos" : "scale")));
 
-	DrawQ_String_Font(pos[0], pos[1], string, 0, scale[0], scale[1], rgb[0], rgb[1], rgb[2], PRVM_G_FLOAT(OFS_PARM4), flag, NULL, true, getdrawfont());
+	getdrawfontscale(&sx, &sy);
+	DrawQ_String_Font_Scale(pos[0], pos[1], string, 0, scale[0], scale[1], sx, sy, rgb[0], rgb[1], rgb[2], PRVM_G_FLOAT(OFS_PARM4), flag, NULL, true, getdrawfont());
 	//Font_DrawString(pos[0], pos[1], string, 0, scale[0], scale[1], rgb[0], rgb[1], rgb[2], PRVM_G_FLOAT(OFS_PARM4), flag, NULL, true);
 	PRVM_G_FLOAT(OFS_RETURN) = 1;
 }
@@ -3331,6 +3350,7 @@ void VM_drawcolorcodedstring(void)
 	float *pos,*scale;
 	const char  *string;
 	int flag,color;
+	float sx, sy;
 	VM_SAFEPARMCOUNT(5,VM_drawstring);
 
 	string = PRVM_G_STRING(OFS_PARM1);
@@ -3356,7 +3376,8 @@ void VM_drawcolorcodedstring(void)
 		Con_Printf("VM_drawcolorcodedstring: z value%s from %s discarded\n",(pos[2] && scale[2]) ? "s" : " ",((pos[2] && scale[2]) ? "pos and scale" : (pos[2] ? "pos" : "scale")));
 
 	color = -1;
-	DrawQ_String_Font(pos[0], pos[1], string, 0, scale[0], scale[1], 1, 1, 1, PRVM_G_FLOAT(OFS_PARM3), flag, NULL, false, getdrawfont());
+	getdrawfontscale(&sx, &sy);
+	DrawQ_String_Font_Scale(pos[0], pos[1], string, 0, scale[0], scale[1], sx, sy, 1, 1, 1, PRVM_G_FLOAT(OFS_PARM3), flag, NULL, false, getdrawfont());
 	PRVM_G_FLOAT(OFS_RETURN) = 1;
 }
 /*
@@ -3372,7 +3393,8 @@ void VM_stringwidth(void)
 	float *szv;
 	float mult; // sz is intended font size so we can later add freetype support, mult is font size multiplier in pixels per character cell
 	int colors;
-	float x[200];
+	float sx, sy;
+	size_t maxlen = 0;
 	VM_SAFEPARMCOUNTRANGE(2,3,VM_drawstring);
 
 	if(prog->argc == 3)
@@ -3386,12 +3408,12 @@ void VM_stringwidth(void)
 		szv = defsize;
 		mult = 1;
 	}
-	x[180] = 3;
+	getdrawfontscale(&sx, &sy);
 
 	string = PRVM_G_STRING(OFS_PARM0);
 	colors = (int)PRVM_G_FLOAT(OFS_PARM1);
 
-	PRVM_G_FLOAT(OFS_RETURN) = DrawQ_TextWidth_Font_Size(string, szv[0], szv[1], 0, !colors, getdrawfont()) * mult; // 1x1 characters, don't actually draw
+	PRVM_G_FLOAT(OFS_RETURN) = DrawQ_TextWidth_Font_UntilWidth_TrackColors_Size_Scale(string, szv[0], szv[1], sx, sy, &maxlen, NULL, !colors, getdrawfont(), 1000000000) * mult; // 1x1 characters, don't actually draw
 /*
 	if(prog->argc == 3)
 	{
@@ -5860,7 +5882,8 @@ nolength:
 				if(o < end - 1)
 				{
 					f = &formatbuf[1];
-					if(flags & PRINTF_ALTERNATE) *f++ = '#';
+					if(*s != 's' && *s != 'c')
+						if(flags & PRINTF_ALTERNATE) *f++ = '#';
 					if(flags & PRINTF_ZEROPAD) *f++ = '0';
 					if(flags & PRINTF_LEFT) *f++ = '-';
 					if(flags & PRINTF_SPACEPOSITIVE) *f++ = ' ';
@@ -5870,19 +5893,44 @@ nolength:
 					*f++ = '*';
 					*f++ = *s;
 					*f++ = 0;
+
+					if(width < 0)
+						width = 0;
+
 					switch(*s)
 					{
 						case 'd': case 'i':
 							o += dpsnprintf(o, end - o, formatbuf, width, precision, (isfloat ? (int) GETARG_FLOAT(thisarg) : (int) GETARG_INT(thisarg)));
 							break;
-						case 'o': case 'u': case 'x': case 'X': case 'c': 
+						case 'o': case 'u': case 'x': case 'X':
 							o += dpsnprintf(o, end - o, formatbuf, width, precision, (isfloat ? (unsigned int) GETARG_FLOAT(thisarg) : (unsigned int) GETARG_INT(thisarg)));
 							break;
 						case 'e': case 'E': case 'f': case 'F': case 'g': case 'G':
+							if(precision < 0)
+								precision = 6;
 							o += dpsnprintf(o, end - o, formatbuf, width, precision, (isfloat ? (double) GETARG_FLOAT(thisarg) : (double) GETARG_INT(thisarg)));
 							break;
+						case 'c':
+							if(precision < 0)
+								precision = end - o - 1;
+							if(flags & PRINTF_ALTERNATE)
+								o += dpsnprintf(o, end - o, formatbuf, width, precision, (isfloat ? (unsigned int) GETARG_FLOAT(thisarg) : (unsigned int) GETARG_INT(thisarg)));
+							else
+							{
+								unsigned int c = (isfloat ? (unsigned int) GETARG_FLOAT(thisarg) : (unsigned int) GETARG_INT(thisarg));
+								const char *buf = u8_encodech(c, NULL);
+								if(!buf)
+									buf = "";
+								o += u8_strpad(o, end - o, buf, (flags & PRINTF_LEFT) != 0, width, precision);
+							}
+							break;
 						case 's':
-							o += dpsnprintf(o, end - o, formatbuf, width, precision, GETARG_STRING(thisarg));
+							if(precision < 0)
+								precision = end - o - 1;
+							if(flags & PRINTF_ALTERNATE)
+								o += dpsnprintf(o, end - o, formatbuf, width, precision, GETARG_STRING(thisarg));
+							else
+								o += u8_strpad(o, end - o, GETARG_STRING(thisarg), (flags & PRINTF_LEFT) != 0, width, precision);
 							break;
 						default:
 							VM_Warning("VM_sprintf: invalid directive in %s: %s\n", PRVM_NAME, s0);

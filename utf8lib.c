@@ -41,19 +41,20 @@ static qboolean u8_analyze(const char *_s, size_t *_start, size_t *_len, Uchar *
 findchar:
 
 	// <0xC2 is always an overlong encoding, they're invalid, thus skipped
-	while (i < _maxlen && s[i] && s[i] >= 0x80 && s[i] <= 0xC2) {
+	while (i < _maxlen && s[i] && s[i] >= 0x80 && s[i] < 0xC2) {
 		//fprintf(stderr, "skipping\n");
 		++i;
 	}
-	if(i >= _maxlen)
-		return false;
+
 	//fprintf(stderr, "checking\n");
-
 	// If we hit the end, well, we're out and invalid
-	if (!s[i])
+	if(i >= _maxlen || !s[i]) {
+		if (_start) *_start = i;
+		if (_len) *_len = 0;
 		return false;
-	//fprintf(stderr, "checking ascii\n");
+	}
 
+	//fprintf(stderr, "checking ascii\n");
 	// ascii characters
 	if (s[i] < 0x80)
 	{
@@ -76,8 +77,11 @@ findchar:
 		++i;
 		goto findchar;
 	}
-	if(i + bits > _maxlen)
+	if(i + bits > _maxlen) {
+		if (_start) *_start = i;
+		if (_len) *_len = 0;
 		return false;
+	}
 	// turn bt into a mask and give ch a starting value
 	--bt;
 	ch = (s[i] & bt);
@@ -144,7 +148,7 @@ size_t u8_strlen(const char *_s)
 		}
 
 		// invalid, skip u8_analyze
-		if (*s <= 0xC2)
+		if (*s < 0xC2)
 		{
 			++s;
 			continue;
@@ -188,7 +192,7 @@ size_t u8_strnlen(const char *_s, size_t n)
 		}
 
 		// invalid, skip u8_analyze
-		if (*s <= 0xC2)
+		if (*s < 0xC2)
 		{
 			++s;
 			--n;
@@ -233,7 +237,7 @@ size_t u8_bytelen(const char *_s, size_t n)
 		}
 
 		// invalid, skip u8_analyze
-		if (*s <= 0xC2)
+		if (*s < 0xC2)
 		{
 			++s;
 			++len;
@@ -312,7 +316,7 @@ int u8_charidx(const char *_s, size_t i, size_t *len)
 		}
 
 		// invalid, skip u8_analyze
-		if (s[ofs] <= 0xC2)
+		if (s[ofs] < 0xC2)
 		{
 			++ofs;
 			continue;
@@ -373,7 +377,7 @@ size_t u8_prevbyte(const char *_s, size_t i)
 		}
 
 		// invalid, skip u8_analyze
-		if (s[ofs] <= 0xC2)
+		if (s[ofs] < 0xC2)
 		{
 			++ofs;
 			continue;
@@ -436,7 +440,7 @@ Uchar u8_getchar(const char *_s, const char **_end)
 	}
 	
 	if (!u8_analyze(_s, &st, &ln, &ch, U8_ANALYZE_INFINITY))
-		return 0;
+		ch = 0;
 	if (_end)
 		*_end = _s + st + ln;
 	return ch;
@@ -466,7 +470,7 @@ Uchar u8_getnchar(const char *_s, const char **_end, size_t _maxlen)
 	}
 	
 	if (!u8_analyze(_s, &st, &ln, &ch, _maxlen))
-		return 0;
+		ch = 0;
 	if (_end)
 		*_end = _s + st + ln;
 	return ch;
@@ -626,13 +630,14 @@ all characters until the zero terminator.
 size_t
 COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid);
 size_t
-u8_COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid)
+u8_COM_StringLengthNoColors(const char *_s, size_t size_s, qboolean *valid)
 {
-	const char *end;
+	const unsigned char *s = (const unsigned char*)_s;
+	const unsigned char *end;
 	size_t len = 0;
 
 	if (!utf8_enable.integer)
-		return COM_StringLengthNoColors(s, size_s, valid);
+		return COM_StringLengthNoColors(_s, size_s, valid);
 
 	end = size_s ? (s + size_s) : NULL;
 
@@ -693,4 +698,31 @@ u8_COM_StringLengthNoColors(const char *s, size_t size_s, qboolean *valid)
 		++s;
 	}
 	// never get here
+}
+
+/** Pads a utf-8 string
+ * @param out     The target buffer the utf-8 string is written to.
+ * @param outsize The size of the target buffer, including the final NUL
+ * @param in      The input utf-8 buffer
+ * @param leftalign Left align the output string (by default right alignment is done)
+ * @param minwidth The minimum output width
+ * @param maxwidth The maximum output width
+ * @return        The number of bytes written, not including the terminating \0
+ */
+size_t u8_strpad(char *out, size_t outsize, const char *in, qboolean leftalign, size_t minwidth, size_t maxwidth)
+{
+	if(!utf8_enable.integer)
+	{
+		return dpsnprintf(out, outsize, "%*.*s", leftalign ? -(int) minwidth : (int) minwidth, (int) maxwidth, in);
+	}
+	else
+	{
+		size_t l = u8_bytelen(in, maxwidth);
+		size_t actual_width = u8_strnlen(in, l);
+		int pad = (actual_width >= minwidth) ? 0 : (minwidth - actual_width);
+		int prec = l;
+		int lpad = leftalign ? 0 : pad;
+		int rpad = leftalign ? pad : 0;
+		return dpsnprintf(out, outsize, "%*s%.*s%*s", lpad, "", prec, in, rpad, "");
+	}
 }
