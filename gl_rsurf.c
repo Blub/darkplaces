@@ -724,7 +724,7 @@ static void R_Q1BSP_RecursiveGetLightInfo(r_q1bsp_getlightinfo_t *info, mnode_t 
 	{
 		int i;
 		mportal_t *portal;
-		static double points[128][3];
+		static float points[128][3];
 		for (portal = leaf->portals;portal;portal = portal->next)
 		{
 			for (i = 0;i < portal->numpoints;i++)
@@ -768,7 +768,7 @@ static void R_Q1BSP_RecursiveGetLightInfo(r_q1bsp_getlightinfo_t *info, mnode_t 
 		msurface_t *surface;
 		const int *e;
 		const vec_t *v[3];
-		double v2[3][3];
+		float v2[3][3];
 		for (leafsurfaceindex = 0;leafsurfaceindex < leaf->numleafsurfaces;leafsurfaceindex++)
 		{
 			surfaceindex = leaf->firstleafsurface[leafsurfaceindex];
@@ -790,8 +790,6 @@ static void R_Q1BSP_RecursiveGetLightInfo(r_q1bsp_getlightinfo_t *info, mnode_t 
 						{
 							if (info->svbsp_insertoccluder)
 							{
-								if (!(currentmaterialflags & MATERIALFLAG_NOCULLFACE) && r_shadow_frontsidecasting.integer != PointInfrontOfTriangle(info->relativelightorigin, v[0], v[1], v[2]))
-									continue;
 								if (currentmaterialflags & MATERIALFLAG_NOSHADOW)
 									continue;
 								VectorCopy(v[0], v2[0]);
@@ -859,7 +857,7 @@ static void R_Q1BSP_CallRecursiveGetLightInfo(r_q1bsp_getlightinfo_t *info, qboo
 {
 	if (use_svbsp)
 	{
-		double origin[3];
+		float origin[3];
 		VectorCopy(info->relativelightorigin, origin);
 		if (!r_svbsp.nodes)
 		{
@@ -1172,18 +1170,17 @@ static void R_Q1BSP_DrawLight_TransparentCallback(const entity_render_t *ent, co
 #define RSURF_MAX_BATCHSURFACES 8192
 
 extern qboolean r_shadow_usingdeferredprepass;
-void R_Q1BSP_DrawLight(entity_render_t *ent, int numsurfaces, const int *surfacelist, const unsigned char *trispvs)
+void R_Q1BSP_DrawLight(entity_render_t *ent, int numsurfaces, const int *surfacelist, const unsigned char *lighttrispvs)
 {
 	dp_model_t *model = ent->model;
 	const msurface_t *surface;
 	int i, k, kend, l, m, mend, endsurface, batchnumsurfaces, batchnumtriangles, batchfirstvertex, batchlastvertex, batchfirsttriangle;
-	qboolean usebufferobject, culltriangles;
+	qboolean usebufferobject;
 	const int *element3i;
 	static msurface_t *batchsurfacelist[RSURF_MAX_BATCHSURFACES];
 	static int batchelements[BATCHSIZE*3];
 	texture_t *tex;
 	CHECKGLERROR
-	culltriangles = r_shadow_culltriangles.integer && !(ent->flags & RENDER_NOSELFSHADOW);
 	element3i = rsurface.modelelement3i;
 	// this is a double loop because non-visible surface skipping has to be
 	// fast, and even if this is not the world model (and hence no visibility
@@ -1244,17 +1241,9 @@ void R_Q1BSP_DrawLight(entity_render_t *ent, int numsurfaces, const int *surface
 				RSurf_PrepareVerticesForBatch(true, true, 1, &surface);
 				for (m = surface->num_firsttriangle, mend = m + surface->num_triangles;m < mend;m++)
 				{
-					if (trispvs)
+					if (lighttrispvs && r_test.integer)
 					{
-						if (!CHECKPVSBIT(trispvs, m))
-						{
-							usebufferobject = false;
-							continue;
-						}
-					}
-					else if (culltriangles)
-					{
-						if (r_shadow_frontsidecasting.integer && !PointInfrontOfTriangle(rsurface.entitylightorigin, rsurface.vertex3f + element3i[m*3+0]*3, rsurface.vertex3f + element3i[m*3+1]*3, rsurface.vertex3f + element3i[m*3+2]*3))
+						if (!CHECKPVSBIT(lighttrispvs, m))
 						{
 							usebufferobject = false;
 							continue;
