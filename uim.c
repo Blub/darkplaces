@@ -358,7 +358,6 @@ static int UIM_GetKeyMod(void)
 
 static int UIM_KeyToUKey(int key, Uchar unicode)
 {
-	int ofs = 0;
 	switch (key)
 	{
 	case K_TAB:
@@ -388,19 +387,30 @@ static int UIM_KeyToUKey(int key, Uchar unicode)
 	case K_SHIFT:
 		return UKey_Shift;
 
-	case K_F1: ++ofs;
-	case K_F2: ++ofs;
-	case K_F3: ++ofs;
-	case K_F4: ++ofs;
-	case K_F5: ++ofs;
-	case K_F6: ++ofs;
-	case K_F7: ++ofs;
-	case K_F8: ++ofs;
-	case K_F9: ++ofs;
-	case K_F10: ++ofs;
-	case K_F11: ++ofs;
-	case K_F12: ++ofs;
-		return UKey_F1 + ofs;
+	case K_F1:
+		return UKey_F1;
+	case K_F2:
+		return UKey_F2;
+	case K_F3:
+		return UKey_F3;
+	case K_F4:
+		return UKey_F4;
+	case K_F5:
+		return UKey_F5;
+	case K_F6:
+		return UKey_F6;
+	case K_F7:
+		return UKey_F7;
+	case K_F8:
+		return UKey_F8;
+	case K_F9:
+		return UKey_F9;
+	case K_F10:
+		return UKey_F10;
+	case K_F11:
+		return UKey_F11;
+	case K_F12:
+		return UKey_F12;
 
 	case K_INS:
 		return UKey_Insert;
