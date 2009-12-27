@@ -187,7 +187,7 @@ ptrvalC = 0;
 				}
 				else
 				{
-					if( developer.integer >= 1 )
+					if (developer.integer)
 					{
 						prog->xfunction->profile += (st - startst);
 						startst = st;

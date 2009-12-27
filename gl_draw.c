@@ -289,7 +289,7 @@ static rtexture_t *draw_generatepic(const char *name, qboolean quiet)
 	if (!strcmp(name, "gfx/colorcontrol/ditherpattern"))
 		return draw_generateditherpattern();
 	if (!quiet)
-		Con_Printf("Draw_CachePic: failed to load %s\n", name);
+		Con_DPrintf("Draw_CachePic: failed to load %s\n", name);
 	return r_texture_notexture;
 }
 
@@ -558,7 +558,7 @@ static void LoadFont(qboolean override, const char *name, dp_font_t *fnt)
 	if(fnt->req_face != -1)
 	{
 		if(!Font_LoadFont(fnt->texpath, fnt))
-			Con_Printf("Failed to load font-file for '%s', it will not support as many characters.\n", fnt->texpath);
+			Con_DPrintf("Failed to load font-file for '%s', it will not support as many characters.\n", fnt->texpath);
 	}
 
 	fnt->tex = Draw_CachePic_Flags(fnt->texpath, CACHEPICFLAG_QUIET | CACHEPICFLAG_NOCOMPRESSION)->tex;
@@ -775,9 +775,8 @@ static void LoadFont_f(void)
 		for(i = 0; i < Cmd_Argc()-3; ++i)
 		{
 			sz = atof(Cmd_Argv(i+3));
-			if (IS_NAN(sz)) // do not use crap sizes
-				continue;
-			f->req_sizes[i] = sz;
+			if (sz > 0.001f && sz < 1000.0f) // do not use crap sizes
+				f->req_sizes[i] = sz;
 		}
 	}
 	LoadFont(true, mainfont, f);

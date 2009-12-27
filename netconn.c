@@ -624,7 +624,6 @@ qboolean NetConn_CanSend(netconn_t *conn)
 int NetConn_SendUnreliableMessage(netconn_t *conn, sizebuf_t *data, protocolversion_t protocol, int rate, qboolean quakesignon_suppressreliables)
 {
 	int totallen = 0;
-	int temp;
 
 	// if this packet was supposedly choked, but we find ourselves sending one
 	// anyway, make sure the size counting starts at zero
@@ -654,11 +653,9 @@ int NetConn_SendUnreliableMessage(netconn_t *conn, sizebuf_t *data, protocolvers
 			sendreliable = true;
 		}
 		// outgoing unreliable packet number, and outgoing reliable packet number (0 or 1)
-		temp = (unsigned int)conn->outgoing_unreliable_sequence | ((unsigned int)sendreliable<<31);
-		*((int *)(sendbuffer + 0)) = LittleLong(temp);
+		StoreLittleLong(sendbuffer, (unsigned int)conn->outgoing_unreliable_sequence | ((unsigned int)sendreliable<<31));
 		// last received unreliable packet number, and last received reliable packet number (0 or 1)
-		temp = (unsigned int)conn->qw.incoming_sequence | ((unsigned int)conn->qw.incoming_reliable_sequence<<31);
-		*((int *)(sendbuffer + 4)) = LittleLong(temp);
+		StoreLittleLong(sendbuffer + 4, (unsigned int)conn->qw.incoming_sequence | ((unsigned int)conn->qw.incoming_reliable_sequence<<31));
 		packetLen = 8;
 		conn->outgoing_unreliable_sequence++;
 		// client sends qport in every packet
@@ -859,7 +856,8 @@ void NetConn_OpenClientPort(const char *addressstring, lhnetaddresstype_t addres
 		{
 			cl_sockets[cl_numsockets++] = s;
 			LHNETADDRESS_ToString(LHNET_AddressFromSocket(s), addressstring2, sizeof(addressstring2), true);
-			Con_Printf("Client opened a socket on address %s\n", addressstring2);
+			if (addresstype != LHNETADDRESSTYPE_LOOP)
+				Con_Printf("Client opened a socket on address %s\n", addressstring2);
 		}
 		else
 		{
@@ -884,7 +882,9 @@ void NetConn_OpenClientPorts(void)
 		Con_Printf("Client using port %i\n", port);
 	NetConn_OpenClientPort(NULL, LHNETADDRESSTYPE_LOOP, 2);
 	NetConn_OpenClientPort(net_address.string, LHNETADDRESSTYPE_INET4, port);
+#ifdef SUPPORTIPV6
 	NetConn_OpenClientPort(net_address_ipv6.string, LHNETADDRESSTYPE_INET6, port);
+#endif
 }
 
 void NetConn_CloseServerPorts(void)
@@ -914,7 +914,8 @@ qboolean NetConn_OpenServerPort(const char *addressstring, lhnetaddresstype_t ad
 			{
 				sv_sockets[sv_numsockets++] = s;
 				LHNETADDRESS_ToString(LHNET_AddressFromSocket(s), addressstring2, sizeof(addressstring2), true);
-				Con_Printf("Server listening on address %s\n", addressstring2);
+				if (addresstype != LHNETADDRESSTYPE_LOOP)
+					Con_Printf("Server listening on address %s\n", addressstring2);
 				return true;
 			}
 			else
@@ -948,8 +949,12 @@ void NetConn_OpenServerPorts(int opennetports)
 		NetConn_OpenServerPort(NULL, LHNETADDRESSTYPE_LOOP, 1, 1);
 	if (opennetports)
 	{
+#ifdef SUPPORTIPV6
 		qboolean ip4success = NetConn_OpenServerPort(net_address.string, LHNETADDRESSTYPE_INET4, port, 100);
 		NetConn_OpenServerPort(net_address_ipv6.string, LHNETADDRESSTYPE_INET6, port, ip4success ? 1 : 100);
+#else
+		NetConn_OpenServerPort(net_address.string, LHNETADDRESSTYPE_INET4, port, 100);
+#endif
 	}
 	if (sv_numsockets == 0)
 		Host_Error("NetConn_OpenServerPorts: unable to open any ports!");
@@ -1628,7 +1633,7 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			// darkplaces or quake3
 			char protocolnames[1400];
 			Protocol_Names(protocolnames, sizeof(protocolnames));
-			Con_Printf("\"%s\" received, sending connect request back to %s\n", string, addressstring2);
+			Con_DPrintf("\"%s\" received, sending connect request back to %s\n", string, addressstring2);
 			M_Update_Return_Reason("Got challenge response");
 			// update the server IP in the userinfo (QW servers expect this, and it is used by the reconnect command)
 			InfoString_SetValue(cls.userinfo, sizeof(cls.userinfo), "*ip", addressstring2);
@@ -1801,8 +1806,8 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 		}
 		if (!strncmp(string, "ping", 4))
 		{
-			if (developer.integer >= 10)
-				Con_Printf("Received ping from %s, sending ack\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Received ping from %s, sending ack\n", addressstring2);
 			NetConn_WriteString(mysocket, "\377\377\377\377ack", peeraddress);
 			return true;
 		}
@@ -1906,8 +1911,8 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 		switch (c)
 		{
 		case CCREP_ACCEPT:
-			if (developer.integer >= 10)
-				Con_Printf("Datagram_ParseConnectionless: received CCREP_ACCEPT from %s.\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Datagram_ParseConnectionless: received CCREP_ACCEPT from %s.\n", addressstring2);
 			if (cls.connect_trying)
 			{
 				lhnetaddress_t clientportaddress;
@@ -1920,14 +1925,14 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			}
 			break;
 		case CCREP_REJECT:
-			if (developer.integer >= 10)
-				Con_Printf("Datagram_ParseConnectionless: received CCREP_REJECT from %s.\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Datagram_ParseConnectionless: received CCREP_REJECT from %s.\n", addressstring2);
 			cls.connect_trying = false;
 			M_Update_Return_Reason((char *)MSG_ReadString());
 			break;
 		case CCREP_SERVER_INFO:
-			if (developer.integer >= 10)
-				Con_Printf("Datagram_ParseConnectionless: received CCREP_SERVER_INFO from %s.\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Datagram_ParseConnectionless: received CCREP_SERVER_INFO from %s.\n", addressstring2);
 			// LordHavoc: because the quake server may report weird addresses
 			// we just ignore it and keep the real address
 			MSG_ReadString();
@@ -1949,19 +1954,19 @@ static int NetConn_ClientParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 
 			break;
 		case CCREP_RCON: // RocketGuy: ProQuake rcon support
-			if (developer.integer >= 10)
-				Con_Printf("Datagram_ParseConnectionless: received CCREP_RCON from %s.\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Datagram_ParseConnectionless: received CCREP_RCON from %s.\n", addressstring2);
 
 			Con_Printf("%s\n", MSG_ReadString());
 			break;
 		case CCREP_PLAYER_INFO:
 			// we got a CCREP_PLAYER_INFO??
-			//if (developer.integer >= 10)
+			//if (developer_extra.integer)
 				Con_Printf("Datagram_ParseConnectionless: received CCREP_PLAYER_INFO from %s.\n", addressstring2);
 			break;
 		case CCREP_RULE_INFO:
 			// we got a CCREP_RULE_INFO??
-			//if (developer.integer >= 10)
+			//if (developer_extra.integer)
 				Con_Printf("Datagram_ParseConnectionless: received CCREP_RULE_INFO from %s.\n", addressstring2);
 			break;
 		default:
@@ -2586,7 +2591,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 		stringbuf[length] = 0;
 		string = stringbuf;
 
-		if (developer.integer >= 10)
+		if (developer_extra.integer)
 		{
 			Con_Printf("NetConn_ServerParsePacket: %s sent us a command:\n", addressstring2);
 			Com_HexDumpToConsole(data, length);
@@ -2634,7 +2639,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			// check engine protocol
 			if(!(s = SearchInfostring(string, "protocol")) || strcmp(s, "darkplaces 3"))
 			{
-				if (developer.integer >= 10)
+				if (developer_extra.integer)
 					Con_Printf("Datagram_ParseConnectionless: sending \"reject Wrong game protocol.\" to %s.\n", addressstring2);
 				NetConn_WriteString(mysocket, "\377\377\377\377reject Wrong game protocol.", peeraddress);
 				return true;
@@ -2651,7 +2656,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 					{
 						// client crashed and is coming back,
 						// keep their stuff intact
-						if (developer.integer >= 10)
+						if (developer_extra.integer)
 							Con_Printf("Datagram_ParseConnectionless: sending \"accept\" to %s.\n", addressstring2);
 						NetConn_WriteString(mysocket, "\377\377\377\377accept", peeraddress);
 						SV_VM_Begin();
@@ -2662,7 +2667,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 					{
 						// client is still trying to connect,
 						// so we send a duplicate reply
-						if (developer.integer >= 10)
+						if (developer_extra.integer)
 							Con_Printf("Datagram_ParseConnectionless: sending duplicate accept to %s.\n", addressstring2);
 						NetConn_WriteString(mysocket, "\377\377\377\377accept", peeraddress);
 					}
@@ -2680,7 +2685,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 				if (!client->active && (conn = NetConn_Open(mysocket, peeraddress)))
 				{
 					// allocated connection
-					if (developer.integer >= 10)
+					if (developer_extra.integer)
 						Con_Printf("Datagram_ParseConnectionless: sending \"accept\" to %s.\n", conn->address);
 					NetConn_WriteString(mysocket, "\377\377\377\377accept", peeraddress);
 					// now set up the client
@@ -2693,7 +2698,7 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			}
 
 			// no empty slots found - server is full
-			if (developer.integer >= 10)
+			if (developer_extra.integer)
 				Con_Printf("Datagram_ParseConnectionless: sending \"reject Server is full.\" to %s.\n", addressstring2);
 			NetConn_WriteString(mysocket, "\377\377\377\377reject Server is full.", peeraddress);
 
@@ -2709,8 +2714,8 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 
 			if (NetConn_BuildStatusResponse(challenge, response, sizeof(response), false))
 			{
-				if (developer.integer >= 10)
-					Con_Printf("Sending reply to master %s - %s\n", addressstring2, response);
+				if (developer_extra.integer)
+					Con_DPrintf("Sending reply to master %s - %s\n", addressstring2, response);
 				NetConn_WriteString(mysocket, response, peeraddress);
 			}
 			return true;
@@ -2725,8 +2730,8 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 
 			if (NetConn_BuildStatusResponse(challenge, response, sizeof(response), true))
 			{
-				if (developer.integer >= 10)
-					Con_Printf("Sending reply to client %s - %s\n", addressstring2, response);
+				if (developer_extra.integer)
+					Con_DPrintf("Sending reply to client %s - %s\n", addressstring2, response);
 				NetConn_WriteString(mysocket, response, peeraddress);
 			}
 			return true;
@@ -2799,8 +2804,8 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 		}
 		if (!strncmp(string, "ping", 4))
 		{
-			if (developer.integer >= 10)
-				Con_Printf("Received ping from %s, sending ack\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Received ping from %s, sending ack\n", addressstring2);
 			NetConn_WriteString(mysocket, "\377\377\377\377ack", peeraddress);
 			return true;
 		}
@@ -2829,8 +2834,8 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 		switch (c)
 		{
 		case CCREQ_CONNECT:
-			if (developer.integer >= 10)
-				Con_Printf("Datagram_ParseConnectionless: received CCREQ_CONNECT from %s.\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Datagram_ParseConnectionless: received CCREQ_CONNECT from %s.\n", addressstring2);
 			if(!islocal && sv_public.integer <= -2)
 				break;
 
@@ -2838,8 +2843,8 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			protocolnumber = MSG_ReadByte();
 			if (strcmp(protocolname, "QUAKE") || protocolnumber != NET_PROTOCOL_VERSION)
 			{
-				if (developer.integer >= 10)
-					Con_Printf("Datagram_ParseConnectionless: sending CCREP_REJECT \"Incompatible version.\" to %s.\n", addressstring2);
+				if (developer_extra.integer)
+					Con_DPrintf("Datagram_ParseConnectionless: sending CCREP_REJECT \"Incompatible version.\" to %s.\n", addressstring2);
 				SZ_Clear(&net_message);
 				// save space for the header, filled in later
 				MSG_WriteLong(&net_message, 0);
@@ -2861,8 +2866,8 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 					// (if so, keep their stuff intact)
 
 					// send a reply
-					if (developer.integer >= 10)
-						Con_Printf("Datagram_ParseConnectionless: sending duplicate CCREP_ACCEPT to %s.\n", addressstring2);
+					if (developer_extra.integer)
+						Con_DPrintf("Datagram_ParseConnectionless: sending duplicate CCREP_ACCEPT to %s.\n", addressstring2);
 					SZ_Clear(&net_message);
 					// save space for the header, filled in later
 					MSG_WriteLong(&net_message, 0);
@@ -2897,8 +2902,8 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 					// connect to the client
 					// everything is allocated, just fill in the details
 					strlcpy (conn->address, addressstring2, sizeof (conn->address));
-					if (developer.integer >= 10)
-						Con_Printf("Datagram_ParseConnectionless: sending CCREP_ACCEPT to %s.\n", addressstring2);
+					if (developer_extra.integer)
+						Con_DPrintf("Datagram_ParseConnectionless: sending CCREP_ACCEPT to %s.\n", addressstring2);
 					// send back the info about the server connection
 					SZ_Clear(&net_message);
 					// save space for the header, filled in later
@@ -2917,8 +2922,8 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 				}
 			}
 
-			if (developer.integer >= 10)
-				Con_Printf("Datagram_ParseConnectionless: sending CCREP_REJECT \"Server is full.\" to %s.\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Datagram_ParseConnectionless: sending CCREP_REJECT \"Server is full.\" to %s.\n", addressstring2);
 			// no room; try to let player know
 			SZ_Clear(&net_message);
 			// save space for the header, filled in later
@@ -2930,16 +2935,16 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			SZ_Clear(&net_message);
 			break;
 		case CCREQ_SERVER_INFO:
-			if (developer.integer >= 10)
-				Con_Printf("Datagram_ParseConnectionless: received CCREQ_SERVER_INFO from %s.\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Datagram_ParseConnectionless: received CCREQ_SERVER_INFO from %s.\n", addressstring2);
 			if(!islocal && sv_public.integer <= -1)
 				break;
 			if (sv.active && !strcmp(MSG_ReadString(), "QUAKE"))
 			{
 				int numclients;
 				char myaddressstring[128];
-				if (developer.integer >= 10)
-					Con_Printf("Datagram_ParseConnectionless: sending CCREP_SERVER_INFO to %s.\n", addressstring2);
+				if (developer_extra.integer)
+					Con_DPrintf("Datagram_ParseConnectionless: sending CCREP_SERVER_INFO to %s.\n", addressstring2);
 				SZ_Clear(&net_message);
 				// save space for the header, filled in later
 				MSG_WriteLong(&net_message, 0);
@@ -2961,8 +2966,8 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			}
 			break;
 		case CCREQ_PLAYER_INFO:
-			if (developer.integer >= 10)
-				Con_Printf("Datagram_ParseConnectionless: received CCREQ_PLAYER_INFO from %s.\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Datagram_ParseConnectionless: received CCREQ_PLAYER_INFO from %s.\n", addressstring2);
 			if(!islocal && sv_public.integer <= -1)
 				break;
 			if (sv.active)
@@ -2994,8 +2999,8 @@ static int NetConn_ServerParsePacket(lhnetsocket_t *mysocket, unsigned char *dat
 			}
 			break;
 		case CCREQ_RULE_INFO:
-			if (developer.integer >= 10)
-				Con_Printf("Datagram_ParseConnectionless: received CCREQ_RULE_INFO from %s.\n", addressstring2);
+			if (developer_extra.integer)
+				Con_DPrintf("Datagram_ParseConnectionless: received CCREQ_RULE_INFO from %s.\n", addressstring2);
 			if(!islocal && sv_public.integer <= -1)
 				break;
 			if (sv.active)
