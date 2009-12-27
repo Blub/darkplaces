@@ -1020,13 +1020,13 @@ static char Sys_Con_NearestColor(const unsigned char _r, const unsigned char _g,
 
 /*
 ================
-Con_Print
+Con_MaskPrint
 ================
 */
 extern cvar_t timestamps;
 extern cvar_t timeformat;
 extern qboolean sys_nostdout;
-void Con_Print(const char *msg)
+void Con_MaskPrint(int additionalmask, const char *msg)
 {
 	static int mask = 0;
 	static int index = 0;
@@ -1035,6 +1035,8 @@ void Con_Print(const char *msg)
 	for (;*msg;msg++)
 	{
 		Con_Rcon_AddChar(*msg);
+		if (index == 0)
+			mask |= additionalmask;
 		// if this is the beginning of a new line, print timestamp
 		if (index == 0)
 		{
@@ -1284,6 +1286,32 @@ void Con_Print(const char *msg)
 	}
 }
 
+/*
+================
+Con_MaskPrintf
+================
+*/
+void Con_MaskPrintf(int mask, const char *fmt, ...)
+{
+	va_list argptr;
+	char msg[MAX_INPUTLINE];
+
+	va_start(argptr,fmt);
+	dpvsnprintf(msg,sizeof(msg),fmt,argptr);
+	va_end(argptr);
+
+	Con_MaskPrint(mask, msg);
+}
+
+/*
+================
+Con_Print
+================
+*/
+void Con_Print(const char *msg)
+{
+	Con_MaskPrint(CON_MASK_PRINT, msg);
+}
 
 /*
 ================
@@ -1299,7 +1327,7 @@ void Con_Printf(const char *fmt, ...)
 	dpvsnprintf(msg,sizeof(msg),fmt,argptr);
 	va_end(argptr);
 
-	Con_Print(msg);
+	Con_MaskPrint(CON_MASK_PRINT, msg);
 }
 
 /*
@@ -1309,9 +1337,7 @@ Con_DPrint
 */
 void Con_DPrint(const char *msg)
 {
-	if (!developer.integer)
-		return;			// don't confuse non-developers with techie stuff...
-	Con_Print(msg);
+	Con_MaskPrint(CON_MASK_DEVELOPER, msg);
 }
 
 /*
@@ -1324,14 +1350,11 @@ void Con_DPrintf(const char *fmt, ...)
 	va_list argptr;
 	char msg[MAX_INPUTLINE];
 
-	if (!developer.integer)
-		return;			// don't confuse non-developers with techie stuff...
-
 	va_start(argptr,fmt);
 	dpvsnprintf(msg,sizeof(msg),fmt,argptr);
 	va_end(argptr);
 
-	Con_Print(msg);
+	Con_MaskPrint(CON_MASK_DEVELOPER, msg);
 }
 
 
@@ -1616,7 +1639,7 @@ void Con_DrawNotify (void)
 		chatstart = 0; // shut off gcc warning
 	}
 
-	v = notifystart + con_notifysize.value * Con_DrawNotifyRect(0, CON_MASK_INPUT | CON_MASK_HIDENOTIFY | (numChatlines ? CON_MASK_CHAT : 0), con_notifytime.value, 0, notifystart, vid_conwidth.value, con_notify.value * con_notifysize.value, con_notifysize.value, align, 0.0, "");
+	v = notifystart + con_notifysize.value * Con_DrawNotifyRect(0, CON_MASK_INPUT | CON_MASK_HIDENOTIFY | (numChatlines ? CON_MASK_CHAT : 0) | CON_MASK_DEVELOPER, con_notifytime.value, 0, notifystart, vid_conwidth.value, con_notify.value * con_notifysize.value, con_notifysize.value, align, 0.0, "");
 
 	// chat?
 	if(numChatlines)
@@ -1651,40 +1674,26 @@ void Con_DrawNotify (void)
 
 /*
 ================
-Con_MeasureConsoleLine
-
-Counts the number of lines for a line on the console.
-================
-*/
-int Con_MeasureConsoleLine(int lineno)
-{
-	float width = vid_conwidth.value;
-	con_text_info_t ti;
-	con_lineinfo_t *li = &CON_LINES(lineno);
-
-	//if(con.lines[lineno].mask & CON_MASK_LOADEDHISTORY)
-	//	return 0;
-
-	ti.fontsize = con_textsize.value;
-	ti.font = FONT_CONSOLE;
-
-	return COM_Wordwrap(li->start, li->len, 0, width, Con_WordWidthFunc, &ti, Con_CountLineFunc, NULL);
-}
-
-/*
-================
 Con_LineHeight
 
 Returns the height of a given console line; calculates it if necessary.
 ================
 */
-int Con_LineHeight(int i)
+int Con_LineHeight(int lineno)
 {
-	con_lineinfo_t *li = &CON_LINES(i);
-	int h = li->height;
-	if(h != -1)
-		return h;
-	return li->height = Con_MeasureConsoleLine(i);
+	con_lineinfo_t *li = &CON_LINES(lineno);
+	if ((li->mask & CON_MASK_DEVELOPER) && !developer.integer)
+		return 0;
+	if(li->height == -1)
+	{
+		float width = vid_conwidth.value;
+		con_text_info_t ti;
+		con_lineinfo_t *li = &CON_LINES(lineno);
+		ti.fontsize = con_textsize.value;
+		ti.font = FONT_CONSOLE;
+		li->height = COM_Wordwrap(li->start, li->len, 0, width, Con_WordWidthFunc, &ti, Con_CountLineFunc, NULL);
+	}
+	return li->height;
 }
 
 /*
@@ -1704,6 +1713,8 @@ int Con_DrawConsoleLine(float y, int lineno, float ymin, float ymax)
 
 	//if(con.lines[lineno].mask & CON_MASK_LOADEDHISTORY)
 	//	return 0;
+	if ((con.lines[lineno].mask & CON_MASK_DEVELOPER) && !developer.integer)
+		return 0;
 
 	ti.continuationString = "";
 	ti.alignment = 0;
@@ -1718,6 +1729,7 @@ int Con_DrawConsoleLine(float y, int lineno, float ymin, float ymax)
 	return COM_Wordwrap(li->start, li->len, 0, width, Con_WordWidthFunc, &ti, Con_DisplayLineFunc, &ti);
 }
 
+#if 0
 /*
 ================
 Con_LastVisibleLine
@@ -1726,7 +1738,7 @@ Calculates the last visible line index and how much to show of it based on
 con_backscroll.
 ================
 */
-void Con_LastVisibleLine(int *last, int *limitlast)
+static void Con_LastVisibleLine(int *last, int *limitlast)
 {
 	int lines_seen = 0;
 	int i;
@@ -1757,6 +1769,7 @@ void Con_LastVisibleLine(int *last, int *limitlast)
 		// FIXME uses con in a non abstracted way
 	*limitlast = 1;
 }
+#endif
 
 /*
 ================
@@ -1768,11 +1781,11 @@ The typing input line at the bottom should only be drawn if typing is allowed
 */
 void Con_DrawConsole (int lines)
 {
-	int i, last, limitlast;
-	float y;
-
 	if (lines <= 0)
 		return;
+
+	if (con_backscroll < 0)
+		con_backscroll = 0;
 
 	con_vislines = lines;
 
@@ -1781,8 +1794,27 @@ void Con_DrawConsole (int lines)
 	DrawQ_String_Font(vid_conwidth.integer - DrawQ_TextWidth_Font(engineversion, 0, false, FONT_CONSOLE) * con_textsize.value, lines - con_textsize.value, engineversion, 0, con_textsize.value, con_textsize.value, 1, 0, 0, 1, 0, NULL, true, FONT_CONSOLE);
 
 // draw the text
+#if 1
+	{
+		int i;
+		int count = CON_LINES_COUNT;
+		float ymax = con_vislines - 2 * con_textsize.value;
+		float y = ymax + con_textsize.value * con_backscroll;
+		for (i = 0;i < count && y >= 0;i++)
+			y -= Con_DrawConsoleLine(y - con_textsize.value, CON_LINES_COUNT - 1 - i, 0, ymax) * con_textsize.value;
+		// fix any excessive scrollback for the next frame
+		if (i >= count && y >= 0)
+		{
+			con_backscroll -= (int)(y / con_textsize.value);
+			if (con_backscroll < 0)
+				con_backscroll = 0;
+		}
+	}
+#else
 	if(CON_LINES_COUNT > 0)
 	{
+		int i, last, limitlast;
+		float y;
 		float ymax = con_vislines - 2 * con_textsize.value;
 		Con_LastVisibleLine(&last, &limitlast);
 		y = ymax - con_textsize.value;
@@ -1803,6 +1835,7 @@ void Con_DrawConsole (int lines)
 			--i;
 		}
 	}
+#endif
 
 // draw the input prompt, user text, and cursor if desired
 	Con_DrawInput ();
@@ -1878,7 +1911,7 @@ qboolean GetMapList (const char *s, char *completedname, int completednamebuffer
 					lumplen = LittleLong(header->lumps[Q2LUMP_ENTITIES].filelen);
 				}
 			}
-			else if((p = LittleLong(((int *)buf)[0])) == BSPVERSION || p == 30)
+			else if((p = BuffLittleLong(buf)) == BSPVERSION || p == 30)
 			{
 				dheader_t *header = (dheader_t *)buf;
 				lumpofs = LittleLong(header->lumps[LUMP_ENTITIES].fileofs);
@@ -1917,8 +1950,8 @@ qboolean GetMapList (const char *s, char *completedname, int completednamebuffer
 					keyname[l] = 0;
 					if (!COM_ParseToken_Simple(&data, false, false))
 						break;
-					if (developer.integer >= 100)
-						Con_Printf("key: %s %s\n", keyname, com_token);
+					if (developer_extra.integer)
+						Con_DPrintf("key: %s %s\n", keyname, com_token);
 					if (!strcmp(keyname, "message"))
 					{
 						// get the message contents

@@ -955,7 +955,7 @@ Key_Console (int key, int unicode)
 	if (key == K_HOME || key == K_KP_HOME)
 	{
 		if (keydown[K_CTRL])
-			con_backscroll = INT_MAX;
+			con_backscroll = CON_TEXTSIZE;
 		else
 			key_linepos = 1;
 		//UIM_SetCursor(key_linepos);
@@ -1473,8 +1473,8 @@ Key_Event (int key, int ascii, qboolean down)
 	if (!bind)
 		bind = keybindings[key_bmap2][key];
 
-	if (developer.integer >= 1000)
-		Con_Printf("Key_Event(%i, '%c', %s) keydown %i bind \"%s\"\n", key, ascii ? ascii : '?', down ? "down" : "up", keydown[key], bind ? bind : "");
+	if (developer_insane.integer)
+		Con_DPrintf("Key_Event(%i, '%c', %s) keydown %i bind \"%s\"\n", key, ascii ? ascii : '?', down ? "down" : "up", keydown[key], bind ? bind : "");
 
 	if (key_consoleactive)
 	{
