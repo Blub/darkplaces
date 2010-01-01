@@ -1422,12 +1422,12 @@ void Con_DrawInput (void)
 
 //	text[key_linepos + 1] = 0;
 
-	x = vid_conwidth.value * 0.95 - DrawQ_TextWidth_Font(text, key_linepos, false, FONT_CONSOLE) * con_textsize.value;
+	x = vid_conwidth.value * 0.95 - DrawQ_TextWidth(text, key_linepos, con_textsize.value, con_textsize.value, false, FONT_CONSOLE);
 	if(x >= 0)
 		x = 0;
 
 	// draw it
-	DrawQ_String_Font(x, con_vislines - con_textsize.value*2, text, 0, con_textsize.value, con_textsize.value, 1.0, 1.0, 1.0, 1.0, 0, NULL, false, FONT_CONSOLE );
+	DrawQ_String(x, con_vislines - con_textsize.value*2, text, 0, con_textsize.value, con_textsize.value, 1.0, 1.0, 1.0, 1.0, 0, NULL, false, FONT_CONSOLE );
 
 	// remove cursor
 //	key_line[key_linepos] = 0;
@@ -1458,9 +1458,9 @@ float Con_WordWidthFunc(void *passthrough, const char *w, size_t *length, float 
 		return ti->fontsize * ti->font->maxwidth;
 	}
 	if(maxWidth >= 0)
-		return DrawQ_TextWidth_Font_UntilWidth_Size(w, ti->fontsize, ti->fontsize, length, false, ti->font, -maxWidth); // -maxWidth: we want at least one char
+		return DrawQ_TextWidth_UntilWidth(w, length, ti->fontsize, ti->fontsize, false, ti->font, -maxWidth); // -maxWidth: we want at least one char
 	else if(maxWidth == -1)
-		return DrawQ_TextWidth_Font_Size(w, ti->fontsize, ti->fontsize, *length, false, ti->font);
+		return DrawQ_TextWidth(w, *length, ti->fontsize, ti->fontsize, false, ti->font);
 	else
 	{
 		printf("Con_WordWidthFunc: can't get here (maxWidth should never be %f)\n", maxWidth);
@@ -1491,9 +1491,9 @@ int Con_DisplayLineFunc(void *passthrough, const char *line, size_t length, floa
 	{
 		int x = (int) (ti->x + (ti->width - width) * ti->alignment);
 		if(isContinuation && *ti->continuationString)
-			x += (int) DrawQ_String_Font(x, ti->y, ti->continuationString, strlen(ti->continuationString), ti->fontsize, ti->fontsize, 1.0, 1.0, 1.0, 1.0, 0, NULL, false, ti->font);
+			x += (int) DrawQ_String(x, ti->y, ti->continuationString, strlen(ti->continuationString), ti->fontsize, ti->fontsize, 1.0, 1.0, 1.0, 1.0, 0, NULL, false, ti->font);
 		if(length > 0)
-			DrawQ_String_Font(x, ti->y, line, length, ti->fontsize, ti->fontsize, 1.0, 1.0, 1.0, 1.0, 0, &(ti->colorindex), false, ti->font);
+			DrawQ_String(x, ti->y, line, length, ti->fontsize, ti->fontsize, 1.0, 1.0, 1.0, 1.0, 0, &(ti->colorindex), false, ti->font);
 	}
 
 	ti->y += ti->fontsize;
@@ -1665,10 +1665,10 @@ void Con_DrawNotify (void)
 
 		// FIXME word wrap
 		inputsize = (numChatlines ? con_chatsize : con_notifysize).value;
-		x = vid_conwidth.value - DrawQ_TextWidth_Font(temptext, 0, false, FONT_CHAT) * inputsize;
+		x = vid_conwidth.value - DrawQ_TextWidth(temptext, 0, inputsize, inputsize, false, FONT_CHAT);
 		if(x > 0)
 			x = 0;
-		DrawQ_String_Font(x, v, temptext, 0, inputsize, inputsize, 1.0, 1.0, 1.0, 1.0, 0, &colorindex, false, FONT_CHAT);
+		DrawQ_String(x, v, temptext, 0, inputsize, inputsize, 1.0, 1.0, 1.0, 1.0, 0, &colorindex, false, FONT_CHAT);
 	}
 }
 
@@ -1682,8 +1682,6 @@ Returns the height of a given console line; calculates it if necessary.
 int Con_LineHeight(int lineno)
 {
 	con_lineinfo_t *li = &CON_LINES(lineno);
-	if ((li->mask & CON_MASK_DEVELOPER) && !developer.integer)
-		return 0;
 	if(li->height == -1)
 	{
 		float width = vid_conwidth.value;
@@ -1705,15 +1703,15 @@ If alpha is 0, the line is not drawn, but still wrapped and its height
 returned.
 ================
 */
-int Con_DrawConsoleLine(float y, int lineno, float ymin, float ymax)
+int Con_DrawConsoleLine(int mask_must, int mask_mustnot, float y, int lineno, float ymin, float ymax)
 {
 	float width = vid_conwidth.value;
 	con_text_info_t ti;
 	con_lineinfo_t *li = &CON_LINES(lineno);
 
-	//if(con.lines[lineno].mask & CON_MASK_LOADEDHISTORY)
-	//	return 0;
-	if ((con.lines[lineno].mask & CON_MASK_DEVELOPER) && !developer.integer)
+	if((li->mask & mask_must) != mask_must)
+		return 0;
+	if((li->mask & mask_mustnot) != 0)
 		return 0;
 
 	ti.continuationString = "";
@@ -1729,7 +1727,6 @@ int Con_DrawConsoleLine(float y, int lineno, float ymin, float ymax)
 	return COM_Wordwrap(li->start, li->len, 0, width, Con_WordWidthFunc, &ti, Con_DisplayLineFunc, &ti);
 }
 
-#if 0
 /*
 ================
 Con_LastVisibleLine
@@ -1738,7 +1735,7 @@ Calculates the last visible line index and how much to show of it based on
 con_backscroll.
 ================
 */
-static void Con_LastVisibleLine(int *last, int *limitlast)
+static void Con_LastVisibleLine(int mask_must, int mask_mustnot, int *last, int *limitlast)
 {
 	int lines_seen = 0;
 	int i;
@@ -1746,15 +1743,19 @@ static void Con_LastVisibleLine(int *last, int *limitlast)
 	if(con_backscroll < 0)
 		con_backscroll = 0;
 
+	*last = 0;
+
 	// now count until we saw con_backscroll actual lines
 	for(i = CON_LINES_COUNT - 1; i >= 0; --i)
+	if((CON_LINES(i).mask & mask_must) == mask_must)
+	if((CON_LINES(i).mask & mask_mustnot) == 0)
 	{
 		int h = Con_LineHeight(i);
 
 		// line is the last visible line?
+		*last = i;
 		if(lines_seen + h > con_backscroll && lines_seen <= con_backscroll)
 		{
-			*last = i;
 			*limitlast = lines_seen + h - con_backscroll;
 			return;
 		}
@@ -1765,11 +1766,8 @@ static void Con_LastVisibleLine(int *last, int *limitlast)
 	// if we get here, no line was on screen - scroll so that one line is
 	// visible then.
 	con_backscroll = lines_seen - 1;
-	*last = con.lines_first;
-		// FIXME uses con in a non abstracted way
 	*limitlast = 1;
 }
-#endif
 
 /*
 ================
@@ -1781,6 +1779,9 @@ The typing input line at the bottom should only be drawn if typing is allowed
 */
 void Con_DrawConsole (int lines)
 {
+	int mask_must = 0;
+	int mask_mustnot = developer.integer ? 0 : CON_MASK_DEVELOPER;
+
 	if (lines <= 0)
 		return;
 
@@ -1791,17 +1792,17 @@ void Con_DrawConsole (int lines)
 
 // draw the background
 	DrawQ_Pic(0, lines - vid_conheight.integer, scr_conbrightness.value >= 0.01f ? Draw_CachePic ("gfx/conback") : NULL, vid_conwidth.integer, vid_conheight.integer, scr_conbrightness.value, scr_conbrightness.value, scr_conbrightness.value, cls.signon == SIGNONS ? scr_conalpha.value : 1.0, 0); // always full alpha when not in game
-	DrawQ_String_Font(vid_conwidth.integer - DrawQ_TextWidth_Font(engineversion, 0, false, FONT_CONSOLE) * con_textsize.value, lines - con_textsize.value, engineversion, 0, con_textsize.value, con_textsize.value, 1, 0, 0, 1, 0, NULL, true, FONT_CONSOLE);
+	DrawQ_String(vid_conwidth.integer - DrawQ_TextWidth(engineversion, 0, con_textsize.value, con_textsize.value, false, FONT_CONSOLE), lines - con_textsize.value, engineversion, 0, con_textsize.value, con_textsize.value, 1, 0, 0, 1, 0, NULL, true, FONT_CONSOLE);
 
 // draw the text
-#if 1
+#if 0
 	{
 		int i;
 		int count = CON_LINES_COUNT;
 		float ymax = con_vislines - 2 * con_textsize.value;
 		float y = ymax + con_textsize.value * con_backscroll;
 		for (i = 0;i < count && y >= 0;i++)
-			y -= Con_DrawConsoleLine(y - con_textsize.value, CON_LINES_COUNT - 1 - i, 0, ymax) * con_textsize.value;
+			y -= Con_DrawConsoleLine(mask_must, mask_mustnot, y - con_textsize.value, CON_LINES_COUNT - 1 - i, 0, ymax) * con_textsize.value;
 		// fix any excessive scrollback for the next frame
 		if (i >= count && y >= 0)
 		{
@@ -1816,17 +1817,17 @@ void Con_DrawConsole (int lines)
 		int i, last, limitlast;
 		float y;
 		float ymax = con_vislines - 2 * con_textsize.value;
-		Con_LastVisibleLine(&last, &limitlast);
+		Con_LastVisibleLine(mask_must, mask_mustnot, &last, &limitlast);
+		//Con_LastVisibleLine(mask_must, mask_mustnot, &last, &limitlast);
 		y = ymax - con_textsize.value;
 
 		if(limitlast)
 			y += (CON_LINES(last).height - limitlast) * con_textsize.value;
-				// FIXME uses con in a non abstracted way
 		i = last;
 
 		for(;;)
 		{
-			y -= Con_DrawConsoleLine(y, i, 0, ymax) * con_textsize.value;
+			y -= Con_DrawConsoleLine(mask_must, mask_mustnot, y, i, 0, ymax) * con_textsize.value;
 			if(i == 0)
 				break; // top of console buffer
 			if(y < 0)

@@ -87,11 +87,9 @@ void R_Mesh_TexCoordPointer(unsigned int unitnum, unsigned int numcomponents, co
 // returns current texture bound to this identifier
 int R_Mesh_TexBound(unsigned int unitnum, int id);
 // copies a section of the framebuffer to a 2D texture
-void R_Mesh_CopyToTexture(int texnum, int tx, int ty, int sx, int sy, int width, int height);
-// sets all textures bound to an image unit (multiple can be non-zero at once, according to OpenGL rules the highest one overrides the others)
-void R_Mesh_TexBindAll(unsigned int unitnum, int tex2d, int tex3d, int texcubemap, int texrectangle);
-// equivalent to R_Mesh_TexBindAll(unitnum,tex2d,0,0,0)
-void R_Mesh_TexBind(unsigned int unitnum, int texnum);
+void R_Mesh_CopyToTexture(rtexture_t *tex, int tx, int ty, int sx, int sy, int width, int height);
+// bind a given texture to a given image unit
+void R_Mesh_TexBind(unsigned int unitnum, rtexture_t *tex);
 // sets the texcoord matrix for a texenv unit, can be NULL or blank (will use identity)
 void R_Mesh_TexMatrix(unsigned int unitnum, const matrix4x4_t *matrix);
 // sets the combine state for a texenv unit
@@ -103,7 +101,7 @@ void R_Mesh_ResetTextureState(void);
 void R_Mesh_Draw(int firstvertex, int numvertices, int firsttriangle, int numtriangles, const int *element3i, const unsigned short *element3s, int bufferobject3i, int bufferobject3s);
 
 // saves a section of the rendered frame to a .tga or .jpg file
-qboolean SCR_ScreenShot(char *filename, unsigned char *buffer1, unsigned char *buffer2, unsigned char *buffer3, int x, int y, int width, int height, qboolean flipx, qboolean flipy, qboolean flipdiagonal, qboolean jpeg, qboolean gammacorrect);
+qboolean SCR_ScreenShot(char *filename, unsigned char *buffer1, unsigned char *buffer2, unsigned char *buffer3, int x, int y, int width, int height, qboolean flipx, qboolean flipy, qboolean flipdiagonal, qboolean jpeg, qboolean png, qboolean gammacorrect);
 // used by R_Envmap_f and internally in backend, clears the frame
 void R_ClearScreen(qboolean fogcolor);
 

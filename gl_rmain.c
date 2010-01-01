@@ -31,9 +31,11 @@ rtexturepool_t *r_main_texturepool;
 
 static int r_frame = 0; ///< used only by R_GetCurrentTexture
 
-qboolean r_loadnormalmap;
-qboolean r_loadgloss;
+static qboolean r_loadnormalmap;
+static qboolean r_loadgloss;
 qboolean r_loadfog;
+static qboolean r_loaddds;
+static qboolean r_savedds;
 
 //
 // screen size info
@@ -107,6 +109,9 @@ cvar_t gl_fogstart = {0, "gl_fogstart", "0", "nehahra fog start distance (for Ne
 cvar_t gl_fogend = {0, "gl_fogend","0", "nehahra fog end distance (for Nehahra compatibility only)"};
 cvar_t gl_skyclip = {0, "gl_skyclip", "4608", "nehahra farclip distance - the real fog end (for Nehahra compatibility only)"};
 
+cvar_t r_texture_dds_load = {CVAR_SAVE, "r_texture_dds_load", "0", "load compressed dds/filename.dds texture instead of filename.tga, if the file exists (requires driver support)"};
+cvar_t r_texture_dds_save = {CVAR_SAVE, "r_texture_dds_save", "0", "save compressed dds/filename.dds texture when filename.tga is loaded, so that it can be loaded instead next time"};
+
 cvar_t r_textureunits = {0, "r_textureunits", "32", "number of texture units to use in GL 1.1 and GL 1.3 rendering paths"};
 static cvar_t gl_combine = {CVAR_READONLY, "gl_combine", "1", "indicates whether the OpenGL 1.3 rendering path is active"};
 static cvar_t r_glsl = {CVAR_READONLY, "r_glsl", "1", "indicates whether the OpenGL 2.0 rendering path is active"};
@@ -127,7 +132,7 @@ cvar_t r_water_resolutionmultiplier = {CVAR_SAVE, "r_water_resolutionmultiplier"
 cvar_t r_water_refractdistort = {CVAR_SAVE, "r_water_refractdistort", "0.01", "how much water refractions shimmer"};
 cvar_t r_water_reflectdistort = {CVAR_SAVE, "r_water_reflectdistort", "0.01", "how much water reflections shimmer"};
 
-cvar_t r_lerpsprites = {CVAR_SAVE, "r_lerpsprites", "1", "enables animation smoothing on sprites"};
+cvar_t r_lerpsprites = {CVAR_SAVE, "r_lerpsprites", "0", "enables animation smoothing on sprites"};
 cvar_t r_lerpmodels = {CVAR_SAVE, "r_lerpmodels", "1", "enables animation smoothing on models"};
 cvar_t r_lerplightstyles = {CVAR_SAVE, "r_lerplightstyles", "0", "enable animation smoothing on flickering lights"};
 cvar_t r_waterscroll = {CVAR_SAVE, "r_waterscroll", "1", "makes water scroll around, value controls how much"};
@@ -494,9 +499,9 @@ static const char *builtinshaderstring =
 "# extension GL_EXT_gpu_shader4 : enable\n"
 "#endif\n"
 "\n"
-"#ifdef USESHADOWSAMPLER\n"
-"# extension GL_ARB_shadow : enable\n"
-"#endif\n"
+"//#ifdef USESHADOWSAMPLER\n"
+"//# extension GL_ARB_shadow : enable\n"
+"//#endif\n"
 "\n"
 "//#ifdef __GLSL_CG_DATA_TYPES\n"
 "//# define myhalf half\n"
@@ -3625,6 +3630,7 @@ void R_SetupShader_SetPermutationGLSL(unsigned int mode, unsigned int permutatio
 		qglUseProgramObjectARB(r_glsl_permutation->program);CHECKGLERROR
 	}
 	if (r_glsl_permutation->loc_ModelViewProjectionMatrix >= 0) qglUniformMatrix4fvARB(r_glsl_permutation->loc_ModelViewProjectionMatrix, 1, false, gl_modelviewprojection16f);
+	if (r_glsl_permutation->loc_ModelViewMatrix >= 0) qglUniformMatrix4fvARB(r_glsl_permutation->loc_ModelViewMatrix, 1, false, gl_modelview16f);
 }
 
 #ifdef SUPPORTCG
@@ -4092,6 +4098,7 @@ void R_SetupShader_SetPermutationCG(unsigned int mode, unsigned int permutation)
 	}
 	CHECKCGERROR
 	if (r_cg_permutation->vp_ModelViewProjectionMatrix) cgGLSetMatrixParameterfc(r_cg_permutation->vp_ModelViewProjectionMatrix, gl_modelviewprojection16f);CHECKCGERROR
+	if (r_cg_permutation->vp_ModelViewMatrix) cgGLSetMatrixParameterfc(r_cg_permutation->vp_ModelViewMatrix, gl_modelview16f);CHECKCGERROR
 }
 
 void CG_BindTexture(CGparameter param, int texnum)
@@ -4197,26 +4204,26 @@ void R_SetupShader_Generic(rtexture_t *first, rtexture_t *second, int texturemod
 	{
 	case RENDERPATH_GL20:
 		R_SetupShader_SetPermutationGLSL(SHADERMODE_GENERIC, (first ? SHADERPERMUTATION_DIFFUSE : 0) | (second ? SHADERPERMUTATION_SPECULAR : 0) | (r_shadow_glossexact.integer ? SHADERPERMUTATION_EXACTSPECULARMATH : 0) | (texturemode == GL_MODULATE ? SHADERPERMUTATION_COLORMAPPING : (texturemode == GL_ADD ? SHADERPERMUTATION_GLOW : (texturemode == GL_DECAL ? SHADERPERMUTATION_VERTEXTEXTUREBLEND : 0))));
-		if (r_glsl_permutation->loc_Texture_First ) R_Mesh_TexBind(GL20TU_FIRST , R_GetTexture(first ));
-		if (r_glsl_permutation->loc_Texture_Second) R_Mesh_TexBind(GL20TU_SECOND, R_GetTexture(second));
+		if (r_glsl_permutation->loc_Texture_First ) R_Mesh_TexBind(GL20TU_FIRST , first );
+		if (r_glsl_permutation->loc_Texture_Second) R_Mesh_TexBind(GL20TU_SECOND, second);
 		break;
 	case RENDERPATH_CGGL:
 #ifdef SUPPORTCG
 		CHECKCGERROR
 		R_SetupShader_SetPermutationCG(SHADERMODE_GENERIC, (first ? SHADERPERMUTATION_DIFFUSE : 0) | (second ? SHADERPERMUTATION_SPECULAR : 0) | (r_shadow_glossexact.integer ? SHADERPERMUTATION_EXACTSPECULARMATH : 0) | (texturemode == GL_MODULATE ? SHADERPERMUTATION_COLORMAPPING : (texturemode == GL_ADD ? SHADERPERMUTATION_GLOW : (texturemode == GL_DECAL ? SHADERPERMUTATION_VERTEXTEXTUREBLEND : 0))));
-		if (r_cg_permutation->fp_Texture_First ) CG_BindTexture(r_cg_permutation->fp_Texture_First , R_GetTexture(first ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Second) CG_BindTexture(r_cg_permutation->fp_Texture_Second, R_GetTexture(second));CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_First ) CG_BindTexture(r_cg_permutation->fp_Texture_First , first );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Second) CG_BindTexture(r_cg_permutation->fp_Texture_Second, second);CHECKCGERROR
 #endif
 		break;
 	case RENDERPATH_GL13:
-		R_Mesh_TexBind(0, R_GetTexture(first ));
+		R_Mesh_TexBind(0, first );
 		R_Mesh_TexCombine(0, GL_MODULATE, GL_MODULATE, 1, 1);
-		R_Mesh_TexBind(1, R_GetTexture(second));
+		R_Mesh_TexBind(1, second);
 		if (second)
 			R_Mesh_TexCombine(1, texturemode, texturemode, rgbscale, 1);
 		break;
 	case RENDERPATH_GL11:
-		R_Mesh_TexBind(0, R_GetTexture(first ));
+		R_Mesh_TexBind(0, first );
 		break;
 	}
 }
@@ -4528,7 +4535,6 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 			if (r_glsl_permutation->loc_ReflectOffset >= 0) qglUniform1fARB(r_glsl_permutation->loc_ReflectOffset, rsurface.texture->reflectmin);
 			if (r_glsl_permutation->loc_SpecularPower >= 0) qglUniform1fARB(r_glsl_permutation->loc_SpecularPower, rsurface.texture->specularpower * ((permutation & SHADERPERMUTATION_EXACTSPECULARMATH) ? 0.25f : 1.0f));
 		}
-		if (r_glsl_permutation->loc_ModelViewMatrix >= 0) qglUniformMatrix4fvARB(r_glsl_permutation->loc_ModelViewMatrix, 1, false, gl_modelview16f);
 		if (r_glsl_permutation->loc_TexMatrix >= 0) {Matrix4x4_ToArrayFloatGL(&rsurface.texture->currenttexmatrix, m16f);qglUniformMatrix4fvARB(r_glsl_permutation->loc_TexMatrix, 1, false, m16f);}
 		if (r_glsl_permutation->loc_BackgroundTexMatrix >= 0) {Matrix4x4_ToArrayFloatGL(&rsurface.texture->currentbackgroundtexmatrix, m16f);qglUniformMatrix4fvARB(r_glsl_permutation->loc_BackgroundTexMatrix, 1, false, m16f);}
 		if (r_glsl_permutation->loc_Color_Glow >= 0) qglUniform3fARB(r_glsl_permutation->loc_Color_Glow, rsurface.glowmod[0], rsurface.glowmod[1], rsurface.glowmod[2]);
@@ -4555,37 +4561,37 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 		if (r_glsl_permutation->loc_OffsetMapping_Scale >= 0) qglUniform1fARB(r_glsl_permutation->loc_OffsetMapping_Scale, r_glsl_offsetmapping_scale.value);
 		if (r_glsl_permutation->loc_ScreenToDepth >= 0) qglUniform2fARB(r_glsl_permutation->loc_ScreenToDepth, r_refdef.view.viewport.screentodepth[0], r_refdef.view.viewport.screentodepth[1]);
 
-	//	if (r_glsl_permutation->loc_Texture_First           >= 0) R_Mesh_TexBind(GL20TU_FIRST             ,          R_GetTexture(r_texture_white                                     ));
-	//	if (r_glsl_permutation->loc_Texture_Second          >= 0) R_Mesh_TexBind(GL20TU_SECOND            ,          R_GetTexture(r_texture_white                                     ));
-	//	if (r_glsl_permutation->loc_Texture_GammaRamps      >= 0) R_Mesh_TexBind(GL20TU_GAMMARAMPS        ,          R_GetTexture(r_texture_gammaramps                                ));
-		if (r_glsl_permutation->loc_Texture_Normal          >= 0) R_Mesh_TexBind(GL20TU_NORMAL            ,          R_GetTexture(rsurface.texture->nmaptexture                       ));
-		if (r_glsl_permutation->loc_Texture_Color           >= 0) R_Mesh_TexBind(GL20TU_COLOR             ,          R_GetTexture(rsurface.texture->basetexture                       ));
-		if (r_glsl_permutation->loc_Texture_Gloss           >= 0) R_Mesh_TexBind(GL20TU_GLOSS             ,          R_GetTexture(rsurface.texture->glosstexture                      ));
-		if (r_glsl_permutation->loc_Texture_Glow            >= 0) R_Mesh_TexBind(GL20TU_GLOW              ,          R_GetTexture(rsurface.texture->glowtexture                       ));
-		if (r_glsl_permutation->loc_Texture_SecondaryNormal >= 0) R_Mesh_TexBind(GL20TU_SECONDARY_NORMAL  ,          R_GetTexture(rsurface.texture->backgroundnmaptexture             ));
-		if (r_glsl_permutation->loc_Texture_SecondaryColor  >= 0) R_Mesh_TexBind(GL20TU_SECONDARY_COLOR   ,          R_GetTexture(rsurface.texture->backgroundbasetexture             ));
-		if (r_glsl_permutation->loc_Texture_SecondaryGloss  >= 0) R_Mesh_TexBind(GL20TU_SECONDARY_GLOSS   ,          R_GetTexture(rsurface.texture->backgroundglosstexture            ));
-		if (r_glsl_permutation->loc_Texture_SecondaryGlow   >= 0) R_Mesh_TexBind(GL20TU_SECONDARY_GLOW    ,          R_GetTexture(rsurface.texture->backgroundglowtexture             ));
-		if (r_glsl_permutation->loc_Texture_Pants           >= 0) R_Mesh_TexBind(GL20TU_PANTS             ,          R_GetTexture(rsurface.texture->pantstexture                      ));
-		if (r_glsl_permutation->loc_Texture_Shirt           >= 0) R_Mesh_TexBind(GL20TU_SHIRT             ,          R_GetTexture(rsurface.texture->shirttexture                      ));
-		if (r_glsl_permutation->loc_Texture_FogMask         >= 0) R_Mesh_TexBind(GL20TU_FOGMASK           ,          R_GetTexture(r_texture_fogattenuation                            ));
-		if (r_glsl_permutation->loc_Texture_Lightmap        >= 0) R_Mesh_TexBind(GL20TU_LIGHTMAP          ,          R_GetTexture(r_texture_white                                     ));
-		if (r_glsl_permutation->loc_Texture_Deluxemap       >= 0) R_Mesh_TexBind(GL20TU_LIGHTMAP          ,          R_GetTexture(r_texture_blanknormalmap                            ));
-		if (r_glsl_permutation->loc_Texture_Attenuation     >= 0) R_Mesh_TexBind(GL20TU_ATTENUATION       ,          R_GetTexture(r_shadow_attenuationgradienttexture                 ));
-		if (r_glsl_permutation->loc_Texture_Refraction      >= 0) R_Mesh_TexBind(GL20TU_REFRACTION        ,          R_GetTexture(r_texture_white                                     ));
-		if (r_glsl_permutation->loc_Texture_Reflection      >= 0) R_Mesh_TexBind(GL20TU_REFLECTION        ,          R_GetTexture(r_texture_white                                     ));
-		if (r_glsl_permutation->loc_Texture_ScreenDepth     >= 0) R_Mesh_TexBindAll(GL20TU_SCREENDEPTH    , 0, 0, 0, R_GetTexture(r_shadow_prepassgeometrydepthtexture                ));
-		if (r_glsl_permutation->loc_Texture_ScreenNormalMap >= 0) R_Mesh_TexBindAll(GL20TU_SCREENNORMALMAP, 0, 0, 0, R_GetTexture(r_shadow_prepassgeometrynormalmaptexture            ));
-		if (r_glsl_permutation->loc_Texture_ScreenDiffuse   >= 0) R_Mesh_TexBindAll(GL20TU_SCREENDIFFUSE  , 0, 0, 0, R_GetTexture(r_shadow_prepasslightingdiffusetexture              ));
-		if (r_glsl_permutation->loc_Texture_ScreenSpecular  >= 0) R_Mesh_TexBindAll(GL20TU_SCREENSPECULAR , 0, 0, 0, R_GetTexture(r_shadow_prepasslightingspeculartexture             ));
+	//	if (r_glsl_permutation->loc_Texture_First           >= 0) R_Mesh_TexBind(GL20TU_FIRST             , r_texture_white                                     );
+	//	if (r_glsl_permutation->loc_Texture_Second          >= 0) R_Mesh_TexBind(GL20TU_SECOND            , r_texture_white                                     );
+	//	if (r_glsl_permutation->loc_Texture_GammaRamps      >= 0) R_Mesh_TexBind(GL20TU_GAMMARAMPS        , r_texture_gammaramps                                );
+		if (r_glsl_permutation->loc_Texture_Normal          >= 0) R_Mesh_TexBind(GL20TU_NORMAL            , rsurface.texture->nmaptexture                       );
+		if (r_glsl_permutation->loc_Texture_Color           >= 0) R_Mesh_TexBind(GL20TU_COLOR             , rsurface.texture->basetexture                       );
+		if (r_glsl_permutation->loc_Texture_Gloss           >= 0) R_Mesh_TexBind(GL20TU_GLOSS             , rsurface.texture->glosstexture                      );
+		if (r_glsl_permutation->loc_Texture_Glow            >= 0) R_Mesh_TexBind(GL20TU_GLOW              , rsurface.texture->glowtexture                       );
+		if (r_glsl_permutation->loc_Texture_SecondaryNormal >= 0) R_Mesh_TexBind(GL20TU_SECONDARY_NORMAL  , rsurface.texture->backgroundnmaptexture             );
+		if (r_glsl_permutation->loc_Texture_SecondaryColor  >= 0) R_Mesh_TexBind(GL20TU_SECONDARY_COLOR   , rsurface.texture->backgroundbasetexture             );
+		if (r_glsl_permutation->loc_Texture_SecondaryGloss  >= 0) R_Mesh_TexBind(GL20TU_SECONDARY_GLOSS   , rsurface.texture->backgroundglosstexture            );
+		if (r_glsl_permutation->loc_Texture_SecondaryGlow   >= 0) R_Mesh_TexBind(GL20TU_SECONDARY_GLOW    , rsurface.texture->backgroundglowtexture             );
+		if (r_glsl_permutation->loc_Texture_Pants           >= 0) R_Mesh_TexBind(GL20TU_PANTS             , rsurface.texture->pantstexture                      );
+		if (r_glsl_permutation->loc_Texture_Shirt           >= 0) R_Mesh_TexBind(GL20TU_SHIRT             , rsurface.texture->shirttexture                      );
+		if (r_glsl_permutation->loc_Texture_FogMask         >= 0) R_Mesh_TexBind(GL20TU_FOGMASK           , r_texture_fogattenuation                            );
+		if (r_glsl_permutation->loc_Texture_Lightmap        >= 0) R_Mesh_TexBind(GL20TU_LIGHTMAP          , r_texture_white                                     );
+		if (r_glsl_permutation->loc_Texture_Deluxemap       >= 0) R_Mesh_TexBind(GL20TU_LIGHTMAP          , r_texture_blanknormalmap                            );
+		if (r_glsl_permutation->loc_Texture_Attenuation     >= 0) R_Mesh_TexBind(GL20TU_ATTENUATION       , r_shadow_attenuationgradienttexture                 );
+		if (r_glsl_permutation->loc_Texture_Refraction      >= 0) R_Mesh_TexBind(GL20TU_REFRACTION        , r_texture_white                                     );
+		if (r_glsl_permutation->loc_Texture_Reflection      >= 0) R_Mesh_TexBind(GL20TU_REFLECTION        , r_texture_white                                     );
+		if (r_glsl_permutation->loc_Texture_ScreenDepth     >= 0) R_Mesh_TexBind(GL20TU_SCREENDEPTH       , r_shadow_prepassgeometrydepthtexture                );
+		if (r_glsl_permutation->loc_Texture_ScreenNormalMap >= 0) R_Mesh_TexBind(GL20TU_SCREENNORMALMAP   , r_shadow_prepassgeometrynormalmaptexture            );
+		if (r_glsl_permutation->loc_Texture_ScreenDiffuse   >= 0) R_Mesh_TexBind(GL20TU_SCREENDIFFUSE     , r_shadow_prepasslightingdiffusetexture              );
+		if (r_glsl_permutation->loc_Texture_ScreenSpecular  >= 0) R_Mesh_TexBind(GL20TU_SCREENSPECULAR    , r_shadow_prepasslightingspeculartexture             );
 		if (rsurface.rtlight)
 		{
-			if (r_glsl_permutation->loc_Texture_Cube            >= 0) R_Mesh_TexBindAll(GL20TU_CUBE           , 0, 0,    R_GetTexture(rsurface.rtlight->currentcubemap                    ), 0);
-			if (r_glsl_permutation->loc_Texture_ShadowMapRect   >= 0) R_Mesh_TexBindAll(GL20TU_SHADOWMAPRECT  , 0, 0, 0, R_GetTexture(r_shadow_shadowmaprectangletexture                  ));
+			if (r_glsl_permutation->loc_Texture_Cube            >= 0) R_Mesh_TexBind(GL20TU_CUBE              , rsurface.rtlight->currentcubemap                    );
+			if (r_glsl_permutation->loc_Texture_ShadowMapRect   >= 0) R_Mesh_TexBind(GL20TU_SHADOWMAPRECT     , r_shadow_shadowmaprectangletexture                  );
 			if (r_shadow_usingshadowmapcube)
-				if (r_glsl_permutation->loc_Texture_ShadowMapCube   >= 0) R_Mesh_TexBindAll(GL20TU_SHADOWMAPCUBE  , 0, 0,    R_GetTexture(r_shadow_shadowmapcubetexture[r_shadow_shadowmaplod]), 0);
-			if (r_glsl_permutation->loc_Texture_ShadowMap2D     >= 0) R_Mesh_TexBind(GL20TU_SHADOWMAP2D       ,          R_GetTexture(r_shadow_shadowmap2dtexture                         ));
-			if (r_glsl_permutation->loc_Texture_CubeProjection  >= 0) R_Mesh_TexBindAll(GL20TU_CUBEPROJECTION , 0, 0,    R_GetTexture(r_shadow_shadowmapvsdcttexture                      ), 0);
+				if (r_glsl_permutation->loc_Texture_ShadowMapCube   >= 0) R_Mesh_TexBind(GL20TU_SHADOWMAPCUBE     , r_shadow_shadowmapcubetexture[r_shadow_shadowmaplod]);
+			if (r_glsl_permutation->loc_Texture_ShadowMap2D     >= 0) R_Mesh_TexBind(GL20TU_SHADOWMAP2D       , r_shadow_shadowmap2dtexture                         );
+			if (r_glsl_permutation->loc_Texture_CubeProjection  >= 0) R_Mesh_TexBind(GL20TU_CUBEPROJECTION    , r_shadow_shadowmapvsdcttexture                      );
 		}
 		CHECKGLERROR
 		break;
@@ -4604,7 +4610,6 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 				if (r_cg_permutation->vp_LightDir) cgGLSetParameter3f(r_cg_permutation->vp_LightDir, rsurface.modellight_lightdir[0], rsurface.modellight_lightdir[1], rsurface.modellight_lightdir[2]);CHECKCGERROR
 			}
 		}
-		if (r_cg_permutation->vp_ModelViewMatrix) cgGLSetMatrixParameterfc(r_cg_permutation->vp_ModelViewMatrix, gl_modelviewprojection16f);CHECKCGERROR
 		if (r_cg_permutation->vp_TexMatrix) {Matrix4x4_ToArrayFloatGL(&rsurface.texture->currenttexmatrix, m16f);cgGLSetMatrixParameterfc(r_cg_permutation->vp_TexMatrix, m16f);}CHECKCGERROR
 		if (r_cg_permutation->vp_BackgroundTexMatrix) {Matrix4x4_ToArrayFloatGL(&rsurface.texture->currentbackgroundtexmatrix, m16f);cgGLSetMatrixParameterfc(r_cg_permutation->vp_BackgroundTexMatrix, m16f);}CHECKCGERROR
 		if (r_cg_permutation->vp_EyePosition) cgGLSetParameter3f(r_cg_permutation->vp_EyePosition, rsurface.localvieworigin[0], rsurface.localvieworigin[1], rsurface.localvieworigin[2]);CHECKCGERROR
@@ -4693,37 +4698,37 @@ void R_SetupShader_Surface(const vec3_t lightcolorbase, qboolean modellighting, 
 		if (r_cg_permutation->fp_OffsetMapping_Scale) cgGLSetParameter1f(r_cg_permutation->fp_OffsetMapping_Scale, r_glsl_offsetmapping_scale.value);CHECKCGERROR
 		if (r_cg_permutation->fp_ScreenToDepth) cgGLSetParameter2f(r_cg_permutation->fp_ScreenToDepth, r_refdef.view.viewport.screentodepth[0], r_refdef.view.viewport.screentodepth[1]);CHECKCGERROR
 
-	//	if (r_cg_permutation->fp_Texture_First          ) CG_BindTexture(r_cg_permutation->fp_Texture_First          , R_GetTexture(r_texture_white                                     ));CHECKCGERROR
-	//	if (r_cg_permutation->fp_Texture_Second         ) CG_BindTexture(r_cg_permutation->fp_Texture_Second         , R_GetTexture(r_texture_white                                     ));CHECKCGERROR
-	//	if (r_cg_permutation->fp_Texture_GammaRamps     ) CG_BindTexture(r_cg_permutation->fp_Texture_GammaRamps     , R_GetTexture(r_texture_gammaramps                                ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Normal         ) CG_BindTexture(r_cg_permutation->fp_Texture_Normal         , R_GetTexture(rsurface.texture->nmaptexture                       ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Color          ) CG_BindTexture(r_cg_permutation->fp_Texture_Color          , R_GetTexture(rsurface.texture->basetexture                       ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Gloss          ) CG_BindTexture(r_cg_permutation->fp_Texture_Gloss          , R_GetTexture(rsurface.texture->glosstexture                      ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Glow           ) CG_BindTexture(r_cg_permutation->fp_Texture_Glow           , R_GetTexture(rsurface.texture->glowtexture                       ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_SecondaryNormal) CG_BindTexture(r_cg_permutation->fp_Texture_SecondaryNormal, R_GetTexture(rsurface.texture->backgroundnmaptexture             ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_SecondaryColor ) CG_BindTexture(r_cg_permutation->fp_Texture_SecondaryColor , R_GetTexture(rsurface.texture->backgroundbasetexture             ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_SecondaryGloss ) CG_BindTexture(r_cg_permutation->fp_Texture_SecondaryGloss , R_GetTexture(rsurface.texture->backgroundglosstexture            ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_SecondaryGlow  ) CG_BindTexture(r_cg_permutation->fp_Texture_SecondaryGlow  , R_GetTexture(rsurface.texture->backgroundglowtexture             ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Pants          ) CG_BindTexture(r_cg_permutation->fp_Texture_Pants          , R_GetTexture(rsurface.texture->pantstexture                      ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Shirt          ) CG_BindTexture(r_cg_permutation->fp_Texture_Shirt          , R_GetTexture(rsurface.texture->shirttexture                      ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_FogMask        ) CG_BindTexture(r_cg_permutation->fp_Texture_FogMask        , R_GetTexture(r_texture_fogattenuation                            ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Lightmap       ) CG_BindTexture(r_cg_permutation->fp_Texture_Lightmap       , R_GetTexture(r_texture_white                                     ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Deluxemap      ) CG_BindTexture(r_cg_permutation->fp_Texture_Deluxemap      , R_GetTexture(r_texture_blanknormalmap                            ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Attenuation    ) CG_BindTexture(r_cg_permutation->fp_Texture_Attenuation    , R_GetTexture(r_shadow_attenuationgradienttexture                 ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Refraction     ) CG_BindTexture(r_cg_permutation->fp_Texture_Refraction     , R_GetTexture(r_texture_white                                     ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Reflection     ) CG_BindTexture(r_cg_permutation->fp_Texture_Reflection     , R_GetTexture(r_texture_white                                     ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_ScreenDepth    ) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenDepth    , R_GetTexture(r_shadow_prepassgeometrydepthtexture                ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_ScreenNormalMap) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenNormalMap, R_GetTexture(r_shadow_prepassgeometrynormalmaptexture            ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_ScreenDiffuse  ) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenDiffuse  , R_GetTexture(r_shadow_prepasslightingdiffusetexture              ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_ScreenSpecular ) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenSpecular , R_GetTexture(r_shadow_prepasslightingspeculartexture             ));CHECKCGERROR
+	//	if (r_cg_permutation->fp_Texture_First          ) CG_BindTexture(r_cg_permutation->fp_Texture_First          , r_texture_white                                     );CHECKCGERROR
+	//	if (r_cg_permutation->fp_Texture_Second         ) CG_BindTexture(r_cg_permutation->fp_Texture_Second         , r_texture_white                                     );CHECKCGERROR
+	//	if (r_cg_permutation->fp_Texture_GammaRamps     ) CG_BindTexture(r_cg_permutation->fp_Texture_GammaRamps     , r_texture_gammaramps                                );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Normal         ) CG_BindTexture(r_cg_permutation->fp_Texture_Normal         , rsurface.texture->nmaptexture                       );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Color          ) CG_BindTexture(r_cg_permutation->fp_Texture_Color          , rsurface.texture->basetexture                       );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Gloss          ) CG_BindTexture(r_cg_permutation->fp_Texture_Gloss          , rsurface.texture->glosstexture                      );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Glow           ) CG_BindTexture(r_cg_permutation->fp_Texture_Glow           , rsurface.texture->glowtexture                       );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_SecondaryNormal) CG_BindTexture(r_cg_permutation->fp_Texture_SecondaryNormal, rsurface.texture->backgroundnmaptexture             );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_SecondaryColor ) CG_BindTexture(r_cg_permutation->fp_Texture_SecondaryColor , rsurface.texture->backgroundbasetexture             );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_SecondaryGloss ) CG_BindTexture(r_cg_permutation->fp_Texture_SecondaryGloss , rsurface.texture->backgroundglosstexture            );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_SecondaryGlow  ) CG_BindTexture(r_cg_permutation->fp_Texture_SecondaryGlow  , rsurface.texture->backgroundglowtexture             );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Pants          ) CG_BindTexture(r_cg_permutation->fp_Texture_Pants          , rsurface.texture->pantstexture                      );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Shirt          ) CG_BindTexture(r_cg_permutation->fp_Texture_Shirt          , rsurface.texture->shirttexture                      );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_FogMask        ) CG_BindTexture(r_cg_permutation->fp_Texture_FogMask        , r_texture_fogattenuation                            );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Lightmap       ) CG_BindTexture(r_cg_permutation->fp_Texture_Lightmap       , r_texture_white                                     );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Deluxemap      ) CG_BindTexture(r_cg_permutation->fp_Texture_Deluxemap      , r_texture_blanknormalmap                            );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Attenuation    ) CG_BindTexture(r_cg_permutation->fp_Texture_Attenuation    , r_shadow_attenuationgradienttexture                 );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Refraction     ) CG_BindTexture(r_cg_permutation->fp_Texture_Refraction     , r_texture_white                                     );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Reflection     ) CG_BindTexture(r_cg_permutation->fp_Texture_Reflection     , r_texture_white                                     );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_ScreenDepth    ) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenDepth    , r_shadow_prepassgeometrydepthtexture                );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_ScreenNormalMap) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenNormalMap, r_shadow_prepassgeometrynormalmaptexture            );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_ScreenDiffuse  ) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenDiffuse  , r_shadow_prepasslightingdiffusetexture              );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_ScreenSpecular ) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenSpecular , r_shadow_prepasslightingspeculartexture             );CHECKCGERROR
 		if (rsurface.rtlight)
 		{
-			if (r_cg_permutation->fp_Texture_Cube       ) CG_BindTexture(r_cg_permutation->fp_Texture_Cube           , R_GetTexture(rsurface.rtlight->currentcubemap                    ));CHECKCGERROR
-			if (r_cg_permutation->fp_Texture_ShadowMapRect  ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMapRect  , R_GetTexture(r_shadow_shadowmaprectangletexture                  ));CHECKCGERROR
+			if (r_cg_permutation->fp_Texture_Cube           ) CG_BindTexture(r_cg_permutation->fp_Texture_Cube           , rsurface.rtlight->currentcubemap                    );CHECKCGERROR
+			if (r_cg_permutation->fp_Texture_ShadowMapRect  ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMapRect  , r_shadow_shadowmaprectangletexture                  );CHECKCGERROR
 			if (r_shadow_usingshadowmapcube)
-				if (r_cg_permutation->fp_Texture_ShadowMapCube  ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMapCube  , R_GetTexture(r_shadow_shadowmapcubetexture[r_shadow_shadowmaplod]));CHECKCGERROR
-			if (r_cg_permutation->fp_Texture_ShadowMap2D    ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMap2D    , R_GetTexture(r_shadow_shadowmap2dtexture                         ));CHECKCGERROR
-			if (r_cg_permutation->fp_Texture_CubeProjection ) CG_BindTexture(r_cg_permutation->fp_Texture_CubeProjection , R_GetTexture(r_shadow_shadowmapvsdcttexture                      ));CHECKCGERROR
+				if (r_cg_permutation->fp_Texture_ShadowMapCube  ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMapCube  , r_shadow_shadowmapcubetexture[r_shadow_shadowmaplod]);CHECKCGERROR
+			if (r_cg_permutation->fp_Texture_ShadowMap2D    ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMap2D    , r_shadow_shadowmap2dtexture                         );CHECKCGERROR
+			if (r_cg_permutation->fp_Texture_CubeProjection ) CG_BindTexture(r_cg_permutation->fp_Texture_CubeProjection , r_shadow_shadowmapvsdcttexture                      );CHECKCGERROR
 		}
 
 		CHECKGLERROR
@@ -4792,7 +4797,6 @@ void R_SetupShader_DeferredLight(const rtlight_t *rtlight)
 	{
 	case RENDERPATH_GL20:
 		R_SetupShader_SetPermutationGLSL(mode, permutation);
-		if (r_glsl_permutation->loc_ModelViewMatrix           >= 0) qglUniformMatrix4fvARB(r_glsl_permutation->loc_ModelViewMatrix          , 1, false, gl_modelview16f);
 		if (r_glsl_permutation->loc_LightPosition             >= 0) qglUniform3fARB(       r_glsl_permutation->loc_LightPosition            , viewlightorigin[0], viewlightorigin[1], viewlightorigin[2]);
 		if (r_glsl_permutation->loc_ViewToLight               >= 0) qglUniformMatrix4fvARB(r_glsl_permutation->loc_ViewToLight              , 1, false, viewtolight16f);
 		if (r_glsl_permutation->loc_DeferredColor_Ambient     >= 0) qglUniform3fARB(       r_glsl_permutation->loc_DeferredColor_Ambient    , lightcolorbase[0] * ambientscale  * range, lightcolorbase[1] * ambientscale  * range, lightcolorbase[2] * ambientscale  * range);
@@ -4803,20 +4807,19 @@ void R_SetupShader_DeferredLight(const rtlight_t *rtlight)
 		if (r_glsl_permutation->loc_SpecularPower             >= 0) qglUniform1fARB(       r_glsl_permutation->loc_SpecularPower            , (r_shadow_gloss.integer == 2 ? r_shadow_gloss2exponent.value : r_shadow_glossexponent.value) * ((permutation & SHADERPERMUTATION_EXACTSPECULARMATH) ? 0.25f : 1.0f));
 		if (r_glsl_permutation->loc_ScreenToDepth             >= 0) qglUniform2fARB(       r_glsl_permutation->loc_ScreenToDepth            , r_refdef.view.viewport.screentodepth[0], r_refdef.view.viewport.screentodepth[1]);
 
-		if (r_glsl_permutation->loc_Texture_Attenuation       >= 0) R_Mesh_TexBind(GL20TU_ATTENUATION       ,          R_GetTexture(r_shadow_attenuationgradienttexture                 ));
-		if (r_glsl_permutation->loc_Texture_ScreenDepth       >= 0) R_Mesh_TexBindAll(GL20TU_SCREENDEPTH    , 0, 0, 0, R_GetTexture(r_shadow_prepassgeometrydepthtexture                ));
-		if (r_glsl_permutation->loc_Texture_ScreenNormalMap   >= 0) R_Mesh_TexBindAll(GL20TU_SCREENNORMALMAP, 0, 0, 0, R_GetTexture(r_shadow_prepassgeometrynormalmaptexture            ));
-		if (r_glsl_permutation->loc_Texture_Cube              >= 0) R_Mesh_TexBindAll(GL20TU_CUBE           , 0, 0,    R_GetTexture(rsurface.rtlight->currentcubemap                    ), 0);
-		if (r_glsl_permutation->loc_Texture_ShadowMapRect     >= 0) R_Mesh_TexBindAll(GL20TU_SHADOWMAPRECT  , 0, 0, 0, R_GetTexture(r_shadow_shadowmaprectangletexture                  ));
+		if (r_glsl_permutation->loc_Texture_Attenuation       >= 0) R_Mesh_TexBind(GL20TU_ATTENUATION        , r_shadow_attenuationgradienttexture                 );
+		if (r_glsl_permutation->loc_Texture_ScreenDepth       >= 0) R_Mesh_TexBind(GL20TU_SCREENDEPTH        , r_shadow_prepassgeometrydepthtexture                );
+		if (r_glsl_permutation->loc_Texture_ScreenNormalMap   >= 0) R_Mesh_TexBind(GL20TU_SCREENNORMALMAP    , r_shadow_prepassgeometrynormalmaptexture            );
+		if (r_glsl_permutation->loc_Texture_Cube              >= 0) R_Mesh_TexBind(GL20TU_CUBE               , rsurface.rtlight->currentcubemap                    );
+		if (r_glsl_permutation->loc_Texture_ShadowMapRect     >= 0) R_Mesh_TexBind(GL20TU_SHADOWMAPRECT      , r_shadow_shadowmaprectangletexture                  );
 		if (r_shadow_usingshadowmapcube)
-			if (r_glsl_permutation->loc_Texture_ShadowMapCube     >= 0) R_Mesh_TexBindAll(GL20TU_SHADOWMAPCUBE  , 0, 0,    R_GetTexture(r_shadow_shadowmapcubetexture[r_shadow_shadowmaplod]), 0);
-		if (r_glsl_permutation->loc_Texture_ShadowMap2D       >= 0) R_Mesh_TexBind(GL20TU_SHADOWMAP2D       ,          R_GetTexture(r_shadow_shadowmap2dtexture                         ));
-		if (r_glsl_permutation->loc_Texture_CubeProjection    >= 0) R_Mesh_TexBindAll(GL20TU_CUBEPROJECTION , 0, 0,    R_GetTexture(r_shadow_shadowmapvsdcttexture                      ), 0);
+			if (r_glsl_permutation->loc_Texture_ShadowMapCube     >= 0) R_Mesh_TexBind(GL20TU_SHADOWMAPCUBE      , r_shadow_shadowmapcubetexture[r_shadow_shadowmaplod]);
+		if (r_glsl_permutation->loc_Texture_ShadowMap2D       >= 0) R_Mesh_TexBind(GL20TU_SHADOWMAP2D        , r_shadow_shadowmap2dtexture                         );
+		if (r_glsl_permutation->loc_Texture_CubeProjection    >= 0) R_Mesh_TexBind(GL20TU_CUBEPROJECTION     , r_shadow_shadowmapvsdcttexture                      );
 		break;
 	case RENDERPATH_CGGL:
 #ifdef SUPPORTCG
 		R_SetupShader_SetPermutationCG(mode, permutation);
-		if (r_cg_permutation->vp_ModelViewMatrix          ) cgGLSetMatrixParameterfc(r_cg_permutation->vp_ModelViewMatrix, gl_modelviewprojection16f);CHECKCGERROR
 		if (r_cg_permutation->fp_LightPosition            ) cgGLSetParameter3f(r_cg_permutation->fp_LightPosition, viewlightorigin[0], viewlightorigin[1], viewlightorigin[2]);CHECKCGERROR
 		if (r_cg_permutation->fp_ViewToLight              ) cgGLSetMatrixParameterfc(r_cg_permutation->fp_ViewToLight, viewtolight16f);CHECKCGERROR
 		if (r_cg_permutation->fp_DeferredColor_Ambient    ) cgGLSetParameter3f(r_cg_permutation->fp_DeferredColor_Ambient , lightcolorbase[0] * ambientscale  * range, lightcolorbase[1] * ambientscale  * range, lightcolorbase[2] * ambientscale  * range);CHECKCGERROR
@@ -4827,15 +4830,15 @@ void R_SetupShader_DeferredLight(const rtlight_t *rtlight)
 		if (r_cg_permutation->fp_SpecularPower            ) cgGLSetParameter1f(r_cg_permutation->fp_SpecularPower, (r_shadow_gloss.integer == 2 ? r_shadow_gloss2exponent.value : r_shadow_glossexponent.value) * ((permutation & SHADERPERMUTATION_EXACTSPECULARMATH) ? 0.25f : 1.0f));CHECKCGERROR
 		if (r_cg_permutation->fp_ScreenToDepth            ) cgGLSetParameter2f(r_cg_permutation->fp_ScreenToDepth, r_refdef.view.viewport.screentodepth[0], r_refdef.view.viewport.screentodepth[1]);CHECKCGERROR
 
-		if (r_cg_permutation->fp_Texture_Attenuation      ) CG_BindTexture(r_cg_permutation->fp_Texture_Attenuation    , R_GetTexture(r_shadow_attenuationgradienttexture                 ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_ScreenDepth      ) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenDepth    , R_GetTexture(r_shadow_prepassgeometrydepthtexture                ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_ScreenNormalMap  ) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenNormalMap, R_GetTexture(r_shadow_prepassgeometrynormalmaptexture            ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Cube             ) CG_BindTexture(r_cg_permutation->fp_Texture_Cube           , R_GetTexture(rsurface.rtlight->currentcubemap                    ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_ShadowMapRect    ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMapRect  , R_GetTexture(r_shadow_shadowmaprectangletexture                  ));CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Attenuation      ) CG_BindTexture(r_cg_permutation->fp_Texture_Attenuation    , r_shadow_attenuationgradienttexture                 );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_ScreenDepth      ) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenDepth    , r_shadow_prepassgeometrydepthtexture                );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_ScreenNormalMap  ) CG_BindTexture(r_cg_permutation->fp_Texture_ScreenNormalMap, r_shadow_prepassgeometrynormalmaptexture            );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Cube             ) CG_BindTexture(r_cg_permutation->fp_Texture_Cube           , rsurface.rtlight->currentcubemap                    );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_ShadowMapRect    ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMapRect  , r_shadow_shadowmaprectangletexture                  );CHECKCGERROR
 		if (r_shadow_usingshadowmapcube)
-			if (r_cg_permutation->fp_Texture_ShadowMapCube    ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMapCube  , R_GetTexture(r_shadow_shadowmapcubetexture[r_shadow_shadowmaplod]));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_ShadowMap2D      ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMap2D    , R_GetTexture(r_shadow_shadowmap2dtexture                         ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_CubeProjection   ) CG_BindTexture(r_cg_permutation->fp_Texture_CubeProjection , R_GetTexture(r_shadow_shadowmapvsdcttexture                      ));CHECKCGERROR
+			if (r_cg_permutation->fp_Texture_ShadowMapCube    ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMapCube  , r_shadow_shadowmapcubetexture[r_shadow_shadowmaplod]);CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_ShadowMap2D      ) CG_BindTexture(r_cg_permutation->fp_Texture_ShadowMap2D    , r_shadow_shadowmap2dtexture                         );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_CubeProjection   ) CG_BindTexture(r_cg_permutation->fp_Texture_CubeProjection , r_shadow_shadowmapvsdcttexture                      );CHECKCGERROR
 #endif
 		break;
 	case RENDERPATH_GL13:
@@ -5006,9 +5009,13 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 	unsigned char *pixels;
 	unsigned char *bumppixels;
 	unsigned char *basepixels = NULL;
-	int basepixels_width;
-	int basepixels_height;
+	int basepixels_width = 0;
+	int basepixels_height = 0;
 	skinframe_t *skinframe;
+	rtexture_t *ddsbase = NULL;
+	qboolean ddshasalpha = false;
+	float ddsavgcolor[4];
+	char basename[MAX_QPATH];
 
 	if (cls.state == ca_dedicated)
 		return NULL;
@@ -5020,9 +5027,15 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 	if (skinframe && skinframe->base)
 		return skinframe;
 
-	basepixels = loadimagepixelsbgra(name, complain, true);
-	if (basepixels == NULL)
-		return NULL;
+	Image_StripImageExtension(name, basename, sizeof(basename));
+
+	// check for DDS texture file first
+	if (!r_loaddds || !(ddsbase = R_LoadTextureDDSFile(r_main_texturepool, va("dds/%s.dds", basename), textureflags, &ddshasalpha, ddsavgcolor)))
+	{
+		basepixels = loadimagepixelsbgra(name, complain, true);
+		if (basepixels == NULL)
+			return NULL;
+	}
 
 	if (developer_loading.integer)
 		Con_Printf("loading skin \"%s\"\n", name);
@@ -5032,50 +5045,75 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 		skinframe = R_SkinFrame_Find(name, textureflags, 0, 0, 0, true);
 	skinframe->stain = NULL;
 	skinframe->merged = NULL;
-	skinframe->base = r_texture_notexture;
+	skinframe->base = NULL;
 	skinframe->pants = NULL;
 	skinframe->shirt = NULL;
-	skinframe->nmap = r_texture_blanknormalmap;
+	skinframe->nmap = NULL;
 	skinframe->gloss = NULL;
 	skinframe->glow = NULL;
 	skinframe->fog = NULL;
 	skinframe->hasalpha = false;
 
-	basepixels_width = image_width;
-	basepixels_height = image_height;
-	skinframe->base = R_LoadTexture2D (r_main_texturepool, skinframe->basename, basepixels_width, basepixels_height, basepixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_color.integer ? ~0 : ~TEXF_COMPRESS), NULL);
-
-	if (textureflags & TEXF_ALPHA)
+	if (ddsbase)
 	{
-		for (j = 3;j < basepixels_width * basepixels_height * 4;j += 4)
-		{
-			if (basepixels[j] < 255)
-			{
-				skinframe->hasalpha = true;
-				break;
-			}
-		}
+		skinframe->base = ddsbase;
+		skinframe->hasalpha = ddshasalpha;
+		VectorCopy(ddsavgcolor, skinframe->avgcolor);
 		if (r_loadfog && skinframe->hasalpha)
+			skinframe->fog = R_LoadTextureDDSFile(r_main_texturepool, va("dds/%s_mask.dds", skinframe->basename), textureflags | TEXF_ALPHA, NULL, NULL);
+		//Con_Printf("Texture %s has average colors %f %f %f alpha %f\n", name, skinframe->avgcolor[0], skinframe->avgcolor[1], skinframe->avgcolor[2], skinframe->avgcolor[3]);
+	}
+	else
+	{
+		basepixels_width = image_width;
+		basepixels_height = image_height;
+		skinframe->base = R_LoadTexture2D (r_main_texturepool, skinframe->basename, basepixels_width, basepixels_height, basepixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_color.integer ? ~0 : ~TEXF_COMPRESS), NULL);
+		if (textureflags & TEXF_ALPHA)
 		{
-			// has transparent pixels
-			pixels = (unsigned char *)Mem_Alloc(tempmempool, image_width * image_height * 4);
-			for (j = 0;j < image_width * image_height * 4;j += 4)
+			for (j = 3;j < basepixels_width * basepixels_height * 4;j += 4)
 			{
-				pixels[j+0] = 255;
-				pixels[j+1] = 255;
-				pixels[j+2] = 255;
-				pixels[j+3] = basepixels[j+3];
+				if (basepixels[j] < 255)
+				{
+					skinframe->hasalpha = true;
+					break;
+				}
 			}
-			skinframe->fog = R_LoadTexture2D (r_main_texturepool, va("%s_mask", skinframe->basename), image_width, image_height, pixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_color.integer ? ~0 : ~TEXF_COMPRESS), NULL);
-			Mem_Free(pixels);
+			if (r_loadfog && skinframe->hasalpha)
+			{
+				// has transparent pixels
+				pixels = (unsigned char *)Mem_Alloc(tempmempool, image_width * image_height * 4);
+				for (j = 0;j < image_width * image_height * 4;j += 4)
+				{
+					pixels[j+0] = 255;
+					pixels[j+1] = 255;
+					pixels[j+2] = 255;
+					pixels[j+3] = basepixels[j+3];
+				}
+				skinframe->fog = R_LoadTexture2D (r_main_texturepool, va("%s_mask", skinframe->basename), image_width, image_height, pixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_color.integer ? ~0 : ~TEXF_COMPRESS), NULL);
+				Mem_Free(pixels);
+			}
 		}
+		R_SKINFRAME_LOAD_AVERAGE_COLORS(basepixels_width * basepixels_height, basepixels[4 * pix + comp]);
+		//Con_Printf("Texture %s has average colors %f %f %f alpha %f\n", name, skinframe->avgcolor[0], skinframe->avgcolor[1], skinframe->avgcolor[2], skinframe->avgcolor[3]);
+		if (r_savedds && qglGetCompressedTexImageARB && skinframe->base)
+			R_SaveTextureDDSFile(skinframe->base, va("dds/%s.dds", skinframe->basename), true);
+		if (r_savedds && qglGetCompressedTexImageARB && skinframe->fog)
+			R_SaveTextureDDSFile(skinframe->fog, va("dds/%s_mask.dds", skinframe->basename), true);
 	}
 
-	R_SKINFRAME_LOAD_AVERAGE_COLORS(basepixels_width * basepixels_height, basepixels[4 * pix + comp]);
-	//Con_Printf("Texture %s has average colors %f %f %f alpha %f\n", name, skinframe->avgcolor[0], skinframe->avgcolor[1], skinframe->avgcolor[2], skinframe->avgcolor[3]);
+	if (r_loaddds)
+	{
+		if (r_loadnormalmap)
+			skinframe->nmap = R_LoadTextureDDSFile(r_main_texturepool, va("dds/%s_norm.dds", skinframe->basename), textureflags | TEXF_ALPHA, NULL, NULL);
+		skinframe->glow = R_LoadTextureDDSFile(r_main_texturepool, va("dds/%s_glow.dds", skinframe->basename), textureflags, NULL, NULL);
+		if (r_loadgloss)
+			skinframe->gloss = R_LoadTextureDDSFile(r_main_texturepool, va("dds/%s_gloss.dds", skinframe->basename), textureflags, NULL, NULL);
+		skinframe->pants = R_LoadTextureDDSFile(r_main_texturepool, va("dds/%s_pants.dds", skinframe->basename), textureflags, NULL, NULL);
+		skinframe->shirt = R_LoadTextureDDSFile(r_main_texturepool, va("dds/%s_shirt.dds", skinframe->basename), textureflags, NULL, NULL);
+	}
 
 	// _norm is the name used by tenebrae and has been adopted as standard
-	if (r_loadnormalmap)
+	if (r_loadnormalmap && skinframe->nmap == NULL)
 	{
 		if ((pixels = loadimagepixelsbgra(va("%s_norm", skinframe->basename), false, false)) != NULL)
 		{
@@ -5098,14 +5136,46 @@ skinframe_t *R_SkinFrame_LoadExternal(const char *name, int textureflags, qboole
 			skinframe->nmap = R_LoadTexture2D (r_main_texturepool, va("%s_nmap", skinframe->basename), basepixels_width, basepixels_height, pixels, TEXTYPE_BGRA, (TEXF_ALPHA | skinframe->textureflags) & (gl_texturecompression_normal.integer ? ~0 : ~TEXF_COMPRESS), NULL);
 			Mem_Free(pixels);
 		}
+		if (r_savedds && qglGetCompressedTexImageARB && skinframe->nmap)
+			R_SaveTextureDDSFile(skinframe->nmap, va("dds/%s_norm.dds", skinframe->basename), true);
 	}
-	// _luma is supported for tenebrae compatibility
-	// (I think it's a very stupid name, but oh well)
+
+	// _luma is supported only for tenebrae compatibility
 	// _glow is the preferred name
-	if ((pixels = loadimagepixelsbgra(va("%s_glow",  skinframe->basename), false, false)) || (pixels = loadimagepixelsbgra(va("%s_luma", skinframe->basename), false, false))) {skinframe->glow = R_LoadTexture2D (r_main_texturepool, va("%s_glow", skinframe->basename), image_width, image_height, pixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_glow.integer ? ~0 : ~TEXF_COMPRESS), NULL);Mem_Free(pixels);pixels = NULL;}
-	if (r_loadgloss && (pixels = loadimagepixelsbgra(va("%s_gloss", skinframe->basename), false, false))) {skinframe->gloss = R_LoadTexture2D (r_main_texturepool, va("%s_gloss", skinframe->basename), image_width, image_height, pixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_gloss.integer ? ~0 : ~TEXF_COMPRESS), NULL);Mem_Free(pixels);pixels = NULL;}
-	if ((pixels = loadimagepixelsbgra(va("%s_pants", skinframe->basename), false, false))) {skinframe->pants = R_LoadTexture2D (r_main_texturepool, va("%s_pants", skinframe->basename), image_width, image_height, pixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_color.integer ? ~0 : ~TEXF_COMPRESS), NULL);Mem_Free(pixels);pixels = NULL;}
-	if ((pixels = loadimagepixelsbgra(va("%s_shirt", skinframe->basename), false, false))) {skinframe->shirt = R_LoadTexture2D (r_main_texturepool, va("%s_shirt", skinframe->basename), image_width, image_height, pixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_color.integer ? ~0 : ~TEXF_COMPRESS), NULL);Mem_Free(pixels);pixels = NULL;}
+	if (skinframe->glow == NULL && ((pixels = loadimagepixelsbgra(va("%s_glow",  skinframe->basename), false, false)) || (pixels = loadimagepixelsbgra(va("%s_luma", skinframe->basename), false, false))))
+	{
+		skinframe->glow = R_LoadTexture2D (r_main_texturepool, va("%s_glow", skinframe->basename), image_width, image_height, pixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_glow.integer ? ~0 : ~TEXF_COMPRESS), NULL);
+		if (r_savedds && qglGetCompressedTexImageARB && skinframe->glow)
+			R_SaveTextureDDSFile(skinframe->glow, va("dds/%s_glow.dds", skinframe->basename), true);
+		Mem_Free(pixels);pixels = NULL;
+	}
+
+	if (skinframe->gloss == NULL && r_loadgloss && (pixels = loadimagepixelsbgra(va("%s_gloss", skinframe->basename), false, false)))
+	{
+		skinframe->gloss = R_LoadTexture2D (r_main_texturepool, va("%s_gloss", skinframe->basename), image_width, image_height, pixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_gloss.integer ? ~0 : ~TEXF_COMPRESS), NULL);
+		if (r_savedds && qglGetCompressedTexImageARB && skinframe->gloss)
+			R_SaveTextureDDSFile(skinframe->gloss, va("dds/%s_gloss.dds", skinframe->basename), true);
+		Mem_Free(pixels);
+		pixels = NULL;
+	}
+
+	if (skinframe->pants == NULL && (pixels = loadimagepixelsbgra(va("%s_pants", skinframe->basename), false, false)))
+	{
+		skinframe->pants = R_LoadTexture2D (r_main_texturepool, va("%s_pants", skinframe->basename), image_width, image_height, pixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_color.integer ? ~0 : ~TEXF_COMPRESS), NULL);
+		if (r_savedds && qglGetCompressedTexImageARB && skinframe->pants)
+			R_SaveTextureDDSFile(skinframe->pants, va("dds/%s_pants.dds", skinframe->basename), true);
+		Mem_Free(pixels);
+		pixels = NULL;
+	}
+
+	if (skinframe->shirt == NULL && (pixels = loadimagepixelsbgra(va("%s_shirt", skinframe->basename), false, false)))
+	{
+		skinframe->shirt = R_LoadTexture2D (r_main_texturepool, va("%s_shirt", skinframe->basename), image_width, image_height, pixels, TEXTYPE_BGRA, skinframe->textureflags & (gl_texturecompression_color.integer ? ~0 : ~TEXF_COMPRESS), NULL);
+		if (r_savedds && qglGetCompressedTexImageARB && skinframe->shirt)
+			R_SaveTextureDDSFile(skinframe->shirt, va("dds/%s_shirt.dds", skinframe->basename), true);
+		Mem_Free(pixels);
+		pixels = NULL;
+	}
 
 	if (basepixels)
 		Mem_Free(basepixels);
@@ -5130,10 +5200,10 @@ skinframe_t *R_SkinFrame_LoadInternalBGRA(const char *name, int textureflags, co
 
 	skinframe->stain = NULL;
 	skinframe->merged = NULL;
-	skinframe->base = r_texture_notexture;
+	skinframe->base = NULL;
 	skinframe->pants = NULL;
 	skinframe->shirt = NULL;
-	skinframe->nmap = r_texture_blanknormalmap;
+	skinframe->nmap = NULL;
 	skinframe->gloss = NULL;
 	skinframe->glow = NULL;
 	skinframe->fog = NULL;
@@ -5198,10 +5268,10 @@ skinframe_t *R_SkinFrame_LoadInternalQuake(const char *name, int textureflags, i
 
 	skinframe->stain = NULL;
 	skinframe->merged = NULL;
-	skinframe->base = r_texture_notexture;
+	skinframe->base = NULL;
 	skinframe->pants = NULL;
 	skinframe->shirt = NULL;
-	skinframe->nmap = r_texture_blanknormalmap;
+	skinframe->nmap = NULL;
 	skinframe->gloss = NULL;
 	skinframe->glow = NULL;
 	skinframe->fog = NULL;
@@ -5318,10 +5388,10 @@ skinframe_t *R_SkinFrame_LoadInternal8bit(const char *name, int textureflags, co
 
 	skinframe->stain = NULL;
 	skinframe->merged = NULL;
-	skinframe->base = r_texture_notexture;
+	skinframe->base = NULL;
 	skinframe->pants = NULL;
 	skinframe->shirt = NULL;
-	skinframe->nmap = r_texture_blanknormalmap;
+	skinframe->nmap = NULL;
 	skinframe->gloss = NULL;
 	skinframe->glow = NULL;
 	skinframe->fog = NULL;
@@ -5365,10 +5435,10 @@ skinframe_t *R_SkinFrame_LoadMissing(void)
 	skinframe = R_SkinFrame_Find("missing", TEXF_FORCENEAREST, 0, 0, 0, true);
 	skinframe->stain = NULL;
 	skinframe->merged = NULL;
-	skinframe->base = r_texture_notexture;
+	skinframe->base = NULL;
 	skinframe->pants = NULL;
 	skinframe->shirt = NULL;
-	skinframe->nmap = r_texture_blanknormalmap;
+	skinframe->nmap = NULL;
 	skinframe->gloss = NULL;
 	skinframe->glow = NULL;
 	skinframe->fog = NULL;
@@ -5445,6 +5515,9 @@ void gl_main_start(void)
 	r_texture_normalizationcube = NULL;
 	r_texture_fogattenuation = NULL;
 	r_texture_gammaramps = NULL;
+
+	r_loaddds = vid.support.arb_texture_compression && vid.support.ext_texture_compression_s3tc && r_texture_dds_load.integer;
+	r_savedds = vid.support.arb_texture_compression && vid.support.ext_texture_compression_s3tc && r_texture_dds_save.integer;
 
 	switch(vid.renderpath)
 	{
@@ -5658,6 +5731,8 @@ void GL_Main_Init(void)
 	Cvar_RegisterVariable(&r_fog_exp2);
 	Cvar_RegisterVariable(&r_drawfog);
 	Cvar_RegisterVariable(&r_transparentdepthmasking);
+	Cvar_RegisterVariable(&r_texture_dds_load);
+	Cvar_RegisterVariable(&r_texture_dds_save);
 	Cvar_RegisterVariable(&r_textureunits);
 	Cvar_RegisterVariable(&gl_combine);
 	Cvar_RegisterVariable(&r_glsl);
@@ -5881,7 +5956,7 @@ static void *r_framedata_base;
 
 void R_FrameData_Reset(void)
 {
-	if (r_framedata_base);
+	if (r_framedata_base)
 		Mem_Free(r_framedata_base);
 	r_framedata_base = NULL;
 	r_framedata_size = 0;
@@ -5899,7 +5974,7 @@ void R_FrameData_NewFrame(void)
 	if (r_framedata_size != wantedsize)
 	{
 		r_framedata_size = wantedsize;
-		if (r_framedata_base);
+		if (r_framedata_base)
 			Mem_Free(r_framedata_base);
 		r_framedata_base = Mem_Alloc(r_main_mempool, r_framedata_size);
 	}
@@ -6510,12 +6585,14 @@ void R_EntityMatrix(const matrix4x4_t *matrix)
 		{
 		case RENDERPATH_GL20:
 			if (r_glsl_permutation && r_glsl_permutation->loc_ModelViewProjectionMatrix >= 0) qglUniformMatrix4fvARB(r_glsl_permutation->loc_ModelViewProjectionMatrix, 1, false, gl_modelviewprojection16f);
+			if (r_glsl_permutation && r_glsl_permutation->loc_ModelViewMatrix >= 0) qglUniformMatrix4fvARB(r_glsl_permutation->loc_ModelViewMatrix, 1, false, gl_modelview16f);
 			qglLoadMatrixf(gl_modelview16f);CHECKGLERROR
 			break;
 		case RENDERPATH_CGGL:
 #ifdef SUPPORTCG
 			CHECKCGERROR
 			if (r_cg_permutation && r_cg_permutation->vp_ModelViewProjectionMatrix) cgGLSetMatrixParameterfc(r_cg_permutation->vp_ModelViewProjectionMatrix, gl_modelviewprojection16f);CHECKCGERROR
+			if (r_cg_permutation && r_cg_permutation->vp_ModelViewMatrix) cgGLSetMatrixParameterfc(r_cg_permutation->vp_ModelViewMatrix, gl_modelview16f);CHECKCGERROR
 			qglLoadMatrixf(gl_modelview16f);CHECKGLERROR
 #endif
 			break;
@@ -6766,24 +6843,6 @@ static void R_Water_ProcessPlanes(void)
 	r_waterstate.renderingscene = true;
 	for (planeindex = 0, p = r_waterstate.waterplanes;planeindex < r_waterstate.numwaterplanes;planeindex++, p++)
 	{
-		// render the normal view scene and copy into texture
-		// (except that a clipping plane should be used to hide everything on one side of the water, and the viewer's weapon model should be omitted)
-		if (p->materialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION))
-		{
-			r_refdef.view = myview;
-			r_refdef.view.clipplane = p->plane;
-			VectorNegate(r_refdef.view.clipplane.normal, r_refdef.view.clipplane.normal);
-			r_refdef.view.clipplane.dist = -r_refdef.view.clipplane.dist;
-			PlaneClassify(&r_refdef.view.clipplane);
-
-			R_ResetViewRendering3D();
-			R_ClearScreen(r_refdef.fogenabled);
-			R_View_Update();
-			R_RenderScene();
-
-			R_Mesh_CopyToTexture(R_GetTexture(p->texture_refraction), 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
-		}
-
 		if (p->materialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFLECTION))
 		{
 			r_refdef.view = myview;
@@ -6809,8 +6868,27 @@ static void R_Water_ProcessPlanes(void)
 			R_View_Update();
 			R_RenderScene();
 
-			R_Mesh_CopyToTexture(R_GetTexture(p->texture_reflection), 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
+			R_Mesh_CopyToTexture(p->texture_reflection, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
 		}
+
+		// render the normal view scene and copy into texture
+		// (except that a clipping plane should be used to hide everything on one side of the water, and the viewer's weapon model should be omitted)
+		if (p->materialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION))
+		{
+			r_refdef.view = myview;
+			r_refdef.view.clipplane = p->plane;
+			VectorNegate(r_refdef.view.clipplane.normal, r_refdef.view.clipplane.normal);
+			r_refdef.view.clipplane.dist = -r_refdef.view.clipplane.dist;
+			PlaneClassify(&r_refdef.view.clipplane);
+
+			R_ResetViewRendering3D();
+			R_ClearScreen(r_refdef.fogenabled);
+			R_View_Update();
+			R_RenderScene();
+
+			R_Mesh_CopyToTexture(p->texture_refraction, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
+		}
+
 	}
 	r_waterstate.renderingscene = false;
 	r_refdef.view = originalview;
@@ -6954,13 +7032,13 @@ void R_Bloom_CopyBloomTexture(float colorscale)
 
 	// we now have a bloom image in the framebuffer
 	// copy it into the bloom image texture for later processing
-	R_Mesh_CopyToTexture(R_GetTexture(r_bloomstate.texture_bloom), 0, 0, r_bloomstate.viewport.x, r_bloomstate.viewport.y, r_bloomstate.viewport.width, r_bloomstate.viewport.height);
+	R_Mesh_CopyToTexture(r_bloomstate.texture_bloom, 0, 0, r_bloomstate.viewport.x, r_bloomstate.viewport.y, r_bloomstate.viewport.width, r_bloomstate.viewport.height);
 	r_refdef.stats.bloom_copypixels += r_bloomstate.viewport.width * r_bloomstate.viewport.height;
 }
 
 void R_Bloom_CopyHDRTexture(void)
 {
-	R_Mesh_CopyToTexture(R_GetTexture(r_bloomstate.texture_bloom), 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
+	R_Mesh_CopyToTexture(r_bloomstate.texture_bloom, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
 	r_refdef.stats.bloom_copypixels += r_refdef.view.viewport.width * r_refdef.view.viewport.height;
 }
 
@@ -7070,7 +7148,7 @@ void R_Bloom_MakeTexture(void)
 		qglBlendEquationEXT(GL_FUNC_ADD_EXT);
 
 		// copy the darkened bloom view to a texture
-		R_Mesh_CopyToTexture(R_GetTexture(r_bloomstate.texture_bloom), 0, 0, r_bloomstate.viewport.x, r_bloomstate.viewport.y, r_bloomstate.viewport.width, r_bloomstate.viewport.height);
+		R_Mesh_CopyToTexture(r_bloomstate.texture_bloom, 0, 0, r_bloomstate.viewport.x, r_bloomstate.viewport.y, r_bloomstate.viewport.width, r_bloomstate.viewport.height);
 		r_refdef.stats.bloom_copypixels += r_bloomstate.viewport.width * r_bloomstate.viewport.height;
 	}
 }
@@ -7196,7 +7274,7 @@ static void R_BlendView(void)
 			}
 
 			// copy view into the screen texture
-			R_Mesh_CopyToTexture(R_GetTexture(r_bloomstate.texture_screen), 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
+			R_Mesh_CopyToTexture(r_bloomstate.texture_screen, 0, 0, r_refdef.view.viewport.x, r_refdef.view.viewport.y, r_refdef.view.viewport.width, r_refdef.view.viewport.height);
 			r_refdef.stats.bloom_copypixels += r_refdef.view.viewport.width * r_refdef.view.viewport.height;
 		}
 		else if (!r_bloomstate.texture_bloom)
@@ -7246,9 +7324,9 @@ static void R_BlendView(void)
 		{
 		case RENDERPATH_GL20:
 			R_SetupShader_SetPermutationGLSL(SHADERMODE_POSTPROCESS, permutation);
-			if (r_glsl_permutation->loc_Texture_First      >= 0) R_Mesh_TexBind(GL20TU_FIRST     , R_GetTexture(r_bloomstate.texture_screen));
-			if (r_glsl_permutation->loc_Texture_Second     >= 0) R_Mesh_TexBind(GL20TU_SECOND    , R_GetTexture(r_bloomstate.texture_bloom ));
-			if (r_glsl_permutation->loc_Texture_GammaRamps >= 0) R_Mesh_TexBind(GL20TU_GAMMARAMPS, R_GetTexture(r_texture_gammaramps       ));
+			if (r_glsl_permutation->loc_Texture_First      >= 0) R_Mesh_TexBind(GL20TU_FIRST     , r_bloomstate.texture_screen);
+			if (r_glsl_permutation->loc_Texture_Second     >= 0) R_Mesh_TexBind(GL20TU_SECOND    , r_bloomstate.texture_bloom );
+			if (r_glsl_permutation->loc_Texture_GammaRamps >= 0) R_Mesh_TexBind(GL20TU_GAMMARAMPS, r_texture_gammaramps       );
 			if (r_glsl_permutation->loc_ViewTintColor      >= 0) qglUniform4fARB(r_glsl_permutation->loc_ViewTintColor     , r_refdef.viewblend[0], r_refdef.viewblend[1], r_refdef.viewblend[2], r_refdef.viewblend[3]);
 			if (r_glsl_permutation->loc_ClientTime         >= 0) qglUniform1fARB(r_glsl_permutation->loc_ClientTime        , cl.time);
 			if (r_glsl_permutation->loc_PixelSize          >= 0) qglUniform2fARB(r_glsl_permutation->loc_PixelSize         , 1.0/r_bloomstate.screentexturewidth, 1.0/r_bloomstate.screentextureheight);
@@ -7261,9 +7339,9 @@ static void R_BlendView(void)
 		case RENDERPATH_CGGL:
 #ifdef SUPPORTCG
 			R_SetupShader_SetPermutationCG(SHADERMODE_POSTPROCESS, permutation);
-			if (r_cg_permutation->fp_Texture_First     ) CG_BindTexture(r_cg_permutation->fp_Texture_First     , R_GetTexture(r_bloomstate.texture_screen));CHECKCGERROR
-			if (r_cg_permutation->fp_Texture_Second    ) CG_BindTexture(r_cg_permutation->fp_Texture_Second    , R_GetTexture(r_bloomstate.texture_bloom ));CHECKCGERROR
-			if (r_cg_permutation->fp_Texture_GammaRamps) CG_BindTexture(r_cg_permutation->fp_Texture_GammaRamps, R_GetTexture(r_texture_gammaramps       ));CHECKCGERROR
+			if (r_cg_permutation->fp_Texture_First     ) CG_BindTexture(r_cg_permutation->fp_Texture_First     , r_bloomstate.texture_screen);CHECKCGERROR
+			if (r_cg_permutation->fp_Texture_Second    ) CG_BindTexture(r_cg_permutation->fp_Texture_Second    , r_bloomstate.texture_bloom );CHECKCGERROR
+			if (r_cg_permutation->fp_Texture_GammaRamps) CG_BindTexture(r_cg_permutation->fp_Texture_GammaRamps, r_texture_gammaramps       );CHECKCGERROR
 			if (r_cg_permutation->fp_ViewTintColor     ) cgGLSetParameter4f(     r_cg_permutation->fp_ViewTintColor     , r_refdef.viewblend[0], r_refdef.viewblend[1], r_refdef.viewblend[2], r_refdef.viewblend[3]);CHECKCGERROR
 			if (r_cg_permutation->fp_ClientTime        ) cgGLSetParameter1f(     r_cg_permutation->fp_ClientTime        , cl.time);CHECKCGERROR
 			if (r_cg_permutation->fp_PixelSize         ) cgGLSetParameter2f(     r_cg_permutation->fp_PixelSize         , 1.0/r_bloomstate.screentexturewidth, 1.0/r_bloomstate.screentextureheight);CHECKCGERROR
@@ -8441,9 +8519,13 @@ texture_t *R_GetCurrentTexture(texture_t *t)
 	if (t->currentskinframe->qpixels)
 		R_SkinFrame_GenerateTexturesFromQPixels(t->currentskinframe, t->colormapping);
 	t->basetexture = (!t->colormapping && t->currentskinframe->merged) ? t->currentskinframe->merged : t->currentskinframe->base;
+	if (!t->basetexture)
+		t->basetexture = r_texture_notexture;
 	t->pantstexture = t->colormapping ? t->currentskinframe->pants : NULL;
 	t->shirttexture = t->colormapping ? t->currentskinframe->shirt : NULL;
 	t->nmaptexture = t->currentskinframe->nmap;
+	if (!t->nmaptexture)
+		t->nmaptexture = r_texture_blanknormalmap;
 	t->glosstexture = r_texture_black;
 	t->glowtexture = t->currentskinframe->glow;
 	t->fogtexture = t->currentskinframe->fog;
@@ -8453,6 +8535,8 @@ texture_t *R_GetCurrentTexture(texture_t *t)
 		t->backgroundnmaptexture = t->backgroundcurrentskinframe->nmap;
 		t->backgroundglosstexture = r_texture_black;
 		t->backgroundglowtexture = t->backgroundcurrentskinframe->glow;
+		if (!t->backgroundnmaptexture)
+			t->backgroundnmaptexture = r_texture_blanknormalmap;
 	}
 	else
 	{
@@ -9488,17 +9572,17 @@ static void RSurf_BindLightmapForSurface(const msurface_t *surface)
 	{
 	case RENDERPATH_CGGL:
 #ifdef SUPPORTCG
-		if (r_cg_permutation->fp_Texture_Lightmap ) CG_BindTexture(r_cg_permutation->fp_Texture_Lightmap , R_GetTexture(surface->lightmaptexture ));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Deluxemap) CG_BindTexture(r_cg_permutation->fp_Texture_Deluxemap, R_GetTexture(surface->deluxemaptexture));CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Lightmap ) CG_BindTexture(r_cg_permutation->fp_Texture_Lightmap , surface->lightmaptexture );CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Deluxemap) CG_BindTexture(r_cg_permutation->fp_Texture_Deluxemap, surface->deluxemaptexture);CHECKCGERROR
 #endif
 		break;
 	case RENDERPATH_GL20:
-		if (r_glsl_permutation->loc_Texture_Lightmap  >= 0) R_Mesh_TexBind(GL20TU_LIGHTMAP , R_GetTexture(surface->lightmaptexture ));
-		if (r_glsl_permutation->loc_Texture_Deluxemap >= 0) R_Mesh_TexBind(GL20TU_DELUXEMAP, R_GetTexture(surface->deluxemaptexture));
+		if (r_glsl_permutation->loc_Texture_Lightmap  >= 0) R_Mesh_TexBind(GL20TU_LIGHTMAP , surface->lightmaptexture );
+		if (r_glsl_permutation->loc_Texture_Deluxemap >= 0) R_Mesh_TexBind(GL20TU_DELUXEMAP, surface->deluxemaptexture);
 		break;
 	case RENDERPATH_GL13:
 	case RENDERPATH_GL11:
-		R_Mesh_TexBind(0, R_GetTexture(surface->lightmaptexture));
+		R_Mesh_TexBind(0, surface->lightmaptexture);
 		break;
 	}
 }
@@ -9531,13 +9615,13 @@ static void RSurf_BindReflectionForSurface(const msurface_t *surface)
 	{
 	case RENDERPATH_CGGL:
 #ifdef SUPPORTCG
-		if (r_cg_permutation->fp_Texture_Refraction) CG_BindTexture(r_cg_permutation->fp_Texture_Refraction, bestp ? R_GetTexture(bestp->texture_refraction) : R_GetTexture(r_texture_black));CHECKCGERROR
-		if (r_cg_permutation->fp_Texture_Reflection) CG_BindTexture(r_cg_permutation->fp_Texture_Reflection, bestp ? R_GetTexture(bestp->texture_reflection) : R_GetTexture(r_texture_black));CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Refraction) CG_BindTexture(r_cg_permutation->fp_Texture_Refraction, bestp ? bestp->texture_refraction : r_texture_black);CHECKCGERROR
+		if (r_cg_permutation->fp_Texture_Reflection) CG_BindTexture(r_cg_permutation->fp_Texture_Reflection, bestp ? bestp->texture_reflection : r_texture_black);CHECKCGERROR
 #endif
 		break;
 	case RENDERPATH_GL20:
-		if (r_glsl_permutation->loc_Texture_Refraction >= 0) R_Mesh_TexBind(GL20TU_REFRACTION, bestp ? R_GetTexture(bestp->texture_refraction) : R_GetTexture(r_texture_black));
-		if (r_glsl_permutation->loc_Texture_Reflection >= 0) R_Mesh_TexBind(GL20TU_REFLECTION, bestp ? R_GetTexture(bestp->texture_reflection) : R_GetTexture(r_texture_black));
+		if (r_glsl_permutation->loc_Texture_Refraction >= 0) R_Mesh_TexBind(GL20TU_REFRACTION, bestp ? bestp->texture_refraction : r_texture_black);
+		if (r_glsl_permutation->loc_Texture_Reflection >= 0) R_Mesh_TexBind(GL20TU_REFLECTION, bestp ? bestp->texture_reflection : r_texture_black);
 		break;
 	case RENDERPATH_GL13:
 	case RENDERPATH_GL11:
@@ -10100,17 +10184,11 @@ static void R_DrawTextureSurfaceList_GL20(int texturenumsurfaces, const msurface
 		R_Mesh_TexCoordPointer(4, 2, rsurface.modeltexcoordlightmap2f, rsurface.modeltexcoordlightmap2f_bufferobject, rsurface.modeltexcoordlightmap2f_bufferoffset);
 
 	if (refract)
-	{
-		GL_BlendFunc(GL_ONE, GL_ZERO);
 		GL_DepthMask(true);
-		GL_AlphaTest(false);
-	}
 	else
-	{
-		GL_BlendFunc(rsurface.texture->currentlayers[0].blendfunc1, rsurface.texture->currentlayers[0].blendfunc2);
 		GL_DepthMask(writedepth && !(rsurface.texture->currentmaterialflags & MATERIALFLAG_BLENDED));
-		GL_AlphaTest((rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHATEST) != 0 && !r_shadow_usingdeferredprepass);
-	}
+	GL_BlendFunc(rsurface.texture->currentlayers[0].blendfunc1, rsurface.texture->currentlayers[0].blendfunc2);
+	GL_AlphaTest((rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHATEST) != 0 && !r_shadow_usingdeferredprepass);
 
 	if (rsurface.uselightmaptexture && !(rsurface.texture->currentmaterialflags & MATERIALFLAG_FULLBRIGHT))
 	{
@@ -10178,11 +10256,11 @@ static void R_DrawTextureSurfaceList_GL13(int texturenumsurfaces, const msurface
 		{
 		case TEXTURELAYERTYPE_LITTEXTURE:
 			// single-pass lightmapped texture with 2x rgbscale
-			//R_Mesh_TexBind(0, R_GetTexture(r_texture_white));
+			//R_Mesh_TexBind(0, r_texture_white);
 			R_Mesh_TexMatrix(0, NULL);
 			R_Mesh_TexCombine(0, GL_MODULATE, GL_MODULATE, 1, 1);
 			R_Mesh_TexCoordPointer(0, 2, rsurface.modeltexcoordlightmap2f, rsurface.modeltexcoordlightmap2f_bufferobject, rsurface.modeltexcoordlightmap2f_bufferoffset);
-			R_Mesh_TexBind(1, R_GetTexture(layer->texture));
+			R_Mesh_TexBind(1, layer->texture);
 			R_Mesh_TexMatrix(1, &layer->texmatrix);
 			R_Mesh_TexCombine(1, GL_MODULATE, GL_MODULATE, layertexrgbscale, 1);
 			R_Mesh_TexCoordPointer(1, 2, rsurface.texcoordtexture2f, rsurface.texcoordtexture2f_bufferobject, rsurface.texcoordtexture2f_bufferoffset);
@@ -10195,7 +10273,7 @@ static void R_DrawTextureSurfaceList_GL13(int texturenumsurfaces, const msurface
 			break;
 		case TEXTURELAYERTYPE_TEXTURE:
 			// singletexture unlit texture with transparency support
-			R_Mesh_TexBind(0, R_GetTexture(layer->texture));
+			R_Mesh_TexBind(0, layer->texture);
 			R_Mesh_TexMatrix(0, &layer->texmatrix);
 			R_Mesh_TexCombine(0, GL_MODULATE, GL_MODULATE, layertexrgbscale, 1);
 			R_Mesh_TexCoordPointer(0, 2, rsurface.texcoordtexture2f, rsurface.texcoordtexture2f_bufferobject, rsurface.texcoordtexture2f_bufferoffset);
@@ -10207,7 +10285,7 @@ static void R_DrawTextureSurfaceList_GL13(int texturenumsurfaces, const msurface
 			// singletexture fogging
 			if (layer->texture)
 			{
-				R_Mesh_TexBind(0, R_GetTexture(layer->texture));
+				R_Mesh_TexBind(0, layer->texture);
 				R_Mesh_TexMatrix(0, &layer->texmatrix);
 				R_Mesh_TexCombine(0, GL_MODULATE, GL_MODULATE, layertexrgbscale, 1);
 				R_Mesh_TexCoordPointer(0, 2, rsurface.texcoordtexture2f, rsurface.texcoordtexture2f_bufferobject, rsurface.texcoordtexture2f_bufferoffset);
@@ -10284,7 +10362,7 @@ static void R_DrawTextureSurfaceList_GL11(int texturenumsurfaces, const msurface
 			{
 				// two-pass lit texture with 2x rgbscale
 				// first the lightmap pass
-				//R_Mesh_TexBind(0, R_GetTexture(r_texture_white));
+				//R_Mesh_TexBind(0, r_texture_white);
 				R_Mesh_TexMatrix(0, NULL);
 				R_Mesh_TexCombine(0, GL_MODULATE, GL_MODULATE, 1, 1);
 				R_Mesh_TexCoordPointer(0, 2, rsurface.modeltexcoordlightmap2f, rsurface.modeltexcoordlightmap2f_bufferobject, rsurface.modeltexcoordlightmap2f_bufferoffset);
@@ -10297,7 +10375,7 @@ static void R_DrawTextureSurfaceList_GL11(int texturenumsurfaces, const msurface
 				GL_LockArrays(0, 0);
 				// then apply the texture to it
 				GL_BlendFunc(GL_DST_COLOR, GL_SRC_COLOR);
-				R_Mesh_TexBind(0, R_GetTexture(layer->texture));
+				R_Mesh_TexBind(0, layer->texture);
 				R_Mesh_TexMatrix(0, &layer->texmatrix);
 				R_Mesh_TexCombine(0, GL_MODULATE, GL_MODULATE, 1, 1);
 				R_Mesh_TexCoordPointer(0, 2, rsurface.texcoordtexture2f, rsurface.texcoordtexture2f_bufferobject, rsurface.texcoordtexture2f_bufferoffset);
@@ -10306,7 +10384,7 @@ static void R_DrawTextureSurfaceList_GL11(int texturenumsurfaces, const msurface
 			else
 			{
 				// single pass vertex-lighting-only texture with 1x rgbscale and transparency support
-				R_Mesh_TexBind(0, R_GetTexture(layer->texture));
+				R_Mesh_TexBind(0, layer->texture);
 				R_Mesh_TexMatrix(0, &layer->texmatrix);
 				R_Mesh_TexCombine(0, GL_MODULATE, GL_MODULATE, 1, 1);
 				R_Mesh_TexCoordPointer(0, 2, rsurface.texcoordtexture2f, rsurface.texcoordtexture2f_bufferobject, rsurface.texcoordtexture2f_bufferoffset);
@@ -10318,7 +10396,7 @@ static void R_DrawTextureSurfaceList_GL11(int texturenumsurfaces, const msurface
 			break;
 		case TEXTURELAYERTYPE_TEXTURE:
 			// singletexture unlit texture with transparency support
-			R_Mesh_TexBind(0, R_GetTexture(layer->texture));
+			R_Mesh_TexBind(0, layer->texture);
 			R_Mesh_TexMatrix(0, &layer->texmatrix);
 			R_Mesh_TexCombine(0, GL_MODULATE, GL_MODULATE, 1, 1);
 			R_Mesh_TexCoordPointer(0, 2, rsurface.texcoordtexture2f, rsurface.texcoordtexture2f_bufferobject, rsurface.texcoordtexture2f_bufferoffset);
@@ -10328,7 +10406,7 @@ static void R_DrawTextureSurfaceList_GL11(int texturenumsurfaces, const msurface
 			// singletexture fogging
 			if (layer->texture)
 			{
-				R_Mesh_TexBind(0, R_GetTexture(layer->texture));
+				R_Mesh_TexBind(0, layer->texture);
 				R_Mesh_TexMatrix(0, &layer->texmatrix);
 				R_Mesh_TexCombine(0, GL_MODULATE, GL_MODULATE, 1, 1);
 				R_Mesh_TexCoordPointer(0, 2, rsurface.texcoordtexture2f, rsurface.texcoordtexture2f_bufferobject, rsurface.texcoordtexture2f_bufferoffset);
@@ -11759,17 +11837,6 @@ void R_DrawWorldSurfaces(qboolean skysurfaces, qboolean writedepth, qboolean dep
 				}
 			}
 		}
-		if (updated)
-		{
-			int count = model->brushq3.num_mergedlightmaps;
-			for (i = 0;i < count;i++)
-			{
-				if (model->brushq3.data_deluxemaps[i])
-					R_FlushTexture(model->brushq3.data_deluxemaps[i]);
-				if (model->brushq3.data_lightmaps[i])
-					R_FlushTexture(model->brushq3.data_lightmaps[i]);
-			}
-		}
 	}
 	// don't do anything if there were no surfaces
 	if (!numsurfacelist)
@@ -11889,17 +11956,6 @@ void R_DrawModelSurfaces(entity_render_t *ent, qboolean skysurfaces, qboolean wr
 			{
 				updated++;
 				R_BuildLightMap(ent, surfaces + j);
-			}
-		}
-		if (updated)
-		{
-			int count = model->brushq3.num_mergedlightmaps;
-			for (i = 0;i < count;i++)
-			{
-				if (model->brushq3.data_deluxemaps[i])
-					R_FlushTexture(model->brushq3.data_deluxemaps[i]);
-				if (model->brushq3.data_lightmaps[i])
-					R_FlushTexture(model->brushq3.data_lightmaps[i]);
 			}
 		}
 	}
