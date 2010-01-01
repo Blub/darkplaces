@@ -1043,8 +1043,10 @@ typedef struct client_state_s
 
 	// entity database stuff
 	// latest received entity frame numbers
-#define LATESTFRAMENUMS 3
+#define LATESTFRAMENUMS 32
+	int latestframenumsposition;
 	int latestframenums[LATESTFRAMENUMS];
+	int latestsendnums[LATESTFRAMENUMS];
 	entityframe_database_t *entitydatabase;
 	entityframe4_database_t *entitydatabase4;
 	entityframeqw_database_t *entitydatabaseqw;
@@ -1520,7 +1522,6 @@ r_viewport_type_t;
 
 typedef struct r_viewport_s
 {
-	float m[16];
 	matrix4x4_t cameramatrix; // from entity (transforms from camera entity to world)
 	matrix4x4_t viewmatrix; // actual matrix for rendering (transforms to viewspace)
 	matrix4x4_t projectmatrix; // actual projection matrix (transforms from viewspace to screen)

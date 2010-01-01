@@ -22,10 +22,8 @@
 #define TEXF_COMPARE 0x00000800
 // indicates texture should use lower precision where supported
 #define TEXF_LOWPRECISION 0x00001000
-// indicates texture should support R_UpdateTexture
+// indicates texture should support R_UpdateTexture, actual uploads may be delayed until R_Mesh_TexBind if gl_nopartialtextureupdates is on
 #define TEXF_ALLOWUPDATES 0x00002000
-// indicates texture should support R_FlushTexture (improving speed on multiple partial updates per draw)
-#define TEXF_MANUALFLUSHUPDATES 0x00004000
 // used for checking if textures mismatch
 #define TEXF_IMPORTANTBITS (TEXF_ALPHA | TEXF_MIPMAP | TEXF_CLAMP | TEXF_FORCENEAREST | TEXF_FORCELINEAR | TEXF_PICMIP | TEXF_COMPRESS | TEXF_COMPARE | TEXF_LOWPRECISION)
 
@@ -41,6 +39,14 @@ typedef enum textype_e
 	TEXTYPE_SHADOWMAP,
 	// 8bit ALPHA (used for freetype fonts)
 	TEXTYPE_ALPHA,
+	// 4x4 block compressed 15bit color (4 bits per pixel)
+	TEXTYPE_DXT1,
+	// 4x4 block compressed 15bit color plus 1bit alpha (4 bits per pixel)
+	TEXTYPE_DXT1A,
+	// 4x4 block compressed 15bit color plus 8bit alpha (8 bits per pixel)
+	TEXTYPE_DXT3,
+	// 4x4 block compressed 15bit color plus 8bit alpha (8 bits per pixel)
+	TEXTYPE_DXT5,
 }
 textype_t;
 
@@ -49,6 +55,8 @@ typedef struct rtexture_s
 {
 	// this is exposed (rather than private) for speed reasons only
 	int texnum;
+	qboolean dirty;
+	int gltexturetypeenum; // exposed for use in R_Mesh_TexBind
 }
 rtexture_t;
 
@@ -88,21 +96,22 @@ rtexture_t *R_LoadTextureRectangle(rtexturepool_t *rtexturepool, const char *ide
 rtexture_t *R_LoadTextureShadowMapRectangle(rtexturepool_t *rtexturepool, const char *identifier, int width, int height, int precision, qboolean filter);
 rtexture_t *R_LoadTextureShadowMap2D(rtexturepool_t *rtexturepool, const char *identifier, int width, int height, int precision, qboolean filter);
 rtexture_t *R_LoadTextureShadowMapCube(rtexturepool_t *rtexturepool, const char *identifier, int width, int precision, qboolean filter);
+rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filename, int flags, qboolean *hasalphaflag, float *avgcolor);
+
+// saves a texture to a DDS file
+int R_SaveTextureDDSFile(rtexture_t *rt, const char *filename, qboolean skipuncompressed);
 
 // free a texture
 void R_FreeTexture(rtexture_t *rt);
 
 // update a portion of the image data of a texture, used by lightmap updates
-// and procedural textures such as video playback.
-// if TEXF_MANUALFLUSHUPDATES is used, you MUST call R_FlushTexture to apply the updates
+// and procedural textures such as video playback, actual uploads may be
+// delayed by gl_nopartialtextureupdates cvar until R_Mesh_TexBind uses it
 void R_UpdateTexture(rtexture_t *rt, const unsigned char *data, int x, int y, int width, int height);
-// if TEXF_MANUALFLUSHUPDATES is used, call this to apply the updates,
-// otherwise this function does nothing
-void R_FlushTexture(rtexture_t *rt);
 
 // returns the renderer dependent texture slot number (call this before each
 // use, as a texture might not have been precached)
-#define R_GetTexture(rt) ((rt) ? ((rt)->texnum > 0 ? (rt)->texnum : R_RealGetTexture(rt)) : r_texture_white->texnum)
+#define R_GetTexture(rt) ((rt) ? ((rt)->dirty ? R_RealGetTexture(rt) : (rt)->texnum) : r_texture_white->texnum)
 int R_RealGetTexture (rtexture_t *rt);
 
 // returns width of texture, as was specified when it was uploaded

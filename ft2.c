@@ -35,6 +35,10 @@ CVars introduced with the freetype extension
 cvar_t r_font_disable_freetype = {CVAR_SAVE, "r_font_disable_freetype", "1", "disable freetype support for fonts entirely"};
 cvar_t r_font_use_alpha_textures = {CVAR_SAVE, "r_font_use_alpha_textures", "0", "use alpha-textures for font rendering, this should safe memory"};
 cvar_t r_font_size_snapping = {CVAR_SAVE, "r_font_size_snapping", "1", "stick to good looking font sizes whenever possible - bad when the mod doesn't support it!"};
+cvar_t r_font_hinting = {CVAR_SAVE, "r_font_hinting", "3", "0 = no hinting, 1 = light autohinting, 2 = full autohinting, 3 = full hinting"};
+cvar_t r_font_antialias = {CVAR_SAVE, "r_font_antialias", "1", "0 = monochrome, 1 = grey" /* , 2 = rgb, 3 = bgr" */};
+cvar_t r_font_kerning = {CVAR_SAVE, "r_font_kerning", "1", "Use kerning if available"};
+cvar_t developer_font = {CVAR_SAVE, "developer_font", "0", "prints debug messages about fonts"};
 
 /*
 ================================================================================
@@ -253,6 +257,10 @@ void Font_Init(void)
 	Cvar_RegisterVariable(&r_font_disable_freetype);
 	Cvar_RegisterVariable(&r_font_use_alpha_textures);
 	Cvar_RegisterVariable(&r_font_size_snapping);
+	Cvar_RegisterVariable(&r_font_hinting);
+	Cvar_RegisterVariable(&r_font_antialias);
+	Cvar_RegisterVariable(&r_font_kerning);
+	Cvar_RegisterVariable(&developer_font);
 }
 
 /*
@@ -302,6 +310,11 @@ static float Font_VirtualToRealSize(float sz)
 	if ( sn - (float)si >= 0.5 )
 		++si;
 	return si;
+}
+
+static float Font_SnapTo(float val, float snapwidth)
+{
+	return rint(val / snapwidth) * snapwidth;
 }
 
 static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font);
@@ -566,8 +579,8 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean no_texture,
 					}
 					else
 					{
-						fmap->kerning.kerning[l][r][0] = (kernvec.x >> 6) / fmap->size;
-						fmap->kerning.kerning[l][r][1] = (kernvec.y >> 6) / fmap->size;
+						fmap->kerning.kerning[l][r][0] = Font_SnapTo((kernvec.x / 64.0) / fmap->size, 1 / fmap->size);
+						fmap->kerning.kerning[l][r][1] = Font_SnapTo((kernvec.y / 64.0) / fmap->size, 1 / fmap->size);
 					}
 				}
 			}
@@ -584,20 +597,26 @@ int Font_IndexForSize(ft2_font_t *font, float _fsize, float *outw, float *outh)
 	int nval;
 	int matchsize = -10000;
 	int m;
-	int size;
-	float fsize;
+	float fsize_x, fsize_y;
 	ft2_font_map_t **maps = font->font_maps;
 
-	fsize = _fsize * vid.height / vid_conheight.value;
+	fsize_x = fsize_y = _fsize * vid.height / vid_conheight.value;
+	if(outw && *outw)
+		fsize_x = *outw * vid.width / vid_conwidth.value;
+	if(outh && *outh)
+		fsize_y = *outh * vid.height / vid_conheight.value;
 
-	if (fsize < 0)
-		size = 16;
+	if (fsize_x < 0)
+	{
+		if(fsize_y < 0)
+			fsize_x = fsize_y = 16;
+		else
+			fsize_x = fsize_y;
+	}
 	else
 	{
-		// round up
-		size = (int)fsize;
-		if (fsize - (float)size >= 0.49)
-			++size;
+		if(fsize_y < 0)
+			fsize_y = fsize_x;
 	}
 
 	for (m = 0; m < MAX_FONT_SIZES; ++m)
@@ -605,7 +624,7 @@ int Font_IndexForSize(ft2_font_t *font, float _fsize, float *outw, float *outh)
 		if (!maps[m])
 			continue;
 		// "round up" to the bigger size if two equally-valued matches exist
-		nval = abs(maps[m]->size - size);
+		nval = 0.5 * (abs(maps[m]->size - fsize_x) + abs(maps[m]->size - fsize_y));
 		if (match == -1 || nval < value || (nval == value && matchsize < maps[m]->size))
 		{
 			value = nval;
@@ -617,14 +636,9 @@ int Font_IndexForSize(ft2_font_t *font, float _fsize, float *outw, float *outh)
 	}
 	if (value <= r_font_size_snapping.value)
 	{
-		if (outw && outh)
-		{
-			if (!*outh) *outh = *outw;
-			if (!*outw) *outw = *outh;
-		}
-		// keep the aspect
+		// do NOT keep the aspect for perfect rendering
 		if (outh) *outh = maps[match]->size * vid_conheight.value / vid.height;
-		if (outw) *outw = maps[match]->size * vid_conwidth.value / vid.width * *outw / _fsize;
+		if (outw) *outw = maps[match]->size * vid_conwidth.value / vid.width;
 	}
 	return match;
 }
@@ -665,7 +679,7 @@ static qboolean Font_SetSize(ft2_font_t *font, float w, float h)
 qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, float w, float h, Uchar left, Uchar right, float *outx, float *outy)
 {
 	ft2_font_map_t *fmap;
-	if (!font->has_kerning)
+	if (!font->has_kerning || !r_font_kerning.integer)
 		return false;
 	if (map_index < 0 || map_index >= MAX_FONT_SIZES)
 		return false;
@@ -674,9 +688,10 @@ qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, float w, float h
 		return false;
 	if (left < 256 && right < 256)
 	{
+		//Con_Printf("%g : %f, %f, %f :: %f\n", (w / (float)fmap->size), w, fmap->size, fmap->intSize, Font_VirtualToRealSize(w));
 		// quick-kerning, be aware of the size: scale it
-		if (outx) *outx = fmap->kerning.kerning[left][right][0] * w / (float)fmap->size;
-		if (outy) *outy = fmap->kerning.kerning[left][right][1] * h / (float)fmap->size;
+		if (outx) *outx = fmap->kerning.kerning[left][right][0];// * (w / (float)fmap->size);
+		if (outy) *outy = fmap->kerning.kerning[left][right][1];// * (h / (float)fmap->size);
 		return true;
 	}
 	else
@@ -685,6 +700,7 @@ qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, float w, float h
 		FT_ULong ul, ur;
 
 		//if (qFT_Set_Pixel_Sizes((FT_Face)font->face, 0, fmap->size))
+#if 0
 		if (!Font_SetSize(font, w, h))
 		{
 			// this deserves an error message
@@ -695,8 +711,23 @@ qboolean Font_GetKerningForMap(ft2_font_t *font, int map_index, float w, float h
 		ur = qFT_Get_Char_Index(font->face, right);
 		if (qFT_Get_Kerning(font->face, ul, ur, FT_KERNING_DEFAULT, &kernvec))
 		{
-			if (outx) *outx = kernvec.x * fmap->sfx;
-			if (outy) *outy = kernvec.y * fmap->sfy;
+			if (outx) *outx = Font_SnapTo(kernvec.x * fmap->sfx, 1 / fmap->size);
+			if (outy) *outy = Font_SnapTo(kernvec.y * fmap->sfy, 1 / fmap->size);
+			return true;
+		}
+#endif
+		if (!Font_SetSize(font, fmap->intSize, fmap->intSize))
+		{
+			// this deserves an error message
+			Con_Printf("Failed to get kerning for %s\n", font->name);
+			return false;
+		}
+		ul = qFT_Get_Char_Index(font->face, left);
+		ur = qFT_Get_Char_Index(font->face, right);
+		if (qFT_Get_Kerning(font->face, ul, ur, FT_KERNING_DEFAULT, &kernvec))
+		{
+			if (outx) *outx = Font_SnapTo(kernvec.x * fmap->sfx, 1 / fmap->size);// * (w / (float)fmap->size);
+			if (outy) *outy = Font_SnapTo(kernvec.y * fmap->sfy, 1 / fmap->size);// * (h / (float)fmap->size);
 			return true;
 		}
 		return false;
@@ -755,6 +786,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 	FT_ULong ch, mapch;
 	int status;
 	int tp;
+	FT_Int32 load_flags;
 
 	int pitch;
 	int gR, gC; // glyph position: row and column
@@ -776,6 +808,45 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		fontface = (FT_Face)font->next->face;
 	else
 		fontface = (FT_Face)font->face;
+
+	switch(r_font_antialias.integer)
+	{
+		case 0:
+			switch(r_font_hinting.integer)
+			{
+				case 0:
+					load_flags = FT_LOAD_NO_HINTING | FT_LOAD_NO_AUTOHINT | FT_LOAD_TARGET_MONO | FT_LOAD_MONOCHROME;
+					break;
+				case 1:
+				case 2:
+					load_flags = FT_LOAD_FORCE_AUTOHINT | FT_LOAD_TARGET_MONO | FT_LOAD_MONOCHROME;
+					break;
+				default:
+				case 3:
+					load_flags = FT_LOAD_TARGET_MONO | FT_LOAD_MONOCHROME;
+					break;
+			}
+			break;
+		default:
+		case 1:
+			switch(r_font_hinting.integer)
+			{
+				case 0:
+					load_flags = FT_LOAD_NO_HINTING | FT_LOAD_NO_AUTOHINT | FT_LOAD_TARGET_NORMAL;
+					break;
+				case 1:
+					load_flags = FT_LOAD_FORCE_AUTOHINT | FT_LOAD_TARGET_LIGHT;
+					break;
+				case 2:
+					load_flags = FT_LOAD_FORCE_AUTOHINT | FT_LOAD_TARGET_NORMAL;
+					break;
+				default:
+				case 3:
+					load_flags = FT_LOAD_TARGET_NORMAL;
+					break;
+			}
+			break;
+	}
 
 	//status = qFT_Set_Pixel_Sizes((FT_Face)font->face, /*size*/0, mapstart->size);
 	//if (status)
@@ -831,6 +902,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		Mem_Free(map);
 		return false;
 	}
+	memset(map->width_of, 0, sizeof(map->width_of));
 
 	// initialize as white texture with zero alpha
 	tp = 0;
@@ -869,7 +941,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 
 		mapch = ch - map->start;
 
-		if (developer_extra.integer)
+		if (developer_font.integer)
 			Con_DPrint("glyphinfo: ------------- GLYPH INFO -----------------\n");
 
 		++gC;
@@ -903,7 +975,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 				glyphIndex = qFT_Get_Char_Index(face, ch);
 				if (glyphIndex == 0)
 					continue;
-				status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER);
+				status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER | load_flags);
 				if (status)
 					continue;
 				break;
@@ -921,7 +993,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		{
 			usefont = font;
 			face = font->face;
-			status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER);
+			status = qFT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER | load_flags);
 			if (status)
 			{
 				//Con_Printf("failed to load glyph %lu for %s\n", glyphIndex, font->name);
@@ -947,23 +1019,23 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		switch (bmp->pixel_mode)
 		{
 		case FT_PIXEL_MODE_MONO:
-			if (developer_extra.integer)
+			if (developer_font.integer)
 				Con_DPrint("glyphinfo:   Pixel Mode: MONO\n");
 			break;
 		case FT_PIXEL_MODE_GRAY2:
-			if (developer_extra.integer)
+			if (developer_font.integer)
 				Con_DPrint("glyphinfo:   Pixel Mode: GRAY2\n");
 			break;
 		case FT_PIXEL_MODE_GRAY4:
-			if (developer_extra.integer)
+			if (developer_font.integer)
 				Con_DPrint("glyphinfo:   Pixel Mode: GRAY4\n");
 			break;
 		case FT_PIXEL_MODE_GRAY:
-			if (developer_extra.integer)
+			if (developer_font.integer)
 				Con_DPrint("glyphinfo:   Pixel Mode: GRAY\n");
 			break;
 		default:
-			if (developer_extra.integer)
+			if (developer_font.integer)
 				Con_DPrintf("glyphinfo:   Pixel Mode: Unknown: %i\n", bmp->pixel_mode);
 			Mem_Free(data);
 			Con_Printf("ERROR: Unrecognized pixel mode for font %s size %f: %i\n", font->name, mapstart->size, bmp->pixel_mode);
@@ -981,14 +1053,14 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 				for (x = 0; x < bmp->width; x += 8)
 				{
 					unsigned char ch = *src++;
-					*dst = 255 * ((ch & 0x80) >> 7); dst += bytesPerPixel;
-					*dst = 255 * ((ch & 0x40) >> 6); dst += bytesPerPixel;
-					*dst = 255 * ((ch & 0x20) >> 5); dst += bytesPerPixel;
-					*dst = 255 * ((ch & 0x10) >> 4); dst += bytesPerPixel;
-					*dst = 255 * ((ch & 0x08) >> 3); dst += bytesPerPixel;
-					*dst = 255 * ((ch & 0x04) >> 2); dst += bytesPerPixel;
-					*dst = 255 * ((ch & 0x02) >> 1); dst += bytesPerPixel;
-					*dst = 255 * ((ch & 0x01) >> 0); dst += bytesPerPixel;
+					*dst = 255 * !!((ch & 0x80) >> 7); dst += bytesPerPixel;
+					*dst = 255 * !!((ch & 0x40) >> 6); dst += bytesPerPixel;
+					*dst = 255 * !!((ch & 0x20) >> 5); dst += bytesPerPixel;
+					*dst = 255 * !!((ch & 0x10) >> 4); dst += bytesPerPixel;
+					*dst = 255 * !!((ch & 0x08) >> 3); dst += bytesPerPixel;
+					*dst = 255 * !!((ch & 0x04) >> 2); dst += bytesPerPixel;
+					*dst = 255 * !!((ch & 0x02) >> 1); dst += bytesPerPixel;
+					*dst = 255 * !!((ch & 0x01) >> 0); dst += bytesPerPixel;
 				}
 				break;
 			case FT_PIXEL_MODE_GRAY2:
@@ -1007,8 +1079,8 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 				for (x = 0; x < bmp->width; x += 2)
 				{
 					unsigned char ch = *src++;
-					*dst = ( ((ch & 0xF0) >> 4) * 0x24); dst += bytesPerPixel;
-					*dst = ( ((ch & 0x0F) ) * 0x24); dst += bytesPerPixel;
+					*dst = ( ((ch & 0xF0) >> 4) * 0x11); dst += bytesPerPixel;
+					*dst = ( ((ch & 0x0F) ) * 0x11); dst += bytesPerPixel;
 				}
 				break;
 			case FT_PIXEL_MODE_GRAY:
@@ -1031,25 +1103,31 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 			// old way
 			// double advance = (double)glyph->metrics.horiAdvance * map->sfx;
 
-			double bearingX = (glyph->metrics.horiBearingX >> 6) / map->size;
-			double bearingY = (glyph->metrics.horiBearingY >> 6) / map->size;
-			double advance = (glyph->advance.x >> 6) / map->size;
-			double mWidth = (glyph->metrics.width >> 6) / map->size;
-			double mHeight = (glyph->metrics.height >> 6) / map->size;
+			double bearingX = (glyph->metrics.horiBearingX / 64.0) / map->size;
+			//double bearingY = (glyph->metrics.horiBearingY >> 6) / map->size;
+			double advance = (glyph->advance.x / 64.0) / map->size;
+			//double mWidth = (glyph->metrics.width >> 6) / map->size;
+			//double mHeight = (glyph->metrics.height >> 6) / map->size;
 
-			mapglyph->vxmin = bearingX;
-			mapglyph->vxmax = bearingX + mWidth;
-			mapglyph->vymin = -bearingY;
-			mapglyph->vymax = mHeight - bearingY;
 			mapglyph->txmin = ( (double)(gC * map->glyphSize) ) / ( (double)(map->glyphSize * FONT_CHARS_PER_LINE) );
 			mapglyph->txmax = mapglyph->txmin + (double)bmp->width / ( (double)(map->glyphSize * FONT_CHARS_PER_LINE) );
 			mapglyph->tymin = ( (double)(gR * map->glyphSize) ) / ( (double)(map->glyphSize * FONT_CHAR_LINES) );
 			mapglyph->tymax = mapglyph->tymin + (double)bmp->rows / ( (double)(map->glyphSize * FONT_CHAR_LINES) );
+			//mapglyph->vxmin = bearingX;
+			//mapglyph->vxmax = bearingX + mWidth;
+			mapglyph->vxmin = glyph->bitmap_left / map->size;
+			mapglyph->vxmax = mapglyph->vxmin + bmp->width / map->size; // don't ask
+			//mapglyph->vymin = -bearingY;
+			//mapglyph->vymax = mHeight - bearingY;
+			mapglyph->vymin = -glyph->bitmap_top / map->size;
+			mapglyph->vymax = mapglyph->vymin + bmp->rows / map->size;
+			//Con_Printf("dpi = %f %f (%f %d) %d %d\n", bmp->width / (mapglyph->vxmax - mapglyph->vxmin), bmp->rows / (mapglyph->vymax - mapglyph->vymin), map->size, map->glyphSize, (int)fontface->size->metrics.x_ppem, (int)fontface->size->metrics.y_ppem);
 			//mapglyph->advance_x = advance * usefont->size;
-			mapglyph->advance_x = advance;
+			//mapglyph->advance_x = advance;
+			mapglyph->advance_x = Font_SnapTo(advance, 1 / map->size);
 			mapglyph->advance_y = 0;
 
-			if (developer_extra.integer)
+			if (developer_font.integer)
 			{
 				Con_DPrintf("glyphinfo:   Glyph: %lu   at (%i, %i)\n", (unsigned long)ch, gC, gR);
 				Con_DPrintf("glyphinfo:   %f, %f, %lu\n", bearingX, map->sfx, (unsigned long)glyph->metrics.horiBearingX);
@@ -1069,7 +1147,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 
 	// create a texture from the data now
 
-	if (developer_extra.integer)
+	if (developer_font.integer > 100)
 	{
 		// LordHavoc: why are we writing this?  And why not write it as TGA using the appropriate function?
 		// view using `display -depth 8 -size 512x512 name_page.rgba` (be sure to use a correct -size parameter)
