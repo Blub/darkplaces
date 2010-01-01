@@ -312,7 +312,7 @@ void R_Viewport_TransformToScreen(const r_viewport_t *v, const vec4_t in, vec4_t
 	out[2] = v->z + (out[2] * iw + 1.0f) * v->depth * 0.5f;
 }
 
-static void R_Viewport_ApplyNearClipPlane(r_viewport_t *v, float normalx, float normaly, float normalz, float dist)
+static void R_Viewport_ApplyNearClipPlaneFloatGL(const r_viewport_t *v, float *m, float normalx, float normaly, float normalz, float dist)
 {
 	float q[4];
 	float d;
@@ -345,24 +345,25 @@ static void R_Viewport_ApplyNearClipPlane(r_viewport_t *v, float normalx, float 
 	// as (sgn(clipPlane.x), sgn(clipPlane.y), 1, 1) and
 	// transform it into camera space by multiplying it
 	// by the inverse of the projection matrix
-	q[0] = ((clipPlane[0] < 0.0f ? -1.0f : clipPlane[0] > 0.0f ? 1.0f : 0.0f) + v->m[8]) / v->m[0];
-	q[1] = ((clipPlane[1] < 0.0f ? -1.0f : clipPlane[1] > 0.0f ? 1.0f : 0.0f) + v->m[9]) / v->m[5];
+	q[0] = ((clipPlane[0] < 0.0f ? -1.0f : clipPlane[0] > 0.0f ? 1.0f : 0.0f) + m[8]) / m[0];
+	q[1] = ((clipPlane[1] < 0.0f ? -1.0f : clipPlane[1] > 0.0f ? 1.0f : 0.0f) + m[9]) / m[5];
 	q[2] = -1.0f;
-	q[3] = (1.0f + v->m[10]) / v->m[14];
+	q[3] = (1.0f + m[10]) / m[14];
 
 	// Calculate the scaled plane vector
 	d = 2.0f / DotProduct4(clipPlane, q);
 
 	// Replace the third row of the projection matrix
-	v->m[2] = clipPlane[0] * d;
-	v->m[6] = clipPlane[1] * d;
-	v->m[10] = clipPlane[2] * d + 1.0f;
-	v->m[14] = clipPlane[3] * d;
+	m[2] = clipPlane[0] * d;
+	m[6] = clipPlane[1] * d;
+	m[10] = clipPlane[2] * d + 1.0f;
+	m[14] = clipPlane[3] * d;
 }
 
 void R_Viewport_InitOrtho(r_viewport_t *v, const matrix4x4_t *cameramatrix, int x, int y, int width, int height, float x1, float y1, float x2, float y2, float nearclip, float farclip, const float *nearplane)
 {
 	float left = x1, right = x2, bottom = y2, top = y1, zNear = nearclip, zFar = farclip;
+	float m[16];
 	memset(v, 0, sizeof(*v));
 	v->type = R_VIEWPORTTYPE_ORTHO;
 	v->cameramatrix = *cameramatrix;
@@ -372,21 +373,23 @@ void R_Viewport_InitOrtho(r_viewport_t *v, const matrix4x4_t *cameramatrix, int 
 	v->width = width;
 	v->height = height;
 	v->depth = 1;
-	v->m[0]  = 2/(right - left);
-	v->m[5]  = 2/(top - bottom);
-	v->m[10] = -2/(zFar - zNear);
-	v->m[12] = - (right + left)/(right - left);
-	v->m[13] = - (top + bottom)/(top - bottom);
-	v->m[14] = - (zFar + zNear)/(zFar - zNear);
-	v->m[15] = 1;
+	memset(m, 0, sizeof(m));
+	m[0]  = 2/(right - left);
+	m[5]  = 2/(top - bottom);
+	m[10] = -2/(zFar - zNear);
+	m[12] = - (right + left)/(right - left);
+	m[13] = - (top + bottom)/(top - bottom);
+	m[14] = - (zFar + zNear)/(zFar - zNear);
+	m[15] = 1;
 	v->screentodepth[0] = -farclip / (farclip - nearclip);
 	v->screentodepth[1] = farclip * nearclip / (farclip - nearclip);
 
 	Matrix4x4_Invert_Full(&v->viewmatrix, &v->cameramatrix);
-	Matrix4x4_FromArrayFloatGL(&v->projectmatrix, v->m);
 
 	if (nearplane)
-		R_Viewport_ApplyNearClipPlane(v, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
+		R_Viewport_ApplyNearClipPlaneFloatGL(v, m, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
+
+	Matrix4x4_FromArrayFloatGL(&v->projectmatrix, m);
 
 #if 0
 	{
@@ -402,6 +405,7 @@ void R_Viewport_InitOrtho(r_viewport_t *v, const matrix4x4_t *cameramatrix, int 
 void R_Viewport_InitPerspective(r_viewport_t *v, const matrix4x4_t *cameramatrix, int x, int y, int width, int height, float frustumx, float frustumy, float nearclip, float farclip, const float *nearplane)
 {
 	matrix4x4_t tempmatrix, basematrix;
+	float m[16];
 	memset(v, 0, sizeof(*v));
 
 	if(v_flipped.integer)
@@ -415,11 +419,12 @@ void R_Viewport_InitPerspective(r_viewport_t *v, const matrix4x4_t *cameramatrix
 	v->width = width;
 	v->height = height;
 	v->depth = 1;
-	v->m[0]  = 1.0 / frustumx;
-	v->m[5]  = 1.0 / frustumy;
-	v->m[10] = -(farclip + nearclip) / (farclip - nearclip);
-	v->m[11] = -1;
-	v->m[14] = -2 * nearclip * farclip / (farclip - nearclip);
+	memset(m, 0, sizeof(m));
+	m[0]  = 1.0 / frustumx;
+	m[5]  = 1.0 / frustumy;
+	m[10] = -(farclip + nearclip) / (farclip - nearclip);
+	m[11] = -1;
+	m[14] = -2 * nearclip * farclip / (farclip - nearclip);
 	v->screentodepth[0] = -farclip / (farclip - nearclip);
 	v->screentodepth[1] = farclip * nearclip / (farclip - nearclip);
 
@@ -428,16 +433,17 @@ void R_Viewport_InitPerspective(r_viewport_t *v, const matrix4x4_t *cameramatrix
 	Matrix4x4_ConcatRotate(&basematrix, 90, 0, 0, 1);
 	Matrix4x4_Concat(&v->viewmatrix, &basematrix, &tempmatrix);
 
-	Matrix4x4_FromArrayFloatGL(&v->projectmatrix, v->m);
-
 	if (nearplane)
-		R_Viewport_ApplyNearClipPlane(v, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
+		R_Viewport_ApplyNearClipPlaneFloatGL(v, m, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
+
+	Matrix4x4_FromArrayFloatGL(&v->projectmatrix, m);
 }
 
 void R_Viewport_InitPerspectiveInfinite(r_viewport_t *v, const matrix4x4_t *cameramatrix, int x, int y, int width, int height, float frustumx, float frustumy, float nearclip, const float *nearplane)
 {
 	matrix4x4_t tempmatrix, basematrix;
 	const float nudge = 1.0 - 1.0 / (1<<23);
+	float m[16];
 	memset(v, 0, sizeof(*v));
 
 	if(v_flipped.integer)
@@ -451,23 +457,24 @@ void R_Viewport_InitPerspectiveInfinite(r_viewport_t *v, const matrix4x4_t *came
 	v->width = width;
 	v->height = height;
 	v->depth = 1;
-	v->m[ 0] = 1.0 / frustumx;
-	v->m[ 5] = 1.0 / frustumy;
-	v->m[10] = -nudge;
-	v->m[11] = -1;
-	v->m[14] = -2 * nearclip * nudge;
-	v->screentodepth[0] = (v->m[10] + 1) * 0.5 - 1;
-	v->screentodepth[1] = v->m[14] * -0.5;
+	memset(m, 0, sizeof(m));
+	m[ 0] = 1.0 / frustumx;
+	m[ 5] = 1.0 / frustumy;
+	m[10] = -nudge;
+	m[11] = -1;
+	m[14] = -2 * nearclip * nudge;
+	v->screentodepth[0] = (m[10] + 1) * 0.5 - 1;
+	v->screentodepth[1] = m[14] * -0.5;
 
 	Matrix4x4_Invert_Full(&tempmatrix, &v->cameramatrix);
 	Matrix4x4_CreateRotate(&basematrix, -90, 1, 0, 0);
 	Matrix4x4_ConcatRotate(&basematrix, 90, 0, 0, 1);
 	Matrix4x4_Concat(&v->viewmatrix, &basematrix, &tempmatrix);
 
-	Matrix4x4_FromArrayFloatGL(&v->projectmatrix, v->m);
-
 	if (nearplane)
-		R_Viewport_ApplyNearClipPlane(v, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
+		R_Viewport_ApplyNearClipPlaneFloatGL(v, m, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
+
+	Matrix4x4_FromArrayFloatGL(&v->projectmatrix, m);
 }
 
 float cubeviewmatrix[6][16] =
@@ -554,29 +561,33 @@ float rectviewmatrix[6][16] =
 void R_Viewport_InitCubeSideView(r_viewport_t *v, const matrix4x4_t *cameramatrix, int side, int size, float nearclip, float farclip, const float *nearplane)
 {
 	matrix4x4_t tempmatrix, basematrix;
+	float m[16];
 	memset(v, 0, sizeof(*v));
 	v->type = R_VIEWPORTTYPE_PERSPECTIVECUBESIDE;
 	v->cameramatrix = *cameramatrix;
 	v->width = size;
 	v->height = size;
 	v->depth = 1;
-	v->m[0] = v->m[5] = 1.0f;
-	v->m[10] = -(farclip + nearclip) / (farclip - nearclip);
-	v->m[11] = -1;
-	v->m[14] = -2 * nearclip * farclip / (farclip - nearclip);
+	memset(m, 0, sizeof(m));
+	m[0] = m[5] = 1.0f;
+	m[10] = -(farclip + nearclip) / (farclip - nearclip);
+	m[11] = -1;
+	m[14] = -2 * nearclip * farclip / (farclip - nearclip);
 
 	Matrix4x4_FromArrayFloatGL(&basematrix, cubeviewmatrix[side]);
 	Matrix4x4_Invert_Simple(&tempmatrix, &v->cameramatrix);
 	Matrix4x4_Concat(&v->viewmatrix, &basematrix, &tempmatrix);
-	Matrix4x4_FromArrayFloatGL(&v->projectmatrix, v->m);
 
 	if (nearplane)
-		R_Viewport_ApplyNearClipPlane(v, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
+		R_Viewport_ApplyNearClipPlaneFloatGL(v, m, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
+
+	Matrix4x4_FromArrayFloatGL(&v->projectmatrix, m);
 }
 
 void R_Viewport_InitRectSideView(r_viewport_t *v, const matrix4x4_t *cameramatrix, int side, int size, int border, float nearclip, float farclip, const float *nearplane)
 {
 	matrix4x4_t tempmatrix, basematrix;
+	float m[16];
 	memset(v, 0, sizeof(*v));
 	v->type = R_VIEWPORTTYPE_PERSPECTIVECUBESIDE;
 	v->cameramatrix = *cameramatrix;
@@ -585,22 +596,25 @@ void R_Viewport_InitRectSideView(r_viewport_t *v, const matrix4x4_t *cameramatri
 	v->width = size;
 	v->height = size;
 	v->depth = 1;
-	v->m[0] = v->m[5] = 1.0f * ((float)size - border) / size;
-	v->m[10] = -(farclip + nearclip) / (farclip - nearclip);
-	v->m[11] = -1;
-	v->m[14] = -2 * nearclip * farclip / (farclip - nearclip);
+	memset(m, 0, sizeof(m));
+	m[0] = m[5] = 1.0f * ((float)size - border) / size;
+	m[10] = -(farclip + nearclip) / (farclip - nearclip);
+	m[11] = -1;
+	m[14] = -2 * nearclip * farclip / (farclip - nearclip);
 
 	Matrix4x4_FromArrayFloatGL(&basematrix, rectviewmatrix[side]);
 	Matrix4x4_Invert_Simple(&tempmatrix, &v->cameramatrix);
 	Matrix4x4_Concat(&v->viewmatrix, &basematrix, &tempmatrix);
-	Matrix4x4_FromArrayFloatGL(&v->projectmatrix, v->m);
 
 	if (nearplane)
-		R_Viewport_ApplyNearClipPlane(v, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
+		R_Viewport_ApplyNearClipPlaneFloatGL(v, m, nearplane[0], nearplane[1], nearplane[2], nearplane[3]);
+
+	Matrix4x4_FromArrayFloatGL(&v->projectmatrix, m);
 }
 
 void R_SetViewport(const r_viewport_t *v)
 {
+	float m[16];
 	gl_viewport = *v;
 
 	CHECKGLERROR
@@ -622,7 +636,8 @@ void R_SetViewport(const r_viewport_t *v)
 	case RENDERPATH_GL11:
 		// Load the projection matrix into OpenGL
 		qglMatrixMode(GL_PROJECTION);CHECKGLERROR
-		qglLoadMatrixf(gl_viewport.m);CHECKGLERROR
+		Matrix4x4_ToArrayFloatGL(&gl_projectionmatrix, m);
+		qglLoadMatrixf(m);CHECKGLERROR
 		qglMatrixMode(GL_MODELVIEW);CHECKGLERROR
 		break;
 	}
@@ -1565,24 +1580,59 @@ int R_Mesh_TexBound(unsigned int unitnum, int id)
 	return 0;
 }
 
-void R_Mesh_CopyToTexture(int texnum, int tx, int ty, int sx, int sy, int width, int height)
+void R_Mesh_CopyToTexture(rtexture_t *tex, int tx, int ty, int sx, int sy, int width, int height)
 {
-	R_Mesh_TexBind(0, texnum);
+	R_Mesh_TexBind(0, tex);
 	GL_ActiveTexture(0);CHECKGLERROR
 	qglCopyTexSubImage2D(GL_TEXTURE_2D, 0, tx, ty, sx, sy, width, height);CHECKGLERROR
 }
 
-void R_Mesh_TexBindAll(unsigned int unitnum, int tex2d, int tex3d, int texcubemap, int texrectangle)
+void R_Mesh_TexBind(unsigned int unitnum, rtexture_t *tex)
 {
 	gltextureunit_t *unit = gl_state.units + unitnum;
+	int tex2d, tex3d, texcubemap, texnum;
 	if (unitnum >= vid.teximageunits)
 		return;
-	// update 2d texture binding
-	if (unit->t2d != tex2d)
+	switch(vid.renderpath)
 	{
-		GL_ActiveTexture(unitnum);
-		if (unitnum < vid.texunits)
+	case RENDERPATH_GL20:
+	case RENDERPATH_CGGL:
+		if (!tex)
+			tex = r_texture_white;
+		texnum = R_GetTexture(tex);
+		switch(tex->gltexturetypeenum)
 		{
+		case GL_TEXTURE_2D: if (unit->t2d != texnum) {GL_ActiveTexture(unitnum);unit->t2d = texnum;qglBindTexture(GL_TEXTURE_2D, unit->t2d);CHECKGLERROR}break;
+		case GL_TEXTURE_3D: if (unit->t3d != texnum) {GL_ActiveTexture(unitnum);unit->t3d = texnum;qglBindTexture(GL_TEXTURE_3D, unit->t3d);CHECKGLERROR}break;
+		case GL_TEXTURE_CUBE_MAP_ARB: if (unit->tcubemap != texnum) {GL_ActiveTexture(unitnum);unit->tcubemap = texnum;qglBindTexture(GL_TEXTURE_CUBE_MAP_ARB, unit->tcubemap);CHECKGLERROR}break;
+		case GL_TEXTURE_RECTANGLE_ARB: if (unit->trectangle != texnum) {GL_ActiveTexture(unitnum);unit->trectangle = texnum;qglBindTexture(GL_TEXTURE_RECTANGLE_ARB, unit->trectangle);CHECKGLERROR}break;
+		}
+		break;
+	case RENDERPATH_GL13:
+	case RENDERPATH_GL11:
+		tex2d = 0;
+		tex3d = 0;
+		texcubemap = 0;
+		if (tex)
+		{
+			texnum = R_GetTexture(tex);
+			switch(tex->gltexturetypeenum)
+			{
+			case GL_TEXTURE_2D:
+				tex2d = texnum;
+				break;
+			case GL_TEXTURE_3D:
+				tex3d = texnum;
+				break;
+			case GL_TEXTURE_CUBE_MAP_ARB:
+				texcubemap = texnum;
+				break;
+			}
+		}
+		// update 2d texture binding
+		if (unit->t2d != tex2d)
+		{
+			GL_ActiveTexture(unitnum);
 			if (tex2d)
 			{
 				if (unit->t2d == 0)
@@ -1597,16 +1647,13 @@ void R_Mesh_TexBindAll(unsigned int unitnum, int tex2d, int tex3d, int texcubema
 					qglDisable(GL_TEXTURE_2D);CHECKGLERROR
 				}
 			}
+			unit->t2d = tex2d;
+			qglBindTexture(GL_TEXTURE_2D, unit->t2d);CHECKGLERROR
 		}
-		unit->t2d = tex2d;
-		qglBindTexture(GL_TEXTURE_2D, unit->t2d);CHECKGLERROR
-	}
-	// update 3d texture binding
-	if (unit->t3d != tex3d)
-	{
-		GL_ActiveTexture(unitnum);
-		if (unitnum < vid.texunits)
+		// update 3d texture binding
+		if (unit->t3d != tex3d)
 		{
+			GL_ActiveTexture(unitnum);
 			if (tex3d)
 			{
 				if (unit->t3d == 0)
@@ -1621,16 +1668,13 @@ void R_Mesh_TexBindAll(unsigned int unitnum, int tex2d, int tex3d, int texcubema
 					qglDisable(GL_TEXTURE_3D);CHECKGLERROR
 				}
 			}
+			unit->t3d = tex3d;
+			qglBindTexture(GL_TEXTURE_3D, unit->t3d);CHECKGLERROR
 		}
-		unit->t3d = tex3d;
-		qglBindTexture(GL_TEXTURE_3D, unit->t3d);CHECKGLERROR
-	}
-	// update cubemap texture binding
-	if (unit->tcubemap != texcubemap)
-	{
-		GL_ActiveTexture(unitnum);
-		if (unitnum < vid.texunits)
+		// update cubemap texture binding
+		if (unit->tcubemap != texcubemap)
 		{
+			GL_ActiveTexture(unitnum);
 			if (texcubemap)
 			{
 				if (unit->tcubemap == 0)
@@ -1645,106 +1689,10 @@ void R_Mesh_TexBindAll(unsigned int unitnum, int tex2d, int tex3d, int texcubema
 					qglDisable(GL_TEXTURE_CUBE_MAP_ARB);CHECKGLERROR
 				}
 			}
+			unit->tcubemap = texcubemap;
+			qglBindTexture(GL_TEXTURE_CUBE_MAP_ARB, unit->tcubemap);CHECKGLERROR
 		}
-		unit->tcubemap = texcubemap;
-		qglBindTexture(GL_TEXTURE_CUBE_MAP_ARB, unit->tcubemap);CHECKGLERROR
-	}
-	// update rectangle texture binding
-	if (unit->trectangle != texrectangle)
-	{
-		GL_ActiveTexture(unitnum);
-		if (unitnum < vid.texunits)
-		{
-			if (texrectangle)
-			{
-				if (unit->trectangle == 0)
-				{
-					qglEnable(GL_TEXTURE_RECTANGLE_ARB);CHECKGLERROR
-				}
-			}
-			else
-			{
-				if (unit->trectangle)
-				{
-					qglDisable(GL_TEXTURE_RECTANGLE_ARB);CHECKGLERROR
-				}
-			}
-		}
-		unit->trectangle = texrectangle;
-		qglBindTexture(GL_TEXTURE_RECTANGLE_ARB, unit->trectangle);CHECKGLERROR
-	}
-}
-
-void R_Mesh_TexBind(unsigned int unitnum, int texnum)
-{
-	gltextureunit_t *unit = gl_state.units + unitnum;
-	if (unitnum >= vid.teximageunits)
-		return;
-	// update 2d texture binding
-	if (unit->t2d != texnum)
-	{
-		GL_ActiveTexture(unitnum);
-		if (unitnum < vid.texunits)
-		{
-			if (texnum)
-			{
-				if (unit->t2d == 0)
-				{
-					qglEnable(GL_TEXTURE_2D);CHECKGLERROR
-				}
-			}
-			else
-			{
-				if (unit->t2d)
-				{
-					qglDisable(GL_TEXTURE_2D);CHECKGLERROR
-				}
-			}
-		}
-		unit->t2d = texnum;
-		qglBindTexture(GL_TEXTURE_2D, unit->t2d);CHECKGLERROR
-	}
-	// update 3d texture binding
-	if (unit->t3d)
-	{
-		GL_ActiveTexture(unitnum);
-		if (unitnum < vid.texunits)
-		{
-			if (unit->t3d)
-			{
-				qglDisable(GL_TEXTURE_3D);CHECKGLERROR
-			}
-		}
-		unit->t3d = 0;
-		qglBindTexture(GL_TEXTURE_3D, unit->t3d);CHECKGLERROR
-	}
-	// update cubemap texture binding
-	if (unit->tcubemap != 0)
-	{
-		GL_ActiveTexture(unitnum);
-		if (unitnum < vid.texunits)
-		{
-			if (unit->tcubemap)
-			{
-				qglDisable(GL_TEXTURE_CUBE_MAP_ARB);CHECKGLERROR
-			}
-		}
-		unit->tcubemap = 0;
-		qglBindTexture(GL_TEXTURE_CUBE_MAP_ARB, unit->tcubemap);CHECKGLERROR
-	}
-	// update rectangle texture binding
-	if (unit->trectangle != 0)
-	{
-		GL_ActiveTexture(unitnum);
-		if (unitnum < vid.texunits)
-		{
-			if (unit->trectangle)
-			{
-				qglDisable(GL_TEXTURE_RECTANGLE_ARB);CHECKGLERROR
-			}
-		}
-		unit->trectangle = 0;
-		qglBindTexture(GL_TEXTURE_RECTANGLE_ARB, unit->trectangle);CHECKGLERROR
+		break;
 	}
 }
 
