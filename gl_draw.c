@@ -619,8 +619,14 @@ static void LoadFont(qboolean override, const char *name, dp_font_t *fnt)
 					fnt->width_of[ch] = atof(com_token) + extraspacing;
 					if (fnt->ft2)
 					{
-						for (i = 0; i < MAX_FONT_SIZES && fnt->req_sizes[i] >= 0; ++i)
-							Font_MapForIndex(fnt->ft2, i)->width_of[ch] = snap_to_pixel_x(fnt->width_of[ch] * fnt->req_sizes[i], 0.4);
+						for (i = 0; i < MAX_FONT_SIZES; ++i)
+						{
+							//Font_MapForIndex(fnt->ft2, i)->width_of[ch] = snap_to_pixel_x(fnt->width_of[ch] * fnt->req_sizes[i], 0.4);
+							ft2_font_map_t *map = Font_MapForIndex(fnt->ft2, i);
+							if (!map)
+								break;
+							map->width_of[ch] = Font_SnapTo(fnt->width_of[ch], 1/map->size);
+						}
 					}
 					ch++;
 					break;
@@ -789,7 +795,6 @@ static void LoadFont_f(void)
 	for(i = 1; i < MAX_FONT_SIZES; ++i)
 		f->req_sizes[i] = -1;
 
-	// for some reason this argc is 3 even when using 2 arguments here, maybe nexuiz screws up
 	if(Cmd_Argc() >= 3)
 	{
 		for(i = 0; i < Cmd_Argc()-3; ++i)
@@ -860,7 +865,6 @@ void GL_Draw_Init (void)
 	for(i = 0, j = 0; i < MAX_USERFONTS; ++i)
 		if(!FONT_USER[i].title[0])
 			dpsnprintf(FONT_USER[i].title, sizeof(FONT_USER[i].title), "user%d", j++);
-	Font_Init();
 }
 
 void _DrawQ_Setup(void)
@@ -1099,7 +1103,6 @@ float DrawQ_TextWidth_UntilWidth_TrackColors_Scale(const char *text, size_t *max
 	qboolean snap = true;
 	qboolean least_one = false;
 	float dw, dh; // display w/h
-	float width_of_factor;
 	const float *width_of;
 
 	if (!h) h = w;
@@ -1145,15 +1148,9 @@ float DrawQ_TextWidth_UntilWidth_TrackColors_Scale(const char *text, size_t *max
 	//	x = snap_to_pixel_x(x, 0.4); // haha, it's 0 anyway
 
 	if (fontmap)
-	{
-		width_of_factor = 1;
 		width_of = fontmap->width_of;
-	}
 	else
-	{
-		width_of_factor = dw;
 		width_of = fnt->width_of;
-	}
 
 	for (i = 0;((bytes_left = *maxlen - (text - text_start)) > 0) && *text;)
 	{
@@ -1165,12 +1162,12 @@ float DrawQ_TextWidth_UntilWidth_TrackColors_Scale(const char *text, size_t *max
 		if (ch == ' ' && !fontmap)
 		{
 			if(!least_one || i0) // never skip the first character
-			if(x + width_of[(int) ' '] * width_of_factor > maxwidth)
+			if(x + width_of[(int) ' '] * dw > maxwidth)
 			{
 				i = i0;
 				break; // oops, can't draw this
 			}
-			x += width_of[(int) ' '] * width_of_factor;
+			x += width_of[(int) ' '] * dw;
 			continue;
 		}
 		// i points to the char after ^
@@ -1237,12 +1234,12 @@ float DrawQ_TextWidth_UntilWidth_TrackColors_Scale(const char *text, size_t *max
 				map = ft2_oldstyle_map;
 			prevch = 0;
 			if(!least_one || i0) // never skip the first character
-			if(x + width_of[ch] * width_of_factor > maxwidth)
+			if(x + width_of[ch] * dw > maxwidth)
 			{
 				i = i0;
 				break; // oops, can't draw this
 			}
-			x += width_of[ch] * width_of_factor;
+			x += width_of[ch] * dw;
 		} else {
 			if (!map || map == ft2_oldstyle_map || map->start < ch || map->start + FONT_CHARS_PER_MAP >= ch)
 			{
@@ -1298,7 +1295,6 @@ float DrawQ_String_Scale(float startx, float starty, const char *text, size_t ma
 	float pix_x, pix_y;
 	size_t bytes_left;
 	float dw, dh;
-	float width_of_factor;
 	const float *width_of;
 
 	int tw, th;
@@ -1352,7 +1348,7 @@ float DrawQ_String_Scale(float startx, float starty, const char *text, size_t ma
 	//ftbase_x = snap_to_pixel_x(ftbase_x);
 	if(snap)
 	{
-		startx = snap_to_pixel_y(startx, 0.4);
+		startx = snap_to_pixel_x(startx, 0.4);
 		starty = snap_to_pixel_y(starty, 0.4);
 		ftbase_y = snap_to_pixel_y(ftbase_y, 0.3);
 	}
@@ -1361,18 +1357,13 @@ float DrawQ_String_Scale(float startx, float starty, const char *text, size_t ma
 	pix_y = vid.height / vid_conheight.value;
 
 	if (fontmap)
-	{
-		width_of_factor = 1;
 		width_of = fontmap->width_of;
-	}
 	else
-	{
-		width_of_factor = dw;
 		width_of = fnt->width_of;
-	}
 
 	for (shadow = r_textshadow.value != 0 && basealpha > 0;shadow >= 0;shadow--)
 	{
+		prevch = 0;
 		text = text_start;
 
 		if (!outcolor || *outcolor == -1)
@@ -1399,7 +1390,7 @@ float DrawQ_String_Scale(float startx, float starty, const char *text, size_t ma
 				break;
 			if (ch == ' ' && !fontmap)
 			{
-				x += width_of[(int) ' '] * width_of_factor;
+				x += width_of[(int) ' '] * dw;
 				continue;
 			}
 			if (ch == STRING_COLOR_TAG && !ignorecolorcodes && i < maxlen)
@@ -1523,7 +1514,7 @@ float DrawQ_String_Scale(float startx, float starty, const char *text, size_t ma
 					at = texcoord2f;
 					av = vertex3f;
 				}
-				x += width_of[ch] * width_of_factor;
+				x += width_of[ch] * dw;
 			} else {
 				if (!map || map == ft2_oldstyle_map || map->start < ch || map->start + FONT_CHARS_PER_MAP >= ch)
 				{
