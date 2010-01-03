@@ -175,7 +175,9 @@ qboolean Font_OpenLibrary (void)
 	{
 #if defined(WIN32)
 		"freetype6.dll",
+		"libfreetype-6.dll",
 #elif defined(MACOSX)
+		"libfreetype.6.dylib",
 		"libfreetype.dylib",
 #else
 		"libfreetype.so.6",
@@ -261,6 +263,8 @@ void Font_Init(void)
 	Cvar_RegisterVariable(&r_font_antialias);
 	Cvar_RegisterVariable(&r_font_kerning);
 	Cvar_RegisterVariable(&developer_font);
+	// let's open it at startup already
+	Font_OpenLibrary();
 }
 
 /*
@@ -296,7 +300,7 @@ qboolean Font_Attach(ft2_font_t *font, ft2_attachment_t *attachment)
 	return true;
 }
 
-static float Font_VirtualToRealSize(float sz)
+float Font_VirtualToRealSize(float sz)
 {
 	int vh, vw, si;
 	float sn;
@@ -312,9 +316,9 @@ static float Font_VirtualToRealSize(float sz)
 	return si;
 }
 
-static float Font_SnapTo(float val, float snapwidth)
+float Font_SnapTo(float val, float snapwidth)
 {
-	return rint(val / snapwidth) * snapwidth;
+	return floor(val / snapwidth + 0.5f) * snapwidth;
 }
 
 static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font);
@@ -374,7 +378,7 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 			break;
 		}
 		count = 0;
-		for (s = 0; s < MAX_FONT_SIZES; ++s)
+		for (s = 0; s < MAX_FONT_SIZES && dpfnt->req_sizes[s] >= 0; ++s)
 		{
 			if (Font_LoadSize(fb, Font_VirtualToRealSize(dpfnt->req_sizes[s]), true, false))
 				++count;
@@ -401,7 +405,7 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 	}
 
 	count = 0;
-	for (s = 0; s < MAX_FONT_SIZES; ++s)
+	for (s = 0; s < MAX_FONT_SIZES && dpfnt->req_sizes[s] >= 0; ++s)
 	{
 		if (Font_LoadSize(ft2, Font_VirtualToRealSize(dpfnt->req_sizes[s]), false, false))
 			++count;
