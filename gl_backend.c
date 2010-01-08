@@ -14,8 +14,6 @@ cvar_t r_renderview = {0, "r_renderview", "1", "enables rendering 3D views (you 
 cvar_t r_waterwarp = {CVAR_SAVE, "r_waterwarp", "1", "warp view while underwater"};
 cvar_t gl_polyblend = {CVAR_SAVE, "gl_polyblend", "1", "tints view while underwater, hurt, etc"};
 cvar_t gl_dither = {CVAR_SAVE, "gl_dither", "1", "enables OpenGL dithering (16bit looks bad with this off)"};
-cvar_t gl_lockarrays = {0, "gl_lockarrays", "0", "enables use of glLockArraysEXT, may cause glitches with some broken drivers, and may be slower than normal"};
-cvar_t gl_lockarrays_minimumvertices = {0, "gl_lockarrays_minimumvertices", "1", "minimum number of vertices required for use of glLockArraysEXT, setting this too low may reduce performance"};
 cvar_t gl_vbo = {CVAR_SAVE, "gl_vbo", "3", "make use of GL_ARB_vertex_buffer_object extension to store static geometry in video memory for faster rendering, 0 disables VBO allocation or use, 1 enables VBOs for vertex and triangle data, 2 only for vertex data, 3 for vertex data and triangle data of simple meshes (ones with only one surface)"};
 cvar_t gl_fbo = {CVAR_SAVE, "gl_fbo", "1", "make use of GL_ARB_framebuffer_object extension to enable shadowmaps and other features using pixel formats different from the framebuffer"};
 
@@ -282,8 +280,6 @@ void gl_backend_init(void)
 	Cvar_RegisterVariable(&gl_polyblend);
 	Cvar_RegisterVariable(&v_flipped);
 	Cvar_RegisterVariable(&gl_dither);
-	Cvar_RegisterVariable(&gl_lockarrays);
-	Cvar_RegisterVariable(&gl_lockarrays_minimumvertices);
 	Cvar_RegisterVariable(&gl_vbo);
 	Cvar_RegisterVariable(&gl_paranoid);
 	Cvar_RegisterVariable(&gl_printcheckerror);
@@ -730,55 +726,71 @@ static void GL_Backend_ResetState(void)
 
 	gl_state.unit = MAX_TEXTUREUNITS;
 	gl_state.clientunit = MAX_TEXTUREUNITS;
-	for (i = 0;i < vid.teximageunits;i++)
+	switch(vid.renderpath)
 	{
-		GL_ActiveTexture(i);
-		qglBindTexture(GL_TEXTURE_2D, 0);CHECKGLERROR
-		if (vid.support.ext_texture_3d)
+	case RENDERPATH_GL20:
+	case RENDERPATH_CGGL:
+		for (i = 0;i < vid.teximageunits;i++)
 		{
-			qglBindTexture(GL_TEXTURE_3D, 0);CHECKGLERROR
+			GL_ActiveTexture(i);
+			qglBindTexture(GL_TEXTURE_2D, 0);CHECKGLERROR
+			if (vid.support.ext_texture_3d)
+			{
+				qglBindTexture(GL_TEXTURE_3D, 0);CHECKGLERROR
+			}
+			if (vid.support.arb_texture_cube_map)
+			{
+				qglBindTexture(GL_TEXTURE_CUBE_MAP_ARB, 0);CHECKGLERROR
+			}
+			if (vid.support.arb_texture_rectangle)
+			{
+				qglBindTexture(GL_TEXTURE_RECTANGLE_ARB, 0);CHECKGLERROR
+			}
 		}
-		if (vid.support.arb_texture_cube_map)
-		{
-			qglBindTexture(GL_TEXTURE_CUBE_MAP_ARB, 0);CHECKGLERROR
-		}
-		if (vid.support.arb_texture_rectangle)
-		{
-			qglBindTexture(GL_TEXTURE_RECTANGLE_ARB, 0);CHECKGLERROR
-		}
-	}
 
-	for (i = 0;i < vid.texarrayunits;i++)
-	{
-		GL_ClientActiveTexture(i);
-		GL_BindVBO(0);
-		qglTexCoordPointer(2, GL_FLOAT, sizeof(float[2]), NULL);CHECKGLERROR
-		qglDisableClientState(GL_TEXTURE_COORD_ARRAY);CHECKGLERROR
-	}
-
-	for (i = 0;i < vid.texunits;i++)
-	{
-		GL_ActiveTexture(i);
-		qglDisable(GL_TEXTURE_2D);CHECKGLERROR
-		if (vid.support.ext_texture_3d)
+		for (i = 0;i < vid.texarrayunits;i++)
 		{
-			qglDisable(GL_TEXTURE_3D);CHECKGLERROR
+			GL_ClientActiveTexture(i);
+			GL_BindVBO(0);
+			qglTexCoordPointer(2, GL_FLOAT, sizeof(float[2]), NULL);CHECKGLERROR
+			qglDisableClientState(GL_TEXTURE_COORD_ARRAY);CHECKGLERROR
 		}
-		if (vid.support.arb_texture_cube_map)
-		{
-			qglDisable(GL_TEXTURE_CUBE_MAP_ARB);CHECKGLERROR
-		}
-		if (vid.support.arb_texture_rectangle)
-		{
-			qglDisable(GL_TEXTURE_RECTANGLE_ARB);CHECKGLERROR
-		}
-		qglMatrixMode(GL_TEXTURE);CHECKGLERROR
-		qglLoadIdentity();CHECKGLERROR
-		qglMatrixMode(GL_MODELVIEW);CHECKGLERROR
-		qglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);CHECKGLERROR
 		CHECKGLERROR
+		break;
+	case RENDERPATH_GL13:
+	case RENDERPATH_GL11:
+		for (i = 0;i < vid.texunits;i++)
+		{
+			GL_ActiveTexture(i);
+			GL_ClientActiveTexture(i);
+			qglDisable(GL_TEXTURE_2D);CHECKGLERROR
+			qglBindTexture(GL_TEXTURE_2D, 0);CHECKGLERROR
+			if (vid.support.ext_texture_3d)
+			{
+				qglDisable(GL_TEXTURE_3D);CHECKGLERROR
+				qglBindTexture(GL_TEXTURE_3D, 0);CHECKGLERROR
+			}
+			if (vid.support.arb_texture_cube_map)
+			{
+				qglDisable(GL_TEXTURE_CUBE_MAP_ARB);CHECKGLERROR
+				qglBindTexture(GL_TEXTURE_CUBE_MAP_ARB, 0);CHECKGLERROR
+			}
+			if (vid.support.arb_texture_rectangle)
+			{
+				qglDisable(GL_TEXTURE_RECTANGLE_ARB);CHECKGLERROR
+				qglBindTexture(GL_TEXTURE_RECTANGLE_ARB, 0);CHECKGLERROR
+			}
+			GL_BindVBO(0);
+			qglTexCoordPointer(2, GL_FLOAT, sizeof(float[2]), NULL);CHECKGLERROR
+			qglDisableClientState(GL_TEXTURE_COORD_ARRAY);CHECKGLERROR
+			qglMatrixMode(GL_TEXTURE);CHECKGLERROR
+			qglLoadIdentity();CHECKGLERROR
+			qglMatrixMode(GL_MODELVIEW);CHECKGLERROR
+			qglTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);CHECKGLERROR
+		}
+		CHECKGLERROR
+		break;
 	}
-	CHECKGLERROR
 }
 
 void GL_ActiveTexture(unsigned int num)
@@ -978,33 +990,6 @@ void GL_Color(float cr, float cg, float cb, float ca)
 		CHECKGLERROR
 		qglColor4f(gl_state.color4f[0], gl_state.color4f[1], gl_state.color4f[2], gl_state.color4f[3]);
 		CHECKGLERROR
-	}
-}
-
-void GL_LockArrays(int first, int count)
-{
-	if (count < gl_lockarrays_minimumvertices.integer)
-	{
-		first = 0;
-		count = 0;
-	}
-	if (gl_state.lockrange_count != count || gl_state.lockrange_first != first)
-	{
-		if (gl_state.lockrange_count)
-		{
-			gl_state.lockrange_count = 0;
-			CHECKGLERROR
-			qglUnlockArraysEXT();
-			CHECKGLERROR
-		}
-		if (count && vid.support.ext_compiled_vertex_array && gl_lockarrays.integer)
-		{
-			gl_state.lockrange_first = first;
-			gl_state.lockrange_count = count;
-			CHECKGLERROR
-			qglLockArraysEXT(first, count);
-			CHECKGLERROR
-		}
 	}
 }
 

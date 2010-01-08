@@ -27,6 +27,7 @@ int		gl_filter_mag = GL_LINEAR;
 
 
 static mempool_t *texturemempool;
+static memexpandablearray_t texturearray;
 
 // note: this must not conflict with TEXF_ flags in r_textures.h
 // bitmask for mismatch checking
@@ -40,29 +41,32 @@ typedef struct textypeinfo_s
 	int inputbytesperpixel;
 	int internalbytesperpixel;
 	float glinternalbytesperpixel;
-	int glformat;
 	int glinternalformat;
+	int glformat;
 	int gltype;
 }
 textypeinfo_t;
 
-static textypeinfo_t textype_palette                = {TEXTYPE_PALETTE, 1, 4, 4.0f, GL_BGRA   , 3, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_palette_alpha          = {TEXTYPE_PALETTE, 1, 4, 4.0f, GL_BGRA   , 4, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_rgba                   = {TEXTYPE_RGBA   , 4, 4, 4.0f, GL_RGBA   , 3, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_rgba_alpha             = {TEXTYPE_RGBA   , 4, 4, 4.0f, GL_RGBA   , 4, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_rgba_compress          = {TEXTYPE_RGBA   , 4, 4, 0.5f, GL_RGBA   , GL_COMPRESSED_RGB_ARB, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_rgba_alpha_compress    = {TEXTYPE_RGBA   , 4, 4, 1.0f, GL_RGBA   , GL_COMPRESSED_RGBA_ARB, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_bgra                   = {TEXTYPE_BGRA   , 4, 4, 4.0f, GL_BGRA   , 3, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_bgra_alpha             = {TEXTYPE_BGRA   , 4, 4, 4.0f, GL_BGRA   , 4, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_bgra_compress          = {TEXTYPE_BGRA   , 4, 4, 0.5f, GL_BGRA   , GL_COMPRESSED_RGB_ARB, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_bgra_alpha_compress    = {TEXTYPE_BGRA   , 4, 4, 1.0f, GL_BGRA   , GL_COMPRESSED_RGBA_ARB, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_shadowmap16            = {TEXTYPE_SHADOWMAP,2,2, 2.0f, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT16_ARB, GL_UNSIGNED_SHORT};
-static textypeinfo_t textype_shadowmap24            = {TEXTYPE_SHADOWMAP,4,4, 4.0f, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT24_ARB, GL_UNSIGNED_INT};
-static textypeinfo_t textype_alpha                  = {TEXTYPE_ALPHA  , 1, 4, 4.0f, GL_ALPHA  , 4, GL_UNSIGNED_BYTE};
-static textypeinfo_t textype_dxt1                   = {TEXTYPE_DXT1   , 4, 0, 0.5f, 0         , GL_COMPRESSED_RGB_S3TC_DXT1_EXT, 0};
-static textypeinfo_t textype_dxt1a                  = {TEXTYPE_DXT1A  , 4, 0, 0.5f, 0         , GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, 0};
-static textypeinfo_t textype_dxt3                   = {TEXTYPE_DXT3   , 4, 0, 1.0f, 0         , GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, 0};
-static textypeinfo_t textype_dxt5                   = {TEXTYPE_DXT5   , 4, 0, 1.0f, 0         , GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, 0};
+
+static textypeinfo_t textype_palette                = {TEXTYPE_PALETTE    , 1, 4, 4.0f, 3                               , GL_BGRA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_palette_alpha          = {TEXTYPE_PALETTE    , 1, 4, 4.0f, 4                               , GL_BGRA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_rgba                   = {TEXTYPE_RGBA       , 4, 4, 4.0f, 3                               , GL_RGBA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_rgba_alpha             = {TEXTYPE_RGBA       , 4, 4, 4.0f, 4                               , GL_RGBA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_rgba_compress          = {TEXTYPE_RGBA       , 4, 4, 0.5f, GL_COMPRESSED_RGB_S3TC_DXT1_EXT , GL_RGBA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_rgba_alpha_compress    = {TEXTYPE_RGBA       , 4, 4, 1.0f, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, GL_RGBA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_bgra                   = {TEXTYPE_BGRA       , 4, 4, 4.0f, 3                               , GL_BGRA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_bgra_alpha             = {TEXTYPE_BGRA       , 4, 4, 4.0f, 4                               , GL_BGRA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_bgra_compress          = {TEXTYPE_BGRA       , 4, 4, 0.5f, GL_COMPRESSED_RGB_S3TC_DXT1_EXT , GL_BGRA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_bgra_alpha_compress    = {TEXTYPE_BGRA       , 4, 4, 1.0f, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, GL_BGRA           , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_shadowmap16            = {TEXTYPE_SHADOWMAP  , 2, 2, 2.0f, GL_DEPTH_COMPONENT16_ARB        , GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT};
+static textypeinfo_t textype_shadowmap24            = {TEXTYPE_SHADOWMAP  , 4, 4, 4.0f, GL_DEPTH_COMPONENT24_ARB        , GL_DEPTH_COMPONENT, GL_UNSIGNED_INT  };
+static textypeinfo_t textype_alpha                  = {TEXTYPE_ALPHA      , 1, 4, 4.0f, GL_ALPHA                        , GL_ALPHA          , GL_UNSIGNED_BYTE };
+static textypeinfo_t textype_dxt1                   = {TEXTYPE_DXT1       , 4, 0, 0.5f, GL_COMPRESSED_RGB_S3TC_DXT1_EXT , 0                 , 0                };
+static textypeinfo_t textype_dxt1a                  = {TEXTYPE_DXT1A      , 4, 0, 0.5f, GL_COMPRESSED_RGBA_S3TC_DXT1_EXT, 0                 , 0                };
+static textypeinfo_t textype_dxt3                   = {TEXTYPE_DXT3       , 4, 0, 1.0f, GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, 0                 , 0                };
+static textypeinfo_t textype_dxt5                   = {TEXTYPE_DXT5       , 4, 0, 1.0f, GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, 0                 , 0                };
+static textypeinfo_t textype_colorbuffer            = {TEXTYPE_COLORBUFFER, 4, 4, 4.0f, 4                               , GL_BGRA           , GL_UNSIGNED_BYTE };
+
 
 typedef enum gltexturetype_e
 {
@@ -188,6 +192,8 @@ static textypeinfo_t *R_GetTexTypeInfo(textype_t textype, int flags)
 		return &textype_alpha;
 	case TEXTYPE_SHADOWMAP:
 		return (flags & TEXF_LOWPRECISION) ? &textype_shadowmap16 : &textype_shadowmap24;
+	case TEXTYPE_COLORBUFFER:
+		return &textype_colorbuffer;
 	default:
 		Host_Error("R_GetTexTypeInfo: unknown texture format");
 		return NULL;
@@ -257,7 +263,7 @@ void R_FreeTexture(rtexture_t *rt)
 
 	if (glt->inputtexels)
 		Mem_Free(glt->inputtexels);
-	Mem_Free(glt);
+	Mem_ExpandableArray_FreeRecord(&texturearray, glt);
 }
 
 rtexturepool_t *R_AllocTexturePool(void)
@@ -518,6 +524,7 @@ static void r_textures_start(void)
 	qglPixelStorei(GL_PACK_ALIGNMENT, 1);CHECKGLERROR
 
 	texturemempool = Mem_AllocPool("texture management", 0, NULL);
+	Mem_ExpandableArray_NewArray(&texturearray, texturemempool, sizeof(gltexture_t), 512);
 
 	// Disable JPEG screenshots if the DLL isn't loaded
 	if (! JPEG_OpenLibrary ())
@@ -543,6 +550,7 @@ static void r_textures_shutdown(void)
 	resizebuffer = NULL;
 	colorconvertbuffer = NULL;
 	texturebuffer = NULL;
+	Mem_ExpandableArray_FreeArray(&texturearray);
 	Mem_FreePool(&texturemempool);
 }
 
@@ -968,6 +976,9 @@ static rtexture_t *R_SetupTexture(rtexturepool_t *rtexturepool, const char *iden
 	case TEXTYPE_ALPHA:
 		flags |= TEXF_ALPHA;
 		break;
+	case TEXTYPE_COLORBUFFER:
+		flags |= TEXF_ALPHA;
+		break;
 	default:
 		Host_Error("R_LoadTexture: unknown texture type");
 	}
@@ -978,7 +989,7 @@ static rtexture_t *R_SetupTexture(rtexturepool_t *rtexturepool, const char *iden
 	else
 		Con_Printf ("R_LoadTexture: input size changed after alpha fallback\n");
 
-	glt = (gltexture_t *)Mem_Alloc(texturemempool, sizeof(gltexture_t));
+	glt = (gltexture_t *)Mem_ExpandableArray_AllocRecord(&texturearray);
 	if (identifier)
 		strlcpy (glt->identifier, identifier, sizeof(glt->identifier));
 	glt->pool = pool;
@@ -1358,7 +1369,7 @@ rtexture_t *R_LoadTextureDDSFile(rtexturepool_t *rtexturepool, const char *filen
 
 	texinfo = R_GetTexTypeInfo(textype, flags);
 
-	glt = (gltexture_t *)Mem_Alloc(texturemempool, sizeof(gltexture_t));
+	glt = (gltexture_t *)Mem_ExpandableArray_AllocRecord(&texturearray);
 	strlcpy (glt->identifier, filename, sizeof(glt->identifier));
 	glt->pool = pool;
 	glt->chain = pool->gltchain;

@@ -1330,7 +1330,6 @@ void R_Shadow_VolumeFromList(int numverts, int numtris, const float *invertex3f,
 		r_refdef.stats.lights_shadowtriangles += tris;
 		CHECKGLERROR
 		R_Mesh_VertexPointer(shadowvertex3f, 0, 0);
-		GL_LockArrays(0, outverts);
 		if (r_shadow_rendermode == R_SHADOW_RENDERMODE_ZPASS_STENCIL)
 		{
 			// increment stencil if frontface is infront of depthbuffer
@@ -1352,7 +1351,6 @@ void R_Shadow_VolumeFromList(int numverts, int numtris, const float *invertex3f,
 			qglStencilOp(GL_KEEP, GL_INCR, GL_KEEP);CHECKGLERROR
 		}
 		R_Mesh_Draw(0, outverts, 0, tris, shadowelements, NULL, 0, 0);
-		GL_LockArrays(0, 0);
 		CHECKGLERROR
 	}
 }
@@ -1962,9 +1960,9 @@ void R_Shadow_RenderMode_Reset(void)
 	qglDepthFunc(GL_LEQUAL);CHECKGLERROR
 	GL_PolygonOffset(r_refdef.polygonfactor, r_refdef.polygonoffset);CHECKGLERROR
 	qglDisable(GL_STENCIL_TEST);CHECKGLERROR
-	qglStencilMask(~0);CHECKGLERROR
+	qglStencilMask(255);CHECKGLERROR
 	qglStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);CHECKGLERROR
-	qglStencilFunc(GL_ALWAYS, 128, ~0);CHECKGLERROR
+	qglStencilFunc(GL_ALWAYS, 128, 255);CHECKGLERROR
 	r_refdef.view.cullface_front = r_shadow_cullface_front;
 	r_refdef.view.cullface_back = r_shadow_cullface_back;
 	GL_CullFace(r_refdef.view.cullface_back);
@@ -2016,20 +2014,20 @@ void R_Shadow_RenderMode_StencilShadowVolumes(qboolean zpass)
 		GL_CullFace(GL_NONE);
 		qglEnable(GL_STENCIL_TEST_TWO_SIDE_EXT);CHECKGLERROR
 		qglActiveStencilFaceEXT(r_refdef.view.cullface_front);CHECKGLERROR
-		qglStencilMask(~0);CHECKGLERROR
+		qglStencilMask(255);CHECKGLERROR
 		qglStencilOp(GL_KEEP, GL_KEEP, GL_INCR);CHECKGLERROR
 		qglActiveStencilFaceEXT(r_refdef.view.cullface_back);CHECKGLERROR
-		qglStencilMask(~0);CHECKGLERROR
+		qglStencilMask(255);CHECKGLERROR
 		qglStencilOp(GL_KEEP, GL_KEEP, GL_DECR);CHECKGLERROR
 		break;
 	case R_SHADOW_RENDERMODE_ZFAIL_STENCILTWOSIDE:
 		GL_CullFace(GL_NONE);
 		qglEnable(GL_STENCIL_TEST_TWO_SIDE_EXT);CHECKGLERROR
 		qglActiveStencilFaceEXT(r_refdef.view.cullface_front);CHECKGLERROR
-		qglStencilMask(~0);CHECKGLERROR
+		qglStencilMask(255);CHECKGLERROR
 		qglStencilOp(GL_KEEP, GL_INCR, GL_KEEP);CHECKGLERROR
 		qglActiveStencilFaceEXT(r_refdef.view.cullface_back);CHECKGLERROR
-		qglStencilMask(~0);CHECKGLERROR
+		qglStencilMask(255);CHECKGLERROR
 		qglStencilOp(GL_KEEP, GL_DECR, GL_KEEP);CHECKGLERROR
 		break;
 	}
@@ -2055,7 +2053,7 @@ static void R_Shadow_MakeVSDCT(void)
 	r_shadow_shadowmapvsdcttexture = R_LoadTextureCubeMap(r_shadow_texturepool, "shadowmapvsdct", 1, data, TEXTYPE_RGBA, TEXF_FORCENEAREST | TEXF_CLAMP | TEXF_ALPHA, NULL);
 }
 
-void R_Shadow_RenderMode_ShadowMap(int side, qboolean clear, int size)
+void R_Shadow_RenderMode_ShadowMap(int side, int clear, int size)
 {
 	int status;
 	int maxsize;
@@ -2196,20 +2194,31 @@ void R_Shadow_RenderMode_ShadowMap(int side, qboolean clear, int size)
 
 init_done:
 	R_SetViewport(&viewport);
-	GL_Scissor(viewport.x, viewport.y, viewport.width, viewport.height);
 	if(r_shadow_rendermode == R_SHADOW_RENDERMODE_SHADOWMAP2D || r_shadow_rendermode == R_SHADOW_RENDERMODE_SHADOWMAPRECTANGLE)
 	{
-		int flipped = (side&1)^(side>>2);
+		int flipped = (side & 1) ^ (side >> 2);
 		r_refdef.view.cullface_front = flipped ? r_shadow_cullface_back : r_shadow_cullface_front;
 		r_refdef.view.cullface_back = flipped ? r_shadow_cullface_front : r_shadow_cullface_back;
 		GL_CullFace(r_refdef.view.cullface_back);
+		if ((clear & ((2 << side) - 1)) == (1 << side)) // only clear if the side is the first in the mask
+		{
+			// get tightest scissor rectangle that encloses all viewports in the clear mask
+			int x1 = clear & 0x15 ? 0 : size;
+			int x2 = clear & 0x2A ? 2 * size : size;
+			int y1 = clear & 0x03 ? 0 : (clear & 0xC ? size : 2 * size);
+			int y2 = clear & 0x30 ? 3 * size : (clear & 0xC ? 2 * size : size);
+			GL_Scissor(x1, y1, x2 - x1, y2 - y1);
+			GL_Clear(GL_DEPTH_BUFFER_BIT);
+		}
+		GL_Scissor(viewport.x, viewport.y, viewport.width, viewport.height);
 	}
 	else if(r_shadow_rendermode == R_SHADOW_RENDERMODE_SHADOWMAPCUBESIDE)
 	{
 		qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_TEXTURE_CUBE_MAP_POSITIVE_X_ARB + side, R_GetTexture(r_shadow_shadowmapcubetexture[r_shadow_shadowmaplod]), 0);CHECKGLERROR
+		GL_Scissor(viewport.x, viewport.y, viewport.width, viewport.height);
+		if (clear)
+			GL_Clear(GL_DEPTH_BUFFER_BIT);
 	}
-	if (clear)
-		qglClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT |  GL_STENCIL_BUFFER_BIT);
 	CHECKGLERROR
 }
 
@@ -2234,7 +2243,7 @@ void R_Shadow_RenderMode_Lighting(qboolean stenciltest, qboolean transparent, qb
 		qglEnable(GL_STENCIL_TEST);CHECKGLERROR
 		// only draw light where this geometry was already rendered AND the
 		// stencil is 128 (values other than this mean shadow)
-		qglStencilFunc(GL_EQUAL, 128, ~0);CHECKGLERROR
+		qglStencilFunc(GL_EQUAL, 128, 255);CHECKGLERROR
 	}
 	r_shadow_rendermode = r_shadow_lightingrendermode;
 	// do global setup needed for the chosen lighting mode
@@ -2295,7 +2304,7 @@ void R_Shadow_RenderMode_DrawDeferredLight(qboolean stenciltest, qboolean shadow
 			qglEnable(GL_STENCIL_TEST);CHECKGLERROR
 			// only draw light where this geometry was already rendered AND the
 			// stencil is 128 (values other than this mean shadow)
-			qglStencilFunc(GL_EQUAL, 128, ~0);CHECKGLERROR
+			qglStencilFunc(GL_EQUAL, 128, 255);CHECKGLERROR
 		}
 		qglBindFramebufferEXT(GL_FRAMEBUFFER_EXT, r_shadow_prepasslightingfbo);CHECKGLERROR
 		if (shadowmapping)
@@ -2354,7 +2363,7 @@ void R_Shadow_RenderMode_VisibleLighting(qboolean stenciltest, qboolean transpar
 	if (stenciltest)
 	{
 		qglEnable(GL_STENCIL_TEST);CHECKGLERROR
-		qglStencilFunc(GL_EQUAL, 128, ~0);CHECKGLERROR
+		qglStencilFunc(GL_EQUAL, 128, 255);CHECKGLERROR
 	}
 	r_shadow_rendermode = R_SHADOW_RENDERMODE_VISIBLELIGHTING;
 }
@@ -2682,14 +2691,6 @@ static void R_Shadow_RenderLighting_Light_GLSL(int firstvertex, int numvertices,
 {
 	// ARB2 GLSL shader path (GFFX5200, Radeon 9500)
 	R_SetupShader_Surface(lightcolor, false, ambientscale, diffusescale, specularscale, RSURFPASS_RTLIGHT);
-	if ((rsurface.texture->currentmaterialflags & MATERIALFLAG_VERTEXTEXTUREBLEND))
-		R_Mesh_ColorPointer(rsurface.modellightmapcolor4f, rsurface.modellightmapcolor4f_bufferobject, rsurface.modellightmapcolor4f_bufferoffset);
-	else
-		R_Mesh_ColorPointer(NULL, 0, 0);
-	R_Mesh_TexCoordPointer(0, 2, rsurface.texcoordtexture2f, rsurface.texcoordtexture2f_bufferobject, rsurface.texcoordtexture2f_bufferoffset);
-	R_Mesh_TexCoordPointer(1, 3, rsurface.svector3f, rsurface.svector3f_bufferobject, rsurface.svector3f_bufferoffset);
-	R_Mesh_TexCoordPointer(2, 3, rsurface.tvector3f, rsurface.tvector3f_bufferobject, rsurface.tvector3f_bufferoffset);
-	R_Mesh_TexCoordPointer(3, 3, rsurface.normal3f, rsurface.normal3f_bufferobject, rsurface.normal3f_bufferoffset);
 	if (rsurface.texture->currentmaterialflags & MATERIALFLAG_ALPHATEST)
 	{
 		qglDepthFunc(GL_EQUAL);CHECKGLERROR
@@ -2715,7 +2716,7 @@ static void R_Shadow_RenderLighting_Light_Vertex_Pass(int firstvertex, int numve
 	int maxtriangles = 4096;
 	static int newelements[4096*3];
 	R_Shadow_RenderLighting_Light_Vertex_Shading(firstvertex, numvertices, numtriangles, element3i, diffusecolor2, ambientcolor2);
-	for (renders = 0;renders < 64;renders++)
+	for (renders = 0;renders < 4;renders++)
 	{
 		stop = true;
 		newfirstvertex = 0;
@@ -3311,7 +3312,6 @@ void R_Shadow_DrawWorldShadow_ShadowVolume(int numsurfaces, int *surfacelist, co
 		{
 			r_refdef.stats.lights_shadowtriangles += mesh->numtriangles;
 			R_Mesh_VertexPointer(mesh->vertex3f, mesh->vbo, mesh->vbooffset_vertex3f);
-			GL_LockArrays(0, mesh->numverts);
 			if (r_shadow_rendermode == R_SHADOW_RENDERMODE_ZPASS_STENCIL)
 			{
 				// increment stencil if frontface is infront of depthbuffer
@@ -3333,7 +3333,6 @@ void R_Shadow_DrawWorldShadow_ShadowVolume(int numsurfaces, int *surfacelist, co
 				qglStencilOp(GL_KEEP, GL_INCR, GL_KEEP);CHECKGLERROR
 			}
 			R_Mesh_Draw(0, mesh->numverts, 0, mesh->numtriangles, mesh->element3i, mesh->element3s, mesh->ebo3i, mesh->ebo3s);
-			GL_LockArrays(0, 0);
 		}
 		CHECKGLERROR
 	}
@@ -3805,7 +3804,7 @@ void R_Shadow_DrawLight(rtlight_t *rtlight)
 		// render shadow casters into 6 sided depth texture
 		for (side = 0;side < 6;side++) if (receivermask & (1 << side))
 		{
-			R_Shadow_RenderMode_ShadowMap(side, true, size);
+			R_Shadow_RenderMode_ShadowMap(side, receivermask, size);
 			if (! (castermask & (1 << side))) continue;
 			if (numsurfaces)
 				R_Shadow_DrawWorldShadow_ShadowMap(numsurfaces, surfacelist, shadowtrispvs, surfacesides);
@@ -3827,7 +3826,7 @@ void R_Shadow_DrawLight(rtlight_t *rtlight)
 		{
 			for (side = 0;side < 6;side++) if ((receivermask & castermask) & (1 << side))
 			{
-				R_Shadow_RenderMode_ShadowMap(side, false, size);
+				R_Shadow_RenderMode_ShadowMap(side, 0, size);
 				for (i = 0;i < numshadowentities_noselfshadow;i++) if (entitysides_noselfshadow[i] & (1 << side))
 					R_Shadow_DrawEntityShadow(shadowentities_noselfshadow[i]);
 			}
@@ -4027,7 +4026,7 @@ void R_Shadow_PrepareLights(void)
 	{
 	case RENDERPATH_GL20:
 	case RENDERPATH_CGGL:
-		if (!r_shadow_deferred.integer || r_shadow_shadowmode == R_SHADOW_SHADOWMODE_STENCIL || !vid.support.ext_framebuffer_object || !vid.support.arb_texture_rectangle || vid.maxdrawbuffers < 2)
+		if (!r_shadow_deferred.integer || r_shadow_shadowmode == R_SHADOW_SHADOWMODE_STENCIL || !vid.support.ext_framebuffer_object || vid.maxdrawbuffers < 2)
 		{
 			r_shadow_usingdeferredprepass = false;
 			if (r_shadow_prepass_width)
@@ -4043,19 +4042,22 @@ void R_Shadow_PrepareLights(void)
 			r_shadow_usingdeferredprepass = true;
 			r_shadow_prepass_width = vid.width;
 			r_shadow_prepass_height = vid.height;
-			r_shadow_prepassgeometrydepthtexture = R_LoadTextureShadowMapRectangle(r_shadow_texturepool, "prepassgeometrydepthmap", vid.width, vid.height, 24, false);
-			r_shadow_prepassgeometrynormalmaptexture = R_LoadTextureRectangle(r_shadow_texturepool, "prepassgeometrynormalmap", vid.width, vid.height, NULL, TEXTYPE_BGRA, TEXF_CLAMP | TEXF_ALPHA | TEXF_FORCENEAREST, NULL);
-			r_shadow_prepasslightingdiffusetexture = R_LoadTextureRectangle(r_shadow_texturepool, "prepasslightingdiffuse", vid.width, vid.height, NULL, TEXTYPE_BGRA, TEXF_CLAMP | TEXF_ALPHA | TEXF_FORCENEAREST, NULL);
-			r_shadow_prepasslightingspeculartexture = R_LoadTextureRectangle(r_shadow_texturepool, "prepasslightingspecular", vid.width, vid.height, NULL, TEXTYPE_BGRA, TEXF_CLAMP | TEXF_ALPHA | TEXF_FORCENEAREST, NULL);
+			r_shadow_prepassgeometrydepthtexture = R_LoadTextureShadowMap2D(r_shadow_texturepool, "prepassgeometrydepthmap", vid.width, vid.height, 24, false);
+			r_shadow_prepassgeometrynormalmaptexture = R_LoadTexture2D(r_shadow_texturepool, "prepassgeometrynormalmap", vid.width, vid.height, NULL, TEXTYPE_COLORBUFFER, TEXF_CLAMP | TEXF_ALPHA | TEXF_FORCENEAREST, NULL);
+			r_shadow_prepasslightingdiffusetexture = R_LoadTexture2D(r_shadow_texturepool, "prepasslightingdiffuse", vid.width, vid.height, NULL, TEXTYPE_COLORBUFFER, TEXF_CLAMP | TEXF_ALPHA | TEXF_FORCENEAREST, NULL);
+			r_shadow_prepasslightingspeculartexture = R_LoadTexture2D(r_shadow_texturepool, "prepasslightingspecular", vid.width, vid.height, NULL, TEXTYPE_COLORBUFFER, TEXF_CLAMP | TEXF_ALPHA | TEXF_FORCENEAREST, NULL);
 
 			// set up the geometry pass fbo (depth + normalmap)
 			qglGenFramebuffersEXT(1, &r_shadow_prepassgeometryfbo);CHECKGLERROR
 			qglBindFramebufferEXT(GL_FRAMEBUFFER_EXT, r_shadow_prepassgeometryfbo);CHECKGLERROR
-			qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_TEXTURE_RECTANGLE_ARB, R_GetTexture(r_shadow_prepassgeometrydepthtexture), 0);CHECKGLERROR
-			qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_RECTANGLE_ARB, R_GetTexture(r_shadow_prepassgeometrynormalmaptexture), 0);CHECKGLERROR
+			qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_TEXTURE_2D, R_GetTexture(r_shadow_prepassgeometrydepthtexture), 0);CHECKGLERROR
+			qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, R_GetTexture(r_shadow_prepassgeometrynormalmaptexture), 0);CHECKGLERROR
 			// render depth into one texture and normalmap into the other
-			qglDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);CHECKGLERROR
-			qglReadBuffer(GL_NONE);CHECKGLERROR
+			if (qglDrawBuffersARB)
+			{
+				qglDrawBuffer(GL_COLOR_ATTACHMENT0_EXT);CHECKGLERROR
+				qglReadBuffer(GL_NONE);CHECKGLERROR
+			}
 			status = qglCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);CHECKGLERROR
 			if (status != GL_FRAMEBUFFER_COMPLETE_EXT)
 			{
@@ -4067,14 +4069,17 @@ void R_Shadow_PrepareLights(void)
 			// set up the lighting pass fbo (diffuse + specular)
 			qglGenFramebuffersEXT(1, &r_shadow_prepasslightingfbo);CHECKGLERROR
 			qglBindFramebufferEXT(GL_FRAMEBUFFER_EXT, r_shadow_prepasslightingfbo);CHECKGLERROR
-			qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_TEXTURE_RECTANGLE_ARB, R_GetTexture(r_shadow_prepassgeometrydepthtexture), 0);CHECKGLERROR
-			qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_RECTANGLE_ARB, R_GetTexture(r_shadow_prepasslightingdiffusetexture), 0);CHECKGLERROR
-			qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT1_EXT, GL_TEXTURE_RECTANGLE_ARB, R_GetTexture(r_shadow_prepasslightingspeculartexture), 0);CHECKGLERROR
+			qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_TEXTURE_2D, R_GetTexture(r_shadow_prepassgeometrydepthtexture), 0);CHECKGLERROR
+			qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT0_EXT, GL_TEXTURE_2D, R_GetTexture(r_shadow_prepasslightingdiffusetexture), 0);CHECKGLERROR
+			qglFramebufferTexture2DEXT(GL_FRAMEBUFFER_EXT, GL_COLOR_ATTACHMENT1_EXT, GL_TEXTURE_2D, R_GetTexture(r_shadow_prepasslightingspeculartexture), 0);CHECKGLERROR
 			// render diffuse into one texture and specular into another,
 			// with depth and normalmap bound as textures,
 			// with depth bound as attachment as well
-			qglDrawBuffersARB(2, r_shadow_prepasslightingdrawbuffers);CHECKGLERROR
-			qglReadBuffer(GL_NONE);CHECKGLERROR
+			if (qglDrawBuffersARB)
+			{
+				qglDrawBuffersARB(2, r_shadow_prepasslightingdrawbuffers);CHECKGLERROR
+				qglReadBuffer(GL_NONE);CHECKGLERROR
+			}
 			status = qglCheckFramebufferStatusEXT(GL_FRAMEBUFFER_EXT);CHECKGLERROR
 			if (status != GL_FRAMEBUFFER_COMPLETE_EXT)
 			{
@@ -4280,9 +4285,9 @@ void R_DrawModelShadows(void)
 	//GL_ColorMask(r_refdef.view.colormask[0], r_refdef.view.colormask[1], r_refdef.view.colormask[2], 1);
 	//qglDepthFunc(GL_ALWAYS);CHECKGLERROR
 	qglEnable(GL_STENCIL_TEST);CHECKGLERROR
-	qglStencilMask(~0);CHECKGLERROR
+	qglStencilMask(255);CHECKGLERROR
 	qglStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);CHECKGLERROR
-	qglStencilFunc(GL_NOTEQUAL, 128, ~0);CHECKGLERROR
+	qglStencilFunc(GL_NOTEQUAL, 128, 255);CHECKGLERROR
 
 	// apply the blend to the shadowed areas
 	R_Mesh_Draw(0, 4, 0, 2, polygonelement3i, polygonelement3s, 0, 0);

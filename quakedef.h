@@ -94,7 +94,7 @@ extern char engineversion[128];
 #define	MAX_CACHED_PICS			1024 // this is 144 bytes each (or 152 on 64bit)
 #define	CACHEPICHASHSIZE		256
 #define	MAX_PARTICLEEFFECTNAME	256
-#define	MAX_PARTICLEEFFECTINFO	2048
+#define	MAX_PARTICLEEFFECTINFO	1024
 #define	MAX_PARTICLETEXTURES	96
 #define	MAXCLVIDEOS				1
 #define	MAX_GECKO_INSTANCES		1
@@ -104,6 +104,20 @@ extern char engineversion[128];
 #define	MAXTRACKS				256
 #define	MAX_DYNAMIC_CHANNELS	64
 #define	MAX_CHANNELS			260
+#define	MODLIST_TOTALSIZE		32
+#define	MAX_FAVORITESERVERS		32
+#define	MAX_DECALSYSTEM_QUEUE	64
+#define	PAINTBUFFER_SIZE		512
+#define	MAX_BINDMAPS			8
+#define	MAX_PARTICLES_INITIAL	32768
+#define	MAX_PARTICLES			32768
+#define	MAX_DECALS_INITIAL		1024
+#define	MAX_DECALS				1024
+#define	MAX_ENITIES_INITIAL		256
+#define	MAX_STATICENTITIES		256
+#define	MAX_EFFECTS				16
+#define	MAX_BEAMS				16
+#define	MAX_TEMPENTITIES		256
 #else
 #define	MAX_INPUTLINE			16384 ///< maximum length of console commandline, QuakeC strings, and many other text processing buffers
 #define	CON_TEXTSIZE			1048576 ///< max scrollback buffer characters in console
@@ -156,6 +170,20 @@ extern char engineversion[128];
 // NUM_AMBIENTS + MAX_DYNAMIC_CHANNELS to total_channels = static sounds
 #define	MAX_DYNAMIC_CHANNELS	512
 #define	MAX_CHANNELS			1028
+#define	MODLIST_TOTALSIZE		256
+#define	MAX_FAVORITESERVERS		256
+#define	MAX_DECALSYSTEM_QUEUE	1024
+#define	PAINTBUFFER_SIZE		2048
+#define	MAX_BINDMAPS			8
+#define	MAX_PARTICLES_INITIAL	8192 ///< initial allocation for cl.particles
+#define	MAX_PARTICLES			1048576 ///< upper limit on cl.particles size
+#define	MAX_DECALS_INITIAL		8192 ///< initial allocation for cl.decals
+#define	MAX_DECALS				1048576 ///< upper limit on cl.decals size
+#define	MAX_ENITIES_INITIAL		256 ///< initial size of cl.entities
+#define	MAX_STATICENTITIES		256 ///< limit on size of cl.static_entities
+#define	MAX_EFFECTS				256 ///< limit on size of cl.effects
+#define	MAX_BEAMS				256 ///< limit on size of cl.beams
+#define	MAX_TEMPENTITIES		4096 ///< max number of temporary models visible per frame (certain sprite effects, certain types of CSQC entities also use this)
 #endif
 
 
