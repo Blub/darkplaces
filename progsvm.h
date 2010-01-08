@@ -116,12 +116,21 @@ typedef struct prvm_edict_s
 //============================================================================
 #define PRVM_OP_STATE		1
 
+#ifdef DP_SMALLMEMORY
+#define	PRVM_MAX_STACK_DEPTH		128
+#define	PRVM_LOCALSTACK_SIZE		2048
+
+#define PRVM_MAX_OPENFILES 16
+#define PRVM_MAX_OPENSEARCHES 8
+#define PRVM_MAX_GECKOINSTANCES 1
+#else
 #define	PRVM_MAX_STACK_DEPTH		1024
 #define	PRVM_LOCALSTACK_SIZE		16384
 
 #define PRVM_MAX_OPENFILES 256
 #define PRVM_MAX_OPENSEARCHES 128
 #define PRVM_MAX_GECKOINSTANCES 32
+#endif
 
 typedef void (*prvm_builtin_t) (void);
 
@@ -543,9 +552,15 @@ void VM_Cmd_Reset(void);
 
 void PRVM_Init (void);
 
+#ifdef PROFILING
 void MVM_ExecuteProgram (func_t fnum, const char *errormessage);
 void CLVM_ExecuteProgram (func_t fnum, const char *errormessage);
 void SVVM_ExecuteProgram (func_t fnum, const char *errormessage);
+#else
+#define MVM_ExecuteProgram SVVM_ExecuteProgram
+#define CLVM_ExecuteProgram SVVM_ExecuteProgram
+void SVVM_ExecuteProgram (func_t fnum, const char *errormessage);
+#endif
 #define PRVM_ExecuteProgram prog->ExecuteProgram
 
 #define PRVM_Alloc(buffersize) _PRVM_Alloc(buffersize, __FILE__, __LINE__)

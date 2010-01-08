@@ -59,7 +59,7 @@ cvar_t sv_allowdownloads_archive = {0, "sv_allowdownloads_archive", "0", "whethe
 cvar_t sv_allowdownloads_config = {0, "sv_allowdownloads_config", "0", "whether to allow downloads of config files (cfg)"};
 cvar_t sv_allowdownloads_dlcache = {0, "sv_allowdownloads_dlcache", "0", "whether to allow downloads of dlcache files (dlcache/)"};
 cvar_t sv_allowdownloads_inarchive = {0, "sv_allowdownloads_inarchive", "0", "whether to allow downloads from archives (pak/pk3)"};
-cvar_t sv_areagrid_mingridsize = {CVAR_NOTIFY, "sv_areagrid_mingridsize", "64", "minimum areagrid cell size, smaller values work better for lots of small objects, higher values for large objects"};
+cvar_t sv_areagrid_mingridsize = {CVAR_NOTIFY, "sv_areagrid_mingridsize", "128", "minimum areagrid cell size, smaller values work better for lots of small objects, higher values for large objects"};
 cvar_t sv_checkforpacketsduringsleep = {0, "sv_checkforpacketsduringsleep", "0", "uses select() function to wait between frames which can be interrupted by packets being received, instead of Sleep()/usleep()/SDL_Sleep() functions which do not check for packets"};
 cvar_t sv_clmovement_enable = {0, "sv_clmovement_enable", "1", "whether to allow clients to use cl_movement prediction, which can cause choppy movement on the server which may annoy other players"};
 cvar_t sv_clmovement_minping = {0, "sv_clmovement_minping", "0", "if client ping is below this time in milliseconds, then their ability to use cl_movement prediction is disabled for a while (as they don't need it)"};
@@ -1645,19 +1645,24 @@ void SV_WriteEntitiesToClient(client_t *client, prvm_edict_t *clent, sizebuf_t *
 	numcsqcsendstates = 0;
 	for (i = 0;i < sv.numsendentities;i++)
 	{
-		if (sv.sententities[sv.sendentities[i].number] == sv.sententitiesmark)
+		s = &sv.sendentities[i];
+		if (sv.sententities[s->number] == sv.sententitiesmark)
 		{
-			if(sv.sendentities[i].active == ACTIVE_NETWORK)
+			if(s->active == ACTIVE_NETWORK)
 			{
-				s = &sv.writeentitiestoclient_sendstates[numsendstates++];
-				*s = sv.sendentities[i];
-				if (s->exteriormodelforclient && s->exteriormodelforclient == sv.writeentitiestoclient_cliententitynumber)
-					s->flags |= RENDER_EXTERIORMODEL;
+				if (s->exteriormodelforclient)
+				{
+					if (s->exteriormodelforclient == sv.writeentitiestoclient_cliententitynumber)
+						s->flags |= RENDER_EXTERIORMODEL;
+					else
+						s->flags &= ~RENDER_EXTERIORMODEL;
+				}
+				sv.writeentitiestoclient_sendstates[numsendstates++] = s;
 			}
 			else if(sv.sendentities[i].active == ACTIVE_SHARED)
-				sv.writeentitiestoclient_csqcsendstates[numcsqcsendstates++] = sv.sendentities[i].number;
+				sv.writeentitiestoclient_csqcsendstates[numcsqcsendstates++] = s->number;
 			else
-				Con_Printf("entity %d is in sv.sendentities and marked, but not active, please breakpoint me\n", sv.sendentities[i].number);
+				Con_Printf("entity %d is in sv.sendentities and marked, but not active, please breakpoint me\n", s->number);
 		}
 	}
 
