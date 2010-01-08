@@ -63,7 +63,8 @@
 	(ptrvalB >= 0 && ptrvalB + 1 <= GLOBALSIZE) ? 1 :	\
 	(ptrvalC >= 0 && ptrvalC + 1 <= /* TODO: fill in memory area size */0) ? 1 : \
 	0 )
-
+// well, the last change removed all #ifs - I'll still keep them
+#define PRVMBOUNDSCHECK
 #if PRVMBOUNDSCHECK
 #define PTR_ptr3(from, off, access)					\
 	if (PTR_ISGBL(from))						\
@@ -139,10 +140,9 @@ ptrvalC = 0;
 		{
 			st++;
 
-#if PRVMTRACE
-			PRVM_PrintStatement(st);
-#endif
-#if PRVMSTATEMENTPROFILING
+#if PRVMSLOWINTERPRETER
+			if (prog->trace)
+				PRVM_PrintStatement(st);
 			prog->statement_profile[st - prog->statements]++;
 #endif
 
@@ -300,7 +300,6 @@ ptrvalC = 0;
 				break;
 
 			case OP_ADDRESS:
-#if PRVMBOUNDSCHECK
 				if (OPA->edict < 0 || OPA->edict >= prog->max_edicts)
 				{
 					prog->xfunction->profile += (st - startst);
@@ -315,7 +314,6 @@ ptrvalC = 0;
 					PRVM_ERROR("%s attempted to address an invalid field (%i) in an edict", PRVM_NAME, OPB->_int);
 					goto cleanup;
 				}
-#endif
 #if 0
 				if (OPA->edict == 0 && !prog->allowworldwrites)
 				{
@@ -336,61 +334,6 @@ ptrvalC = 0;
 			case OP_LOAD_FNC:
 			case OP_LOAD_P:
 #if PRVMBOUNDSCHECK
-				if (OPA->edict < 0 || OPA->edict >= prog->max_edicts)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to read an out of bounds edict number", PRVM_NAME);
-					goto cleanup;
-				}
-				if ((unsigned int)(OPB->_int) >= (unsigned int)(prog->progs->entityfields))
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR("%s attempted to read an invalid field in an edict (%i)", PRVM_NAME, OPB->_int);
-					goto cleanup;
-				}
-#endif
-				ed = PRVM_PROG_TO_EDICT(OPA->edict);
-				OPC->_int = ((prvm_eval_t *)((int *)ed->fields.vp + OPB->_int))->_int;
-				break;
-
-			case OP_LOAD_V:
-#if PRVMBOUNDSCHECK
-				if (OPA->edict < 0 || OPA->edict >= prog->max_edicts)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR ("%s Progs attempted to read an out of bounds edict number", PRVM_NAME);
-					goto cleanup;
-				}
-				if (OPB->_int < 0 || OPB->_int + 2 >= prog->progs->entityfields)
-				{
-					prog->xfunction->profile += (st - startst);
-					prog->xstatement = st - prog->statements;
-					PRVM_ERROR("%s attempted to read an invalid field in an edict (%i)", PRVM_NAME, OPB->_int);
-					goto cleanup;
-				}
-#endif
-				ed = PRVM_PROG_TO_EDICT(OPA->edict);
-				OPC->ivector[0] = ((prvm_eval_t *)((int *)ed->fields.vp + OPB->_int))->ivector[0];
-				OPC->ivector[1] = ((prvm_eval_t *)((int *)ed->fields.vp + OPB->_int))->ivector[1];
-				OPC->ivector[2] = ((prvm_eval_t *)((int *)ed->fields.vp + OPB->_int))->ivector[2];
-				break;
-
-		//==================
-
-			case OP_IFNOT:
-				if(!FLOAT_IS_TRUE_FOR_INT(OPA->_int))
-				// TODO add an "int-if", and change this one to OPA->_float
-				// although mostly unneeded, thanks to the only float being false being 0x0 and 0x80000000 (negative zero)
-				// and entity, string, field values can never have that value
-				{
-					prog->xfunction->profile += (st - startst);
-					st += st->b - 1;	// offset the s++
-					startst = st;
-					
-					// no bounds check needed, it is done when loading progs
 					RUNAWAYCHECK();
 				}
 				break;
@@ -473,7 +416,6 @@ ptrvalC = 0;
 				if (!OPA->function)
 					PRVM_ERROR("NULL function in %s", PRVM_NAME);
 
-#if PRVMBOUNDSCHECK
 				if(!OPA->function || OPA->function >= (unsigned int)prog->progs->numfunctions)
 				{
 					prog->xfunction->profile += (st - startst);
@@ -481,7 +423,6 @@ ptrvalC = 0;
 					PRVM_ERROR("%s CALL outside the program", PRVM_NAME);
 					goto cleanup;
 				}
-#endif
 
 				newf = &prog->functions[OPA->function];
 				newf->callcount++;

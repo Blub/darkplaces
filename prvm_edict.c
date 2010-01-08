@@ -43,11 +43,8 @@ cvar_t prvm_errordump = {0, "prvm_errordump", "0", "write a savegame on crash to
 cvar_t prvm_reuseedicts_startuptime = {0, "prvm_reuseedicts_startuptime", "2", "allows immediate re-use of freed entity slots during start of new level (value in seconds)"};
 cvar_t prvm_reuseedicts_neverinsameframe = {0, "prvm_reuseedicts_neverinsameframe", "1", "never allows re-use of freed entity slots during same frame"};
 
+static double prvm_reuseedicts_always_allow = 0;
 qboolean prvm_runawaycheck = true;
-
-// LordHavoc: optional runtime bounds checking (speed drain, but worth it for security, on by default - breaks most QCCX features (used by CRMod and others))
-// enables detection of out of bounds memory access in the QuakeC code being run (in other words, prevents really exceedingly bad QuakeC code from doing nasty things to your computer)
-qboolean prvm_boundscheck = true;
 
 extern sizebuf_t vm_tempstringsbuf;
 
@@ -243,6 +240,8 @@ qboolean PRVM_ED_CanAlloc(prvm_edict_t *e)
 {
 	if(!e->priv.required->free)
 		return false;
+	if(prvm_reuseedicts_always_allow == realtime)
+		return true;
 	if(realtime <= e->priv.required->freetime && prvm_reuseedicts_neverinsameframe.integer)
 		return false; // never allow reuse in same frame (causes networking trouble)
 	if(e->priv.required->freetime < prog->starttime + prvm_reuseedicts_startuptime.value)
@@ -1406,6 +1405,7 @@ void PRVM_ED_LoadFromFile (const char *data)
 	spawned = 0;
 	died = 0;
 
+	prvm_reuseedicts_always_allow = realtime;
 
 // parse ents
 	while (1)
@@ -1517,6 +1517,8 @@ void PRVM_ED_LoadFromFile (const char *data)
 	}
 
 	Con_DPrintf("%s: %i new entities parsed, %i new inhibited, %i (%i new) spawned (whereas %i removed self, %i stayed)\n", PRVM_NAME, parsed, inhibited, prog->num_edicts, spawned, died, spawned - died);
+
+	prvm_reuseedicts_always_allow = 0;
 }
 
 void PRVM_FindOffsets(void)
@@ -2874,9 +2876,6 @@ void PRVM_Init (void)
 	Cmd_AddCommand ("cl_cmd", PRVM_GameCommand_Client_f, "calls the client QC function GameCommand with the supplied string as argument");
 	Cmd_AddCommand ("menu_cmd", PRVM_GameCommand_Menu_f, "calls the menu QC function GameCommand with the supplied string as argument");
 	Cmd_AddCommand ("sv_cmd", PRVM_GameCommand_Server_f, "calls the server QC function GameCommand with the supplied string as argument");
-
-	// COMMANDLINEOPTION: PRVM: -noboundscheck disables the bounds checks (security hole if CSQC is in use!)
-	prvm_boundscheck = !COM_CheckParm("-noboundscheck");
 
 	Cvar_RegisterVariable (&prvm_language);
 	Cvar_RegisterVariable (&prvm_traceqc);

@@ -24,9 +24,6 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "image.h"
 #include "r_shadow.h"
 
-#define ABSOLUTE_MAX_PARTICLES 1<<24 // upper limit on cl.max_particles
-#define ABSOLUTE_MAX_DECALS 1<<24 // upper limit on cl.max_decals
-
 // must match ptype_t values
 particletype_t particletype[pt_total] =
 {
@@ -2284,9 +2281,7 @@ void R_DrawDecal_TransparentCallback(const entity_render_t *ent, const rtlight_t
 	// (this assumes they all use one particle font texture!)
 	GL_BlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
 	R_SetupShader_Generic(particletexture[63].texture, NULL, GL_MODULATE, 1);
-	GL_LockArrays(0, numsurfaces*4);
 	R_Mesh_Draw(0, numsurfaces * 4, 0, numsurfaces * 2, NULL, particle_elements, 0, 0);
-	GL_LockArrays(0, 0);
 }
 
 void R_DrawDecals (void)
@@ -2355,10 +2350,10 @@ killdecal:
 	while (cl.num_decals > 0 && cl.decals[cl.num_decals - 1].typeindex == 0)
 		cl.num_decals--;
 
-	if (cl.num_decals == cl.max_decals && cl.max_decals < ABSOLUTE_MAX_DECALS)
+	if (cl.num_decals == cl.max_decals && cl.max_decals < MAX_DECALS)
 	{
 		decal_t *olddecals = cl.decals;
-		cl.max_decals = min(cl.max_decals * 2, ABSOLUTE_MAX_DECALS);
+		cl.max_decals = min(cl.max_decals * 2, MAX_DECALS);
 		cl.decals = (decal_t *) Mem_Alloc(cls.levelmempool, cl.max_decals * sizeof(decal_t));
 		memcpy(cl.decals, olddecals, cl.num_decals * sizeof(decal_t));
 		Mem_Free(olddecals);
@@ -2550,7 +2545,6 @@ void R_DrawParticle_TransparentCallback(const entity_render_t *ent, const rtligh
 	// now render batches of particles based on blendmode and texture
 	blendmode = PBLEND_INVALID;
 	texture = NULL;
-	GL_LockArrays(0, numsurfaces*4);
 	batchstart = 0;
 	batchcount = 0;
 	for (surfacelistindex = 0;surfacelistindex < numsurfaces;)
@@ -2592,7 +2586,6 @@ void R_DrawParticle_TransparentCallback(const entity_render_t *ent, const rtligh
 		batchcount = surfacelistindex - batchstart;
 		R_Mesh_Draw(batchstart * 4, batchcount * 4, batchstart * 2, batchcount * 2, NULL, particle_elements, 0, 0);
 	}
-	GL_LockArrays(0, 0);
 }
 
 void R_DrawParticles (void)
@@ -2814,10 +2807,10 @@ killparticle:
 	while (cl.num_particles > 0 && cl.particles[cl.num_particles - 1].typeindex == 0)
 		cl.num_particles--;
 
-	if (cl.num_particles == cl.max_particles && cl.max_particles < ABSOLUTE_MAX_PARTICLES)
+	if (cl.num_particles == cl.max_particles && cl.max_particles < MAX_PARTICLES)
 	{
 		particle_t *oldparticles = cl.particles;
-		cl.max_particles = min(cl.max_particles * 2, ABSOLUTE_MAX_PARTICLES);
+		cl.max_particles = min(cl.max_particles * 2, MAX_PARTICLES);
 		cl.particles = (particle_t *) Mem_Alloc(cls.levelmempool, cl.max_particles * sizeof(particle_t));
 		memcpy(cl.particles, oldparticles, cl.num_particles * sizeof(particle_t));
 		Mem_Free(oldparticles);
