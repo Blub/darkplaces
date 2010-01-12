@@ -128,6 +128,7 @@ void *Mem_ExpandableArray_RecordAtIndex(const memexpandablearray_t *l, size_t in
 
 // used for temporary allocations
 extern mempool_t *tempmempool;
+extern mempool_t *threadmempool;
 
 void Memory_Init (void);
 void Memory_Shutdown (void);

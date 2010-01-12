@@ -727,6 +727,7 @@ void *Mem_ExpandableArray_RecordAtIndex(const memexpandablearray_t *l, size_t in
 // storage, if anything in this pool stays allocated during gameplay, it is
 // considered a leak
 mempool_t *tempmempool;
+mempool_t *threadmempool;
 // only for zone
 mempool_t *zonemempool;
 
@@ -824,6 +825,7 @@ void Memory_Init (void)
 	sentinel_seed = rand();
 	poolchain = NULL;
 	tempmempool = Mem_AllocPool("Temporary Memory", POOLFLAG_TEMP, NULL);
+	threadmempool = Mem_AllocPool("Synchronized Thread Memory", 0, NULL);
 	zonemempool = Mem_AllocPool("Zone", 0, NULL);
 }
 

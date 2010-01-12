@@ -220,3 +220,189 @@ int main (int argc, char *argv[])
 
 	return 0;
 }
+
+#include "zone.h"
+#include <SDL/SDL_thread.h>
+
+static SDL_mutex *mem_mutex = NULL;
+static qboolean threads_available = false;
+
+qboolean Sys_InitThreads (void)
+{
+	mem_mutex = SDL_CreateMutex();
+	if (!mem_mutex)
+		return false;
+
+	threads_available = true;
+	return true;
+}
+
+qboolean Sys_ThreadMem_Lock (void)
+{
+	return (SDL_mutexP(mem_mutex) != 0);
+}
+
+qboolean Sys_ThreadMem_Unlock (void)
+{
+	return (SDL_mutexV(mem_mutex) != 0);
+}
+
+static void *_Sys_ThreadMem_Alloc(size_t size)
+{
+	return Mem_Alloc(threadmempool, size);
+}
+
+void *Sys_ThreadMem_Alloc (size_t size)
+{
+	void *data;
+	if (!threads_available)
+		return NULL;
+	Sys_ThreadMem_Lock();
+	data = _Sys_ThreadMem_Alloc(size);
+	Sys_ThreadMem_Unlock();
+	return data;
+}
+
+static void *_Sys_ThreadMem_Free(size_t size)
+{
+	return Mem_Free(threadmempool, size);
+}
+
+void Sys_ThreadMem_Free (void *data)
+{
+	if (threads_available)
+		Sys_ThreadMem_Lock();
+	_Sys_ThreadMem_Free(data);
+	if (threads_available)
+		Sys_ThreadMem_Unlock();
+}
+
+sys_mutex_t *Sys_Mutex_New (void)
+{
+	if (!threads_available)
+		return NULL;
+	return (sys_mutex_t*)SDL_CreateMutex();
+}
+
+qboolean Sys_Mutex_Lock (sys_mutex_t *mutex)
+{
+	if (!threads_available)
+		return false;
+	return (SDL_mutexP((SDL_mutex*)mutex) == 0);
+}
+
+qboolean Sys_Mutex_Unlock (sys_mutex_t *mutex)
+{
+	if (!threads_available)
+		return false;
+	return (SDL_mutexV((SDL_mutex*)mutex) == 0);
+}
+
+void SDL_Mutex_Free (sys_mutex_t *mutex)
+{
+	if (!threads_available)
+		return;
+	SDL_DestroyMutex( (SDL_mutex*)mutex );
+}
+
+typedef struct {
+	sys_mutex_t          *mutex;
+	int                   maxThreads;
+	int                   maxQueued;
+	memexpandablearray_t  threads;
+	memexpandablearray_t  queue;
+} _sys_threadpool_t;
+
+typedef SDL_thread *_sys_thread_t;
+
+typedef struct {
+	SDL_thread        *thread;
+	_sys_threadpool_t *pool;
+	SDL_sem           *semRun; // increased whenever the thread can run again
+	SDL_sem           *semQueue; // increased as soon as the thread accepts a new job - AFTER the function is executed
+	qboolean           quit;
+	sys_threadentry_t *nextEntry;
+	void              *nextUserdata;
+} _sys_poolthread_t;
+
+typedef struct {
+	sys_threadentry_t *entry;
+	void *userdata;
+} _sys_queueentry_t;
+
+static int ThreadPool_Entry(_sys_poolthread_t *self)
+{
+	sys_threadentry_t *entry;
+	void *data;
+	while (!self->quit) {
+		SDL_SemWait(self->semRun);
+		if (!nextEntry)
+			continue;
+		entry = self->nextEntry;
+		data = self->data;
+		self->nextEntry = NULL;
+		(*entry)(data);
+		SDL_SemPost(self->semQueue);
+	}
+}
+
+static qboolean ThreadPool_Try(_sys_poolthread_t *thread, sys_threadentry_t *entry, void *data)
+{
+	if (SDL_SemTryWait(thread->semQueue) == SDL_MUTEX_TIMEOUT)
+		return false;
+	thread->nextEntry = entry;
+	thread->nextData = data;
+	SDL_SemPost(thread->semRun);
+	return true;
+}
+
+static _sys_poolthread_t *_Sys_PoolThread_New (_sys_threadpool_t *pool)
+{
+	_sys_poolthread_t *thread = _Sys_ThreadMem_Alloc(sizeof(_sys_poolthread_t));
+	thread->pool = pool;
+	thread->semQueue = SDL_CreateSemaphore(1);
+	thread->semRun = SDL_CreateSemaphore(0);
+	thread->quit = false;
+	thread->nextEntry = NULL;
+	thread->nextUserdata = NULL;
+	thread->thread = SDL_CreateThread((sys_threadentry_t*)&ThreadPool_Entry, (void*)thread);
+	return thread;
+}
+
+sys_threadpool_t *Sys_ThreadPool_New (int min, int max, int queueMax)
+{
+	_sys_threadpool_t *pool;
+	if (!threads_available)
+		return NULL;
+	if (!Sys_ThreadMem_Lock())
+		return NULL;
+
+	pool = _Sys_ThreadMem_Alloc(sizeof(_sys_threadpool_t));
+	if (!pool)
+		return NULL;
+	memset(pool, 0, sizeof(pool));
+	pool->maxThreads = max;
+	pool->maxQueued = queueMax;
+
+	if (!(pool->mutex = Sys_Mutex_New()))
+		goto error;
+
+	Mem_ExpandableArray_NewArray(&pool->threads, threadmempool, sizeof(_sys_poolthread_t), 16);
+	Mem_ExpandableArray_NewArray(&pool->queue, threadmempool, sizeof(_sys_queueentry_t), 16);
+
+	for (; min > 0; --min) {
+		_sys_thread_t *th;
+		th = Mem_ExpandableArray_AllocRecord(&pool->threads);
+		*th = _Sys_PoolThread_New(pool);
+	}
+	
+	Sys_ThreadMem_Unlock();
+	return pool;
+
+error:
+	if (pool->mutex)
+		_Sys_ThreadMem_Free(pool->mutex);
+	_Sys_ThreadMem_Free(pool);
+	Sys_ThreadMem_Unlock();
+	return NULL;
+}
