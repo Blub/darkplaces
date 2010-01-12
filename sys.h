@@ -95,5 +95,55 @@ void Sys_SendKeyEvents (void);
 
 char *Sys_GetClipboardData (void);
 
+typedef void *sys_mutex_t;
+//typedef void *sys_semaphore_t;
+typedef void *sys_thread_t;
+typedef void *sys_threadpool_t;
+typedef int sys_threadentry_t (void*);
+
+// Sys_ThreadMem_ - thread-safe memory allocation routines
+// Sys_Thread_    - system function to deal with threads
+// Thread_        - functions used by threads, for example to exit a thread
+
+void              *Sys_ThreadMem_Alloc (size_t);
+void               Sys_ThreadMem_Free (void*);
+sys_mutex_t       *Sys_Mutex_New (void);
+qboolean           Sys_Mutex_Lock (sys_mutex_t*);
+qboolean           Sys_Mutex_Unlock (sys_mutex_t*);
+void               Sys_Mutex_Free (sys_mutex_t*);
+sys_threadpool_t  *Sys_ThreadPool_New (int min, int max, int queueMax); // max -1 for no limit
+/*! This spawns a new thread which does not belong to a threadpool.
+ * There is no hardcoded limit here. It returns NULL if the call fails.
+ */
+sys_thread_t      *Thread_New (sys_threadentry_t*, void *userdata);
+/*! Cancel a running thread. This may not be used with threads from a threadpool.
+ * In case the thread belonged to a threadpool, nothing happens and false is returned.
+ * Otherwise the thread is cancelled and true is returned.
+ */
+qboolean           Thread_Cancel (sys_thread_t*);
+/*! (Try to) Spawn a thread. If there is still space in the threadpool, the function is executed in a new thread.
+ * Otherwise, if block is false, the call fails and returns NULL, or if block is true, the call blocks until a
+ * thread is available.
+ */
+sys_thread_t      *Sys_Thread_Spawn (sys_threadpool_t*, sys_threadentry_t*, void *userdata, qboolean block);
+/*! (Try to) Queue a function for execution in the threadpool.
+ * As soon as a thread is available in the threadpool, the function will be executed.
+ * In case too many functions are queued already, this function fails and returns -1.
+ * Otherwise, the function returns whether or not there was a thread already available.
+ */
+int                Sys_Thread_Queue (sys_threadpool_t*, sys_threadentry_t*, void *userdata);
+
+void               Thread_Exit (int);
+//void               Thread_Yield();
+
+/*
+sys_semaphore_t   *Sys_Semaphore_New (int);
+qboolean           Sys_Semaphore_Acquire (sys_semaphore_t*);
+qboolean           Sys_Semaphore_AcquireCount (sys_semaphore_t*, int);
+qboolean           Sys_Semaphore_Release (sys_semaphore_t*);
+qboolean           Sys_Semaphore_ReleaseCount (sys_semaphore_t*, int);
+void               Sys_Semaphore_Free (sys_semaphore_t*);
+*/
+
 #endif
 
