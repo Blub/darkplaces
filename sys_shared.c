@@ -186,26 +186,37 @@ void* Sys_GetProcAddress (dllhandle_t handle, const char* name)
 void *_Sys_ThreadMem_Alloc (size_t);
 void _Sys_ThreadMem_Free (void*);
 
+typedef struct _threadlist_s {
+	struct _sys_poolthread_s *thread;
+	struct _threadlist_s *next;
+} _threadlist_t;
+
+typedef struct _joblist_s {
+	sys_threadentry_t *entry;
+	void *data;
+	struct _joblist_s *next;
+} _joblist_t;
+
 typedef struct {
 	sys_mutex_t          *mutex;
+	qboolean              quit;
 	int                   maxThreads;
 	int                   maxQueued;
-	qboolean              quit;
-	memexpandablearray_t  threads;
-	memexpandablearray_t  queue;
-	sys_semaphore_t      *semEmpty; // not-0 if the queue is empty
-	struct _sys_poolthread_s *first;
+	sys_semaphore_t       jobs; // increased whenever a job is added
+	sys_semaphore_t       available; // # of idle threads
+	sys_semaphore_t       empty; // 1 if empty
+
+	size_t                threadcount;
+	_threadlist_t        *threadlist;
+	size_t                jobcount;
+	_joblist_t           *joblist;
+	_joblist_t           *jobend;
 } _sys_threadpool_t;
 
 typedef struct _sys_poolthread_s {
 	sys_thread_t      *thread;
 	_sys_threadpool_t *pool;
-	sys_semaphore_t   *semRun; // increased whenever the thread can run again
-	sys_semaphore_t   *semQueue; // increased as soon as the thread accepts a new job - AFTER the function is executed
 	qboolean           quit;
-	sys_threadentry_t *nextEntry;
-	void              *nextUserdata;
-	struct _sys_poolthread_s *nextThread; // we order them so the free ones are first
 } _sys_poolthread_t;
 
 typedef struct {
@@ -213,25 +224,67 @@ typedef struct {
 	void *userdata;
 } _sys_queueentry_t;
 
+static qboolean _Sys_ThreadPool_GetJob(_sys_threadpool_t *pool, sys_threadentry_t **entry, void **data)
+{
+	_joblist_t *job;
+	if (!pool->jobcount)
+		return false;
+	pool->jobcount--;
+	job = pool->joblist;
+	pool->joblist = pool->joblist->next;
+	if (pool->jobend == job)
+		pool->jobend = pool->joblist;
+	
+	*entry = job->entry;
+	*data = job->data;
+	Sys_ThreadMem_Free(job);
+	return true;
+}
+
+static qboolean _Sys_ThreadPool_AddJob(_sys_threadpool_t *pool, sys_threadentry_t *entry, void *data)
+{
+	_joblist_t *job = (_joblist_t*)Sys_ThreadMem_Alloc(sizeof(_joblist_t));
+	if (!job)
+		return false;
+	job->next = NULL;
+	job->entry = entry;
+	job->data = data;
+	if (!pool->joblist)
+		pool->joblist = pool->jobend = job;
+	else {
+		pool->jobend->next = job;
+		pool->jobend = job;
+	}
+	pool->jobcount++;
+	return true;
+}
+
 static int ThreadPool_Entry(_sys_poolthread_t *self)
 {
 	sys_threadentry_t *entry;
 	void *data;
+	Sys_Semaphore_Post(self->pool->available);
 	while (!self->quit) {
-		Sys_Semaphore_Wait(self->semRun, true);
-		/* not the responsibility of this function to detect such a thing
-		if (!self->nextEntry)
-			continue;
-		*/
-		entry = self->nextEntry;
-		data = self->nextUserdata;
-		self->nextEntry = NULL;
-		(*entry)(data);
-		Sys_Semaphore_Post(self->semQueue);
+		if (!Sys_Semaphore_Wait(self->pool->jobs, true))
+			return 1;
+		if (!Sys_Mutex_Lock(self->pool->mutex))
+			return 1;
+		if (!_Sys_ThreadPool_GetJob(self->pool, &entry, &data)) {
+			Sys_Mutex_Unlock(self->pool->mutex);
+			return 1;
+		}
+		Sys_Mutex_Unlock(self->pool->mutex);
+		if (entry)
+		{
+			Sys_Semaphore_Wait(self->pool->available, true);
+			(*entry)(data);
+			Sys_Semaphore_Post(self->pool->available);
+		}
 	}
 	return 0;
 }
 
+/*
 static qboolean ThreadPool_Try(_sys_poolthread_t *thread, sys_threadentry_t *entry, void *data)
 {
 	if (!Sys_Semaphore_Wait(thread->semQueue, false))
@@ -241,28 +294,20 @@ static qboolean ThreadPool_Try(_sys_poolthread_t *thread, sys_threadentry_t *ent
 	Sys_Semaphore_Post(thread->semRun);
 	return true;
 }
+*/
 
 static _sys_poolthread_t *_Sys_PoolThread_New (_sys_threadpool_t *pool)
 {
 	_sys_poolthread_t *thread = _Sys_ThreadMem_Alloc(sizeof(_sys_poolthread_t));
 	thread->pool = pool;
-	thread->semQueue = Sys_Semaphore_New(1);
-	thread->semRun = Sys_Semaphore_New(0);
 	thread->quit = false;
-	thread->nextEntry = NULL;
-	thread->nextUserdata = NULL;
 	thread->thread = Sys_Thread_New((sys_threadentry_t*)&ThreadPool_Entry, (void*)thread);
 	return thread;
 }
 
-static void _Sys_PoolThread_Free(_sys_poolthread_t *thread)
-{
-	Sys_Semaphore_Free(thread->semQueue);
-	Sys_Semaphore_Free(thread->semRun);
-}
-
 sys_threadpool_t *Sys_ThreadPool_New (int min, int max, int queueMax)
 {
+	_threadlist_t *tlend;
 	_sys_threadpool_t *pool;
 	if (!Sys_ThreadsAvailable())
 		return NULL;
@@ -278,29 +323,30 @@ sys_threadpool_t *Sys_ThreadPool_New (int min, int max, int queueMax)
 	if (!pool)
 		return NULL;
 	memset(pool, 0, sizeof(pool));
+	if (!(pool->mutex = Sys_Mutex_New()))
+		goto error;
 	pool->quit = false;
 	pool->maxThreads = max;
 	pool->maxQueued = queueMax;
-	pool->semEmpty = Sys_Semaphore_New(1);
+	pool->jobs = Sys_Semaphore_New(0);
+	pool->available = Sys_Semaphore_New(0);
+	pool->empty = Sys_Semaphore_New(1);
 
-	if (!(pool->mutex = Sys_Mutex_New()))
-		goto error;
-
-	Mem_ExpandableArray_NewArray(&pool->threads, threadmempool, sizeof(_sys_poolthread_t), 16);
-	Mem_ExpandableArray_NewArray(&pool->queue, threadmempool, sizeof(_sys_queueentry_t), 16);
-
-	for (; min > 0; --min) {
-		_sys_poolthread_t **th;
-		th = Mem_ExpandableArray_AllocRecord(&pool->threads);
-		*th = _Sys_PoolThread_New(pool);
+	pool->threadlist = tlend = (_threadlist_t*)_Sys_ThreadMem_Alloc(sizeof(_threadlist_t));
+	pool->threadlist->thread = _Sys_PoolThread_New(pool);
+	pool->threadlist->next = NULL;
+	for (--min; min > 0; --min) {
+		_threadlist_t *list = (_threadlist_t*)_Sys_ThreadMem_Alloc(sizeof(_threadlist_t));
+		list->thread = _Sys_PoolThread_New(pool);
+		list->next = NULL;
+		tlend->next = list;
+		tlend = list;
 	}
 	
 	Sys_ThreadMem_Unlock();
 	return (sys_threadpool_t*)pool;
 
 error:
-	if (pool->mutex)
-		Sys_Mutex_Free(pool->mutex);
 	_Sys_ThreadMem_Free(pool);
 	Sys_ThreadMem_Unlock();
 	return NULL;
@@ -308,10 +354,9 @@ error:
 
 void Sys_ThreadPool_Join (sys_threadpool_t *_pool, qboolean kill)
 {
-	size_t i;
-	size_t nThreads;
 	_sys_threadpool_t *pool = (_sys_threadpool_t*)_pool;
-
+	_threadlist_t *tlist;
+	_joblist_t *jlist;
 	// here we need to check if the mutex actually locks, if so
 	// we check if this threadpool is being destroyd already, and if so, we return
 	// if not, we set the flag that it is being destroyed, and wait for it to die.
@@ -328,25 +373,44 @@ void Sys_ThreadPool_Join (sys_threadpool_t *_pool, qboolean kill)
 	pool->maxQueued = 0;
 	Sys_Mutex_Unlock(pool->mutex);
 
-	Sys_Semaphore_Wait(pool->semEmpty, true);
+	Sys_Semaphore_Wait(pool->empty, true);
 
 	Sys_Mutex_Lock(pool->mutex);
-	nThreads = Mem_ExpandableArray_IndexRange(&pool->threads);
-	for (i = 0; i < nThreads; ++i) {
-		_sys_poolthread_t *t = (_sys_poolthread_t*) Mem_ExpandableArray_RecordAtIndex(&pool->threads, i);
+	for (tlist = pool->threadlist; tlist != NULL; tlist = tlist->next) {
+		_sys_poolthread_t *t = tlist->thread;
 		t->quit = true;
 		Sys_Mutex_Unlock(pool->mutex);
 		if (kill)
 			Thread_Cancel(t->thread);
 		else
 			Sys_Thread_Join(t->thread);
-		_Sys_PoolThread_Free(t);
 		Sys_Mutex_Lock(pool->mutex);
 	}
 	Sys_Mutex_Free(pool->mutex);
-	Mem_ExpandableArray_FreeArray(&pool->threads);
-	Mem_ExpandableArray_FreeArray(&pool->queue);
+
+	Sys_ThreadMem_Lock();
+	for (tlist = pool->threadlist; tlist != NULL; tlist = tlist->next)
+		_Sys_ThreadMem_Free(tlist);
+	
+	pool->threadlist = NULL;
+	if (pool->joblist) {
+		Con_Print("^1ERROR: Threadpool contains jobs after being destroyed!\n");
+		for (jlist = pool->joblist; jlist != NULL; jlist = jlist->next)
+			_Sys_ThreadMem_Free(jlist);
+	}
+	Sys_ThreadMem_Unlock();
+	Sys_Semaphore_Free(pool->available);
+	Sys_Semaphore_Free(pool->empty);
+	Sys_Semaphore_Free(pool->jobs);
 	
 	// Now die:
 	Sys_ThreadMem_Free(pool);
 }
+/*! Spawn a thread in a specified threadpool. If block is true, and the job-queue isn't maxed out, the function will block until
+ * the function is actually executed. If the queue is maxed out nothing happens and 0 is returned.
+ * It returns 0 on error, 1 if the job is queued successfully, and 2 if the job is also executed immediately.
+
+int               *Sys_Thread_Spawn (sys_threadpool_t*, sys_threadentry_t*, void *userdata, qboolean block)
+{
+}
+*/

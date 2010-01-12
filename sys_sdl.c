@@ -356,12 +356,3 @@ void Thread_Cancel (sys_thread_t *thread)
 {
 	SDL_KillThread((SDL_Thread*)thread);
 }
-
-/*! Spawn a thread in a specified threadpool. If block is true, and the job-queue isn't maxed out, the function will block until
- * the function is actually executed. If the queue is maxed out nothing happens and 0 is returned.
- * It returns 0 on error, 1 if the job is queued successfully, and 2 if the job is also executed immediately.
-
-int               *Sys_Thread_Spawn (sys_threadpool_t*, sys_threadentry_t*, void *userdata, qboolean block)
-{
-}
-*/
