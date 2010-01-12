@@ -305,6 +305,34 @@ void Sys_Mutex_Free (sys_mutex_t *mutex)
 	SDL_DestroyMutex( (SDL_mutex*)mutex );
 }
 
+sys_semaphore_t *Sys_Semaphore_New (int value)
+{
+	return (sys_semaphore_t*)SDL_CreateSemaphore(value);
+}
+
+void Sys_Semaphore_Free (sys_semaphore_t *sem)
+{
+	SDL_DestroySemaphore((SDL_sem*)sem);
+}
+
+qboolean Sys_Semaphore_Wait (sys_semaphore_t *sem, qboolean block)
+{
+	if (block)
+		return (SDL_SemWait((SDL_sem*)sem) == 0);
+	else
+		return (SDL_SemTryWait((SDL_sem*)sem) == 0);
+}
+
+qboolean Sys_Semaphore_Post (sys_semaphore_t *sem)
+{
+	return (SDL_SemPost((SDL_sem*)sem) == 0);
+}
+
+int Sys_Semaphore_Value (sys_semaphore_t *sem)
+{
+	return SDL_SemValue((SDL_sem*)sem);
+}
+
 typedef SDL_Thread _sys_thread_t;
 
 typedef struct {
@@ -314,15 +342,15 @@ typedef struct {
 	qboolean              quit;
 	memexpandablearray_t  threads;
 	memexpandablearray_t  queue;
-	SDL_sem              *semEmpty; // not-0 if the queue is empty
+	sys_semaphore_t      *semEmpty; // not-0 if the queue is empty
 	struct _sys_poolthread_s *first;
 } _sys_threadpool_t;
 
 typedef struct _sys_poolthread_s {
 	sys_thread_t      *thread;
 	_sys_threadpool_t *pool;
-	SDL_sem           *semRun; // increased whenever the thread can run again
-	SDL_sem           *semQueue; // increased as soon as the thread accepts a new job - AFTER the function is executed
+	sys_semaphore_t   *semRun; // increased whenever the thread can run again
+	sys_semaphore_t   *semQueue; // increased as soon as the thread accepts a new job - AFTER the function is executed
 	qboolean           quit;
 	sys_threadentry_t *nextEntry;
 	void              *nextUserdata;
@@ -339,7 +367,7 @@ static int ThreadPool_Entry(_sys_poolthread_t *self)
 	sys_threadentry_t *entry;
 	void *data;
 	while (!self->quit) {
-		SDL_SemWait(self->semRun);
+		Sys_Semaphore_Wait(self->semRun, true);
 		/* not the responsibility of this function to detect such a thing
 		if (!self->nextEntry)
 			continue;
@@ -348,18 +376,18 @@ static int ThreadPool_Entry(_sys_poolthread_t *self)
 		data = self->nextUserdata;
 		self->nextEntry = NULL;
 		(*entry)(data);
-		SDL_SemPost(self->semQueue);
+		Sys_Semaphore_Post(self->semQueue);
 	}
 	return 0;
 }
 
 static qboolean ThreadPool_Try(_sys_poolthread_t *thread, sys_threadentry_t *entry, void *data)
 {
-	if (SDL_SemTryWait(thread->semQueue) == SDL_MUTEX_TIMEDOUT)
+	if (!Sys_Semaphore_Wait(thread->semQueue, false))
 		return false;
 	thread->nextEntry = entry;
 	thread->nextUserdata = data;
-	SDL_SemPost(thread->semRun);
+	Sys_Semaphore_Post(thread->semRun);
 	return true;
 }
 
@@ -372,8 +400,8 @@ static _sys_poolthread_t *_Sys_PoolThread_New (_sys_threadpool_t *pool)
 {
 	_sys_poolthread_t *thread = _Sys_ThreadMem_Alloc(sizeof(_sys_poolthread_t));
 	thread->pool = pool;
-	thread->semQueue = SDL_CreateSemaphore(1);
-	thread->semRun = SDL_CreateSemaphore(0);
+	thread->semQueue = Sys_Semaphore_New(1);
+	thread->semRun = Sys_Semaphore_New(0);
 	thread->quit = false;
 	thread->nextEntry = NULL;
 	thread->nextUserdata = NULL;
@@ -383,8 +411,8 @@ static _sys_poolthread_t *_Sys_PoolThread_New (_sys_threadpool_t *pool)
 
 static void _Sys_PoolThread_Free(_sys_poolthread_t *thread)
 {
-	SDL_DestroySemaphore(thread->semQueue);
-	SDL_DestroySemaphore(thread->semRun);
+	Sys_Semaphore_Free(thread->semQueue);
+	Sys_Semaphore_Free(thread->semRun);
 }
 
 sys_threadpool_t *Sys_ThreadPool_New (int min, int max, int queueMax)
@@ -407,7 +435,7 @@ sys_threadpool_t *Sys_ThreadPool_New (int min, int max, int queueMax)
 	pool->quit = false;
 	pool->maxThreads = max;
 	pool->maxQueued = queueMax;
-	pool->semEmpty = SDL_CreateSemaphore(1);
+	pool->semEmpty = Sys_Semaphore_New(1);
 
 	if (!(pool->mutex = Sys_Mutex_New()))
 		goto error;
@@ -465,8 +493,8 @@ void Sys_ThreadPool_Join (sys_threadpool_t *_pool, qboolean kill)
 	pool->maxThreads = 0;
 	pool->maxQueued = 0;
 	Sys_Mutex_Unlock(pool->mutex);
-	
-	SDL_SemWait(pool->semEmpty);
+
+	Sys_Semaphore_Wait(pool->semEmpty, true);
 
 	Sys_Mutex_Lock(pool->mutex);
 	nThreads = Mem_ExpandableArray_IndexRange(&pool->threads);

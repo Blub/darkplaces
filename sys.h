@@ -96,7 +96,7 @@ void Sys_SendKeyEvents (void);
 char *Sys_GetClipboardData (void);
 
 typedef void *sys_mutex_t;
-//typedef void *sys_semaphore_t;
+typedef void *sys_semaphore_t;
 typedef void *sys_thread_t;
 typedef void *sys_threadpool_t;
 typedef int sys_threadentry_t (void*);
@@ -132,16 +132,17 @@ void               Thread_Cancel (sys_thread_t*);
  */
 int               *Sys_Thread_Spawn (sys_threadpool_t*, sys_threadentry_t*, void *userdata, qboolean block);
 
-void               Thread_Exit (int);
+//void               Thread_Exit (int);
 //void               Thread_Yield();
 
-/*
 sys_semaphore_t   *Sys_Semaphore_New (int);
-qboolean           Sys_Semaphore_Acquire (sys_semaphore_t*);
-qboolean           Sys_Semaphore_AcquireCount (sys_semaphore_t*, int);
-qboolean           Sys_Semaphore_Release (sys_semaphore_t*);
-qboolean           Sys_Semaphore_ReleaseCount (sys_semaphore_t*, int);
+qboolean           Sys_Semaphore_Wait (sys_semaphore_t*, qboolean block);
+qboolean           Sys_Semaphore_Post (sys_semaphore_t*);
 void               Sys_Semaphore_Free (sys_semaphore_t*);
+int                Sys_Semaphore_Value (sys_semaphore_t*);
+/*
+qboolean           Sys_Semaphore_AcquireCount (sys_semaphore_t*, int);
+qboolean           Sys_Semaphore_ReleaseCount (sys_semaphore_t*, int);
 */
 
 #endif
