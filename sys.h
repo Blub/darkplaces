@@ -126,17 +126,11 @@ int                Sys_Thread_Join (sys_thread_t*);
  * Otherwise the thread is cancelled and true is returned.
  */
 void               Thread_Cancel (sys_thread_t*);
-/*! (Try to) Spawn a thread. If there is still space in the threadpool, the function is executed in a new thread.
- * Otherwise, if block is false, the call fails and returns NULL, or if block is true, the call blocks until a
- * thread is available.
+/*! Spawn a thread in a specified threadpool. If block is true, and the job-queue isn't maxed out, the function will block until
+ * the function is actually executed. If the queue is maxed out nothing happens and 0 is returned.
+ * It returns 0 on error, 1 if the job is queued successfully, and 2 if the job is also executed immediately.
  */
-sys_thread_t      *Sys_Thread_Spawn (sys_threadpool_t*, sys_threadentry_t*, void *userdata, qboolean block);
-/*! (Try to) Queue a function for execution in the threadpool.
- * As soon as a thread is available in the threadpool, the function will be executed.
- * In case too many functions are queued already, this function fails and returns -1.
- * Otherwise, the function returns whether or not there was a thread already available.
- */
-int                Sys_Thread_Queue (sys_threadpool_t*, sys_threadentry_t*, void *userdata);
+int               *Sys_Thread_Spawn (sys_threadpool_t*, sys_threadentry_t*, void *userdata, qboolean block);
 
 void               Thread_Exit (int);
 //void               Thread_Yield();
