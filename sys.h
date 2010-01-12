@@ -105,6 +105,7 @@ typedef int sys_threadentry_t (void*);
 // Sys_Thread_    - system function to deal with threads
 // Thread_        - functions used by threads, for example to exit a thread
 
+qboolean           Sys_ThreadsAvailable (void);
 qboolean           Sys_InitThreads (void);
 void              *Sys_ThreadMem_Alloc (size_t);
 void               Sys_ThreadMem_Free (void*);
