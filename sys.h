@@ -146,5 +146,7 @@ qboolean           Sys_Semaphore_AcquireCount (sys_semaphore_t*, int);
 qboolean           Sys_Semaphore_ReleaseCount (sys_semaphore_t*, int);
 */
 
+// TODO: RWLocks if desired...
+
 #endif
 
