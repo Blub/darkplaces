@@ -115,15 +115,17 @@ qboolean           Sys_Mutex_Lock (sys_mutex_t*);
 qboolean           Sys_Mutex_Unlock (sys_mutex_t*);
 void               Sys_Mutex_Free (sys_mutex_t*);
 sys_threadpool_t  *Sys_ThreadPool_New (int min, int max, int queueMax); // max -1 for no limit
+void               Sys_ThreadPool_Join (sys_threadpool_t*, qboolean kill);
 /*! This spawns a new thread which does not belong to a threadpool.
  * There is no hardcoded limit here. It returns NULL if the call fails.
  */
-sys_thread_t      *Thread_New (sys_threadentry_t*, void *userdata);
+sys_thread_t      *Sys_Thread_New (sys_threadentry_t*, void *userdata);
+int                Sys_Thread_Join (sys_thread_t*);
 /*! Cancel a running thread. This may not be used with threads from a threadpool.
  * In case the thread belonged to a threadpool, nothing happens and false is returned.
  * Otherwise the thread is cancelled and true is returned.
  */
-qboolean           Thread_Cancel (sys_thread_t*);
+void               Thread_Cancel (sys_thread_t*);
 /*! (Try to) Spawn a thread. If there is still space in the threadpool, the function is executed in a new thread.
  * Otherwise, if block is false, the call fails and returns NULL, or if block is true, the call blocks until a
  * thread is available.
