@@ -2627,7 +2627,7 @@ void SV_GetEntityMatrix (prvm_edict_t *ent, matrix4x4_t *out, qboolean viewmatri
 int SV_GetEntityLocalTagMatrix(prvm_edict_t *ent, int tagindex, matrix4x4_t *out)
 {
 	dp_model_t *model;
-	if (tagindex >= 0 && (model = SV_GetModelFromEdict(ent)) && model->num_bones)
+	if (tagindex >= 0 && (model = SV_GetModelFromEdict(ent)) && model->animscenes)
 	{
 		VM_GenerateFrameGroupBlend(ent->priv.server->framegroupblend, ent);
 		VM_FrameBlendFromFrameGroupBlend(ent->priv.server->frameblend, ent->priv.server->framegroupblend, model);
@@ -3120,7 +3120,7 @@ static void VM_SV_skel_build(void)
 		Matrix4x4_Accumulate(&blendedmatrix, &skeleton->relativetransforms[bonenum], retainfrac);
 		for (blendindex = 0;blendindex < numblends;blendindex++)
 		{
-			Matrix4x4_FromArray12FloatD3D(&matrix, model->data_poses + 12 * (frameblend[blendindex].subframe * model->num_bones + bonenum));
+			Matrix4x4_FromBonePose6s(&matrix, model->num_posescale, model->data_poses6s + 6 * (frameblend[blendindex].subframe * model->num_bones + bonenum));
 			Matrix4x4_Accumulate(&blendedmatrix, &matrix, frameblend[blendindex].lerp);
 		}
 		skeleton->relativetransforms[bonenum] = blendedmatrix;
