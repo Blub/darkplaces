@@ -1039,6 +1039,12 @@ static void Host_Init (void)
 	// used by everything
 	Memory_Init();
 
+	// InitThreads needs memory to be initialized as it uses the threadmempool
+	if (Sys_InitThreads()) {
+		// do whatever thread initialization we want... like... dunno
+		// creating some threadpools...
+	}
+
 	// initialize console command/cvar/alias/command execution systems
 	Cmd_Init();
 
