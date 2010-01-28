@@ -270,23 +270,23 @@ static void M_DrawTextBox(float x, float y, float width, float height)
 
 /*
 ================
-M_ToggleMenu_f
+M_ToggleMenu
 ================
 */
-void M_ToggleMenu_f (void)
+void M_ToggleMenu(int mode)
 {
 	m_entersound = true;
 
 	if ((key_dest != key_menu && key_dest != key_menu_grabbed) || m_state != m_main)
 	{
-		if(Cmd_Argc() == 2 && !strcmp(Cmd_Argv(1), "1"))
-			return;
+		if(mode == 0)
+			return; // the menu is off, and we want it off
 		M_Menu_Main_f ();
 	}
 	else
 	{
-		if(Cmd_Argc() == 2 && !strcmp(Cmd_Argv(1), "0"))
-			return;
+		if(mode == 1)
+			return; // the menu is on, and we want it on
 		key_dest = key_game;
 		m_state = m_none;
 	}
@@ -4400,9 +4400,10 @@ static void M_ServerList_Draw (void)
 	{
 		for (n = start;n < end;n++)
 		{
+			serverlist_entry_t *entry = ServerList_GetViewEntry(n);
 			DrawQ_Fill(menu_x, menu_y + y, 640, 16, n == slist_cursor ? (0.5 + 0.2 * sin(realtime * M_PI)) : 0, 0, 0, 0.5, 0);
-			M_PrintColored(0, y, serverlist_viewlist[n]->line1);y += 8;
-			M_PrintColored(0, y, serverlist_viewlist[n]->line2);y += 8;
+			M_PrintColored(0, y, entry->line1);y += 8;
+			M_PrintColored(0, y, entry->line2);y += 8;
 		}
 	}
 	else if (realtime - masterquerytime > 10)
@@ -4456,7 +4457,7 @@ static void M_ServerList_Key(int k, int ascii)
 	case K_ENTER:
 		S_LocalSound ("sound/misc/menu2.wav");
 		if (serverlist_viewcount)
-			Cbuf_AddText(va("connect \"%s\"\n", serverlist_viewlist[slist_cursor]->info.cname));
+			Cbuf_AddText(va("connect \"%s\"\n", ServerList_GetViewEntry(slist_cursor)->info.cname));
 		break;
 
 	default:
@@ -4693,7 +4694,7 @@ static void M_ModList_Key(int k, int ascii)
 
 static void M_KeyEvent(int key, int ascii, qboolean downevent);
 static void M_Draw(void);
-void M_ToggleMenu_f(void);
+void M_ToggleMenu(int mode);
 static void M_Shutdown(void);
 
 void M_Init (void)
@@ -5141,11 +5142,12 @@ void MP_Draw (void)
 	R_SelectScene( RST_CLIENT );
 }
 
-void MP_ToggleMenu_f (void)
+void MP_ToggleMenu(int mode)
 {
 	PRVM_Begin;
 	PRVM_SetProg(PRVM_MENUPROG);
 
+	prog->globals.generic[OFS_PARM0] = (float) mode;
 	PRVM_ExecuteProgram(prog->funcoffsets.m_toggle,"m_toggle() required");
 
 	PRVM_End;
@@ -5211,7 +5213,7 @@ void MP_Restart(void)
 
 void (*MR_KeyEvent) (int key, int ascii, qboolean downevent);
 void (*MR_Draw) (void);
-void (*MR_ToggleMenu_f) (void);
+void (*MR_ToggleMenu) (int mode);
 void (*MR_Shutdown) (void);
 
 void MR_SetRouting(qboolean forceold)
@@ -5224,7 +5226,7 @@ void MR_SetRouting(qboolean forceold)
 		// set menu router function pointers
 		MR_KeyEvent = M_KeyEvent;
 		MR_Draw = M_Draw;
-		MR_ToggleMenu_f = M_ToggleMenu_f;
+		MR_ToggleMenu = M_ToggleMenu;
 		MR_Shutdown = M_Shutdown;
 
 		// init
@@ -5241,7 +5243,7 @@ void MR_SetRouting(qboolean forceold)
 		// set menu router function pointers
 		MR_KeyEvent = MP_KeyEvent;
 		MR_Draw = MP_Draw;
-		MR_ToggleMenu_f = MP_ToggleMenu_f;
+		MR_ToggleMenu = MP_ToggleMenu;
 		MR_Shutdown = MP_Shutdown;
 
 		if(!mp_init)
@@ -5262,9 +5264,11 @@ void MR_Restart(void)
 
 void Call_MR_ToggleMenu_f(void)
 {
+	int m;
+	m = ((Cmd_Argc() < 2) ? -1 : atoi(Cmd_Argv(1)));
 	Host_StartVideo();
-	if(MR_ToggleMenu_f)
-		MR_ToggleMenu_f();
+	if(MR_ToggleMenu)
+		MR_ToggleMenu(m);
 }
 
 void MR_Init_Commands(void)
