@@ -141,7 +141,7 @@ typedef struct rtlight_s
 	float corona_visibility;
 	unsigned int corona_queryindex_visiblepixels;
 	unsigned int corona_queryindex_allpixels;
-	/// this is R_Shadow_Cubemap(rtlight->cubemapname)
+	/// this is R_GetCubemap(rtlight->cubemapname)
 	rtexture_t *currentcubemap;
 	/// set by R_Shadow_PrepareLight to decide whether R_Shadow_DrawLight should draw it
 	qboolean draw;
@@ -1396,6 +1396,9 @@ extern cvar_t cl_particles_size;
 extern cvar_t cl_particles_quake;
 extern cvar_t cl_particles_blood;
 extern cvar_t cl_particles_blood_alpha;
+extern cvar_t cl_particles_blood_decal_alpha;
+extern cvar_t cl_particles_blood_decal_scalemin;
+extern cvar_t cl_particles_blood_decal_scalemax;
 extern cvar_t cl_particles_blood_bloodhack;
 extern cvar_t cl_particles_bulletimpacts;
 extern cvar_t cl_particles_explosions_sparks;
