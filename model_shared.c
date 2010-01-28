@@ -148,7 +148,6 @@ Mod_Init
 static void Mod_Print(void);
 static void Mod_Precache (void);
 static void Mod_Decompile_f(void);
-static void Mod_BuildVBOs(void);
 static void Mod_GenerateLightmaps_f(void);
 void Mod_Init (void)
 {
@@ -1149,6 +1148,8 @@ static void Mod_ShadowMesh_CreateVBOs(shadowmesh_t *mesh)
 {
 	if (!vid.support.arb_vertex_buffer_object)
 		return;
+	if (mesh->vbo)
+		return;
 
 	// element buffer is easy because it's just one array
 	if (mesh->numtriangles)
@@ -1904,6 +1905,8 @@ void Mod_LoadQ3Shaders(void)
 					shader.dpshadow = true;
 				else if (!strcasecmp(parameter[0], "dpnoshadow"))
 					shader.dpnoshadow = true;
+				else if (!strcasecmp(parameter[0], "dpreflectcube"))
+					strlcpy(shader.dpreflectcube, parameter[1], sizeof(shader.dpreflectcube));
 				else if (!strcasecmp(parameter[0], "sky") && numparameters >= 2)
 				{
 					// some q3 skies don't have the sky parm set
@@ -2208,6 +2211,8 @@ nothing                GL_ZERO GL_ONE
 		texture->r_water_wateralpha = shader->r_water_wateralpha;
 		texture->specularscalemod = shader->specularscalemod;
 		texture->specularpowermod = shader->specularpowermod;
+		if (shader->dpreflectcube[0])
+			texture->reflectcubetexture = R_GetCubemap(shader->dpreflectcube);
 	}
 	else if (!strcmp(texture->name, "noshader") || !texture->name[0])
 	{
@@ -2481,7 +2486,7 @@ void Mod_MakeSortedSurfaces(dp_model_t *mod)
 	Mem_Free(numsurfacesfortexture);
 }
 
-static void Mod_BuildVBOs(void)
+void Mod_BuildVBOs(void)
 {
 	if (gl_paranoid.integer && loadmodel->surfmesh.data_element3s && loadmodel->surfmesh.data_element3i)
 	{
@@ -2497,6 +2502,9 @@ static void Mod_BuildVBOs(void)
 	}
 
 	if (!vid.support.arb_vertex_buffer_object)
+		return;
+	// only build a vbo if one has not already been created (this is important for brush models which load specially)
+	if (loadmodel->surfmesh.vbo)
 		return;
 
 	// element buffer is easy because it's just one array
@@ -3048,6 +3056,79 @@ static float mod_generatelightmaps_offsets[3][MAX_LIGHTMAPSAMPLES][3];
 static int mod_generatelightmaps_numlights;
 static lightmaplight_t *mod_generatelightmaps_lightinfo;
 
+extern int R_Shadow_GetRTLightInfo(unsigned int lightindex, float *origin, float *radius, float *color);
+extern cvar_t r_shadow_lightattenuationdividebias;
+extern cvar_t r_shadow_lightattenuationlinearscale;
+
+static void Mod_GenerateLightmaps_LightPoint(dp_model_t *model, const vec3_t pos, vec3_t ambient, vec3_t diffuse, vec3_t lightdir)
+{
+	int i;
+	int index;
+	int result;
+	float relativepoint[3];
+	float color[3];
+	float dir[3];
+	float dist;
+	float dist2;
+	float intensity;
+	float sample[5*3];
+	float lightorigin[3];
+	float lightradius;
+	float lightradius2;
+	float lightiradius;
+	float lightcolor[3];
+	trace_t trace;
+	for (i = 0;i < 5*3;i++)
+		sample[i] = 0.0f;
+	for (index = 0;;index++)
+	{
+		result = R_Shadow_GetRTLightInfo(index, lightorigin, &lightradius, lightcolor);
+		if (result < 0)
+			break;
+		if (result == 0)
+			continue;
+		lightradius2 = lightradius * lightradius;
+		VectorSubtract(lightorigin, pos, relativepoint);
+		dist2 = VectorLength2(relativepoint);
+		if (dist2 >= lightradius2)
+			continue;
+		lightiradius = 1.0f / lightradius;
+		dist = sqrt(dist2) * lightiradius;
+		intensity = dist < 1 ? ((1.0f - dist) * r_shadow_lightattenuationlinearscale.value / (r_shadow_lightattenuationdividebias.value + dist*dist)) : 0;
+		if (intensity <= 0)
+			continue;
+		if (model && model->TraceLine)
+		{
+			model->TraceLine(model, NULL, NULL, &trace, pos, lightorigin, SUPERCONTENTS_VISBLOCKERMASK);
+			if (trace.fraction < 1)
+				continue;
+		}
+		// scale down intensity to add to both ambient and diffuse
+		//intensity *= 0.5f;
+		VectorNormalize(relativepoint);
+		VectorScale(lightcolor, intensity, color);
+		VectorMA(sample    , 0.5f            , color, sample    );
+		VectorMA(sample + 3, relativepoint[0], color, sample + 3);
+		VectorMA(sample + 6, relativepoint[1], color, sample + 6);
+		VectorMA(sample + 9, relativepoint[2], color, sample + 9);
+		// calculate a weighted average light direction as well
+		intensity *= VectorLength(color);
+		VectorMA(sample + 12, intensity, relativepoint, sample + 12);
+	}
+	// calculate the direction we'll use to reduce the sample to a directional light source
+	VectorCopy(sample + 12, dir);
+	//VectorSet(dir, sample[3] + sample[4] + sample[5], sample[6] + sample[7] + sample[8], sample[9] + sample[10] + sample[11]);
+	VectorNormalize(dir);
+	// extract the diffuse color along the chosen direction and scale it
+	diffuse[0] = (dir[0]*sample[3] + dir[1]*sample[6] + dir[2]*sample[ 9] + sample[ 0]);
+	diffuse[1] = (dir[0]*sample[4] + dir[1]*sample[7] + dir[2]*sample[10] + sample[ 1]);
+	diffuse[2] = (dir[0]*sample[5] + dir[1]*sample[8] + dir[2]*sample[11] + sample[ 2]);
+	// subtract some of diffuse from ambient
+	VectorMA(sample, -0.333f, diffuse, ambient);
+	// store the normalized lightdir
+	VectorCopy(dir, lightdir);
+}
+
 static void Mod_GenerateLightmaps_CreateLights_ComputeSVBSP_InsertSurfaces(const dp_model_t *model, svbsp_t *svbsp, const float *mins, const float *maxs)
 {
 	int surfaceindex;
@@ -3061,7 +3142,7 @@ static void Mod_GenerateLightmaps_CreateLights_ComputeSVBSP_InsertSurfaces(const
 	{
 		if (!BoxesOverlap(surface->mins, surface->maxs, mins, maxs))
 			continue;
-		if (R_GetCurrentTexture(surface->texture)->currentmaterialflags & MATERIALFLAG_NOSHADOW)
+		if (surface->texture->basematerialflags & MATERIALFLAG_NOSHADOW)
 			continue;
 		for (triangleindex = 0, e = element3i + 3*surface->num_firsttriangle;triangleindex < surface->num_triangles;triangleindex++, e += 3)
 		{
@@ -3112,7 +3193,6 @@ static void Mod_GenerateLightmaps_CreateLights_ComputeSVBSP(dp_model_t *model, l
 	Mem_Free(nodes);
 }
 
-extern int R_Shadow_GetRTLightInfo(unsigned int lightindex, float *origin, float *radius, float *color);
 static void Mod_GenerateLightmaps_CreateLights(dp_model_t *model)
 {
 	int index;
@@ -3179,8 +3259,6 @@ static qboolean Mod_GenerateLightmaps_SamplePoint_SVBSP(const svbsp_t *svbsp, co
 	return num == -1; // true if empty, false if solid (shadowed)
 }
 
-extern cvar_t r_shadow_lightattenuationdividebias;
-extern cvar_t r_shadow_lightattenuationlinearscale;
 static void Mod_GenerateLightmaps_SamplePoint(const float *pos, const float *normal, float *sample, int numoffsets, const float *offsets)
 {
 	int i;
@@ -3353,14 +3431,16 @@ static void Mod_GenerateLightmaps_DestroyLightmaps(dp_model_t *model)
 	if (model->brushq3.data_lightmaps)
 	{
 		for (i = 0;i < model->brushq3.num_mergedlightmaps;i++)
-			R_FreeTexture(model->brushq3.data_lightmaps[i]);
+			if (model->brushq3.data_lightmaps[i])
+				R_FreeTexture(model->brushq3.data_lightmaps[i]);
 		Mem_Free(model->brushq3.data_lightmaps);
 		model->brushq3.data_lightmaps = NULL;
 	}
 	if (model->brushq3.data_deluxemaps)
 	{
 		for (i = 0;i < model->brushq3.num_mergedlightmaps;i++)
-			R_FreeTexture(model->brushq3.data_deluxemaps[i]);
+			if (model->brushq3.data_deluxemaps[i])
+				R_FreeTexture(model->brushq3.data_deluxemaps[i]);
 		Mem_Free(model->brushq3.data_deluxemaps);
 		model->brushq3.data_deluxemaps = NULL;
 	}
@@ -3434,12 +3514,20 @@ static void Mod_GenerateLightmaps_UnweldTriangles(dp_model_t *model)
 			model->surfmesh.data_tvector3f[outvertexindex*3+2] = oldsurfmesh.data_tvector3f[vertexindex*3+2];
 			model->surfmesh.data_texcoordtexture2f[outvertexindex*2+0] = oldsurfmesh.data_texcoordtexture2f[vertexindex*2+0];
 			model->surfmesh.data_texcoordtexture2f[outvertexindex*2+1] = oldsurfmesh.data_texcoordtexture2f[vertexindex*2+1];
-			model->surfmesh.data_texcoordlightmap2f[outvertexindex*2+0] = oldsurfmesh.data_texcoordlightmap2f[vertexindex*2+0];
-			model->surfmesh.data_texcoordlightmap2f[outvertexindex*2+1] = oldsurfmesh.data_texcoordlightmap2f[vertexindex*2+1];
-			model->surfmesh.data_lightmapcolor4f[outvertexindex*4+0] = oldsurfmesh.data_lightmapcolor4f[vertexindex*4+0];
-			model->surfmesh.data_lightmapcolor4f[outvertexindex*4+1] = oldsurfmesh.data_lightmapcolor4f[vertexindex*4+1];
-			model->surfmesh.data_lightmapcolor4f[outvertexindex*4+2] = oldsurfmesh.data_lightmapcolor4f[vertexindex*4+2];
-			model->surfmesh.data_lightmapcolor4f[outvertexindex*4+3] = oldsurfmesh.data_lightmapcolor4f[vertexindex*4+3];
+			if (oldsurfmesh.data_texcoordlightmap2f)
+			{
+				model->surfmesh.data_texcoordlightmap2f[outvertexindex*2+0] = oldsurfmesh.data_texcoordlightmap2f[vertexindex*2+0];
+				model->surfmesh.data_texcoordlightmap2f[outvertexindex*2+1] = oldsurfmesh.data_texcoordlightmap2f[vertexindex*2+1];
+			}
+			if (oldsurfmesh.data_lightmapcolor4f)
+			{
+				model->surfmesh.data_lightmapcolor4f[outvertexindex*4+0] = oldsurfmesh.data_lightmapcolor4f[vertexindex*4+0];
+				model->surfmesh.data_lightmapcolor4f[outvertexindex*4+1] = oldsurfmesh.data_lightmapcolor4f[vertexindex*4+1];
+				model->surfmesh.data_lightmapcolor4f[outvertexindex*4+2] = oldsurfmesh.data_lightmapcolor4f[vertexindex*4+2];
+				model->surfmesh.data_lightmapcolor4f[outvertexindex*4+3] = oldsurfmesh.data_lightmapcolor4f[vertexindex*4+3];
+			}
+			else
+				Vector4Set(model->surfmesh.data_lightmapcolor4f + 4*outvertexindex, 1, 1, 1, 1);
 			model->surfmesh.data_element3i[surface->num_firsttriangle*3+i] = outvertexindex;
 			outvertexindex++;
 		}
@@ -3612,7 +3700,9 @@ static void Mod_GenerateLightmaps_CreateLightmaps(dp_model_t *model)
 	lightmapnumber++;
 	Mod_AllocLightmap_Free(&lmstate);
 
-	// now together lightmap textures
+	// now put triangles together into lightmap textures, and do not allow
+	// triangles of a surface to go into different textures (as that would
+	// require rewriting the surface list)
 	model->brushq3.deluxemapping_modelspace = true;
 	model->brushq3.deluxemapping = true;
 	model->brushq3.num_mergedlightmaps = lightmapnumber;
@@ -3738,6 +3828,21 @@ static void Mod_GenerateLightmaps_CreateLightmaps(dp_model_t *model)
 		lightmapindex = mod_generatelightmaps_lightmaptriangles[surface->num_firsttriangle].lightmapindex;
 		surface->lightmaptexture = model->brushq3.data_lightmaps[lightmapindex];
 		surface->deluxemaptexture = model->brushq3.data_deluxemaps[lightmapindex];
+		surface->lightmapinfo = NULL;
+	}
+
+	model->brush.LightPoint = Mod_GenerateLightmaps_LightPoint;
+	model->brushq1.lightdata = NULL;
+	model->brushq1.lightmapupdateflags = NULL;
+	model->brushq1.firstrender = false;
+	model->brushq1.num_lightstyles = 0;
+	model->brushq1.data_lightstyleinfo = NULL;
+	for (i = 0;i < model->brush.numsubmodels;i++)
+	{
+		model->brush.submodels[i]->brushq1.lightmapupdateflags = NULL;
+		model->brush.submodels[i]->brushq1.firstrender = false;
+		model->brush.submodels[i]->brushq1.num_lightstyles = 0;
+		model->brush.submodels[i]->brushq1.data_lightstyleinfo = NULL;
 	}
 }
 

@@ -53,6 +53,7 @@ typedef struct skinframe_s
 	rtexture_t *gloss; // glossmap (for dot3)
 	rtexture_t *glow; // glow only (fullbrights)
 	rtexture_t *fog; // alpha of the base texture (if not opaque)
+	rtexture_t *reflect; // colored mask for cubemap reflections
 	// accounting data for hash searches:
 	// the compare variables are used to identify internal skins from certain
 	// model formats
@@ -383,6 +384,9 @@ typedef struct q3shaderinfo_s
 	qboolean dpshadow;
 	qboolean dpnoshadow;
 
+	// fake reflection
+	char dpreflectcube[Q3PATHLENGTH];
+
 	// reflection
 	float reflectmin; // when refraction is used, minimum amount of reflection (when looking straight down)
 	float reflectmax; // when refraction is used, maximum amount of reflection (when looking parallel to water)
@@ -487,6 +491,8 @@ typedef struct texture_s
 	rtexture_t *glosstexture; // glossmap (for dot3)
 	rtexture_t *glowtexture; // glow only (fullbrights)
 	rtexture_t *fogtexture; // alpha of the base texture (if not opaque)
+	rtexture_t *reflectmasktexture; // mask for fake reflections
+	rtexture_t *reflectcubetexture; // fake reflections cubemap
 	rtexture_t *backgroundbasetexture; // original texture without pants/shirt/glow
 	rtexture_t *backgroundnmaptexture; // normalmap (bumpmap for dot3)
 	rtexture_t *backgroundglosstexture; // glossmap (for dot3)
@@ -566,6 +572,15 @@ typedef struct msurface_s
 	rtexture_t *lightmaptexture;
 	// the lighting direction texture fragment to use on the rendering mesh
 	rtexture_t *deluxemaptexture;
+	// lightmaptexture rebuild information not used in q3bsp
+	msurface_lightmapinfo_t *lightmapinfo; // q1bsp
+	// fog volume info in q3bsp
+	struct q3deffect_s *effect; // q3bsp
+	// mesh information for collisions (only used by q3bsp curves)
+	int *data_collisionelement3i; // q3bsp
+	float *data_collisionvertex3f; // q3bsp
+	float *data_collisionbbox6f; // collision optimization - contains combined bboxes of every data_collisionstride triangles
+	float *data_bbox6f; // collision optimization - contains combined bboxes of every data_collisionstride triangles
 
 	// surfaces own ranges of vertices and triangles in the model->surfmesh
 	int num_triangles; // number of triangles
@@ -576,23 +591,13 @@ typedef struct msurface_s
 	// shadow volume building information
 	int num_firstshadowmeshtriangle; // index into model->brush.shadowmesh
 
-	// lightmaptexture rebuild information not used in q3bsp
-	msurface_lightmapinfo_t *lightmapinfo; // q1bsp
-
 	// mesh information for collisions (only used by q3bsp curves)
 	int num_collisiontriangles; // q3bsp
-	int *data_collisionelement3i; // q3bsp
 	int num_collisionvertices; // q3bsp
-	float *data_collisionvertex3f; // q3bsp
-	struct q3deffect_s *effect; // q3bsp
+	int num_collisionbboxstride;
+	int num_bboxstride;
 	// FIXME: collisionmarkframe should be kept in a separate array
 	int collisionmarkframe; // q3bsp // don't collide twice in one trace
-
-	// optimization...
-	float *data_collisionbbox6f; // collision optimization - contains combined bboxes of every data_collisionstride triangles
-	int num_collisionbboxstride;
-	float *data_bbox6f; // collision optimization - contains combined bboxes of every data_collisionstride triangles
-	int num_bboxstride;
 }
 msurface_t;
 
@@ -965,6 +970,10 @@ void Mod_BuildTextureVectorsFromNormals(int firstvertex, int numvertices, int nu
 
 void Mod_AllocSurfMesh(mempool_t *mempool, int numvertices, int numtriangles, qboolean lightmapoffsets, qboolean vertexcolors, qboolean neighbors);
 void Mod_MakeSortedSurfaces(dp_model_t *mod);
+
+// called specially by brush model loaders before generating submodels
+// automatically called after model loader returns
+void Mod_BuildVBOs(void);
 
 shadowmesh_t *Mod_ShadowMesh_Alloc(mempool_t *mempool, int maxverts, int maxtriangles, rtexture_t *map_diffuse, rtexture_t *map_specular, rtexture_t *map_normal, int light, int neighbors, int expandable);
 shadowmesh_t *Mod_ShadowMesh_ReAlloc(mempool_t *mempool, shadowmesh_t *oldmesh, int light, int neighbors);
