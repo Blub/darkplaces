@@ -35,8 +35,6 @@ CVars introduced with the freetype extension
 cvar_t r_font_disable_freetype = {CVAR_SAVE, "r_font_disable_freetype", "1", "disable freetype support for fonts entirely"};
 cvar_t r_font_use_alpha_textures = {CVAR_SAVE, "r_font_use_alpha_textures", "0", "use alpha-textures for font rendering, this should safe memory"};
 cvar_t r_font_size_snapping = {CVAR_SAVE, "r_font_size_snapping", "1", "stick to good looking font sizes whenever possible - bad when the mod doesn't support it!"};
-cvar_t r_font_hinting = {CVAR_SAVE, "r_font_hinting", "3", "0 = no hinting, 1 = light autohinting, 2 = full autohinting, 3 = full hinting"};
-cvar_t r_font_antialias = {CVAR_SAVE, "r_font_antialias", "1", "0 = monochrome, 1 = grey" /* , 2 = rgb, 3 = bgr" */};
 cvar_t r_font_kerning = {CVAR_SAVE, "r_font_kerning", "1", "Use kerning if available"};
 cvar_t developer_font = {CVAR_SAVE, "developer_font", "0", "prints debug messages about fonts"};
 
@@ -141,6 +139,19 @@ static rtexturepool_t *font_texturepool = NULL;
 /// FreeType library handle
 static FT_Library font_ft2lib = NULL;
 
+#define POSTPROCESS_MAXRADIUS 8
+typedef struct
+{
+	unsigned char *buf, *buf2;
+	int bufsize, bufwidth, bufheight, bufpitch;
+	float blur, outline, shadowx, shadowy, shadowz;
+	int padding_t, padding_b, padding_l, padding_r, blurpadding_lt, blurpadding_rb, outlinepadding_t, outlinepadding_b, outlinepadding_l, outlinepadding_r;
+	unsigned char circlematrix[2*POSTPROCESS_MAXRADIUS+1][2*POSTPROCESS_MAXRADIUS+1];
+	unsigned char gausstable[2*POSTPROCESS_MAXRADIUS+1];
+}
+font_postprocess_t;
+static font_postprocess_t pp;
+
 /*
 ====================
 Font_CloseLibrary
@@ -160,6 +171,7 @@ void Font_CloseLibrary (void)
 		font_ft2lib = NULL;
 	}
 	Sys_UnloadLibrary (&ft2_dll);
+	pp.buf = NULL;
 }
 
 /*
@@ -259,8 +271,6 @@ void Font_Init(void)
 	Cvar_RegisterVariable(&r_font_disable_freetype);
 	Cvar_RegisterVariable(&r_font_use_alpha_textures);
 	Cvar_RegisterVariable(&r_font_size_snapping);
-	Cvar_RegisterVariable(&r_font_hinting);
-	Cvar_RegisterVariable(&r_font_antialias);
 	Cvar_RegisterVariable(&r_font_kerning);
 	Cvar_RegisterVariable(&developer_font);
 	// let's open it at startup already
@@ -321,8 +331,8 @@ float Font_SnapTo(float val, float snapwidth)
 	return floor(val / snapwidth + 0.5f) * snapwidth;
 }
 
-static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font);
-static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean no_texture, qboolean no_kerning);
+static qboolean Font_LoadFile(const char *name, int _face, ft2_settings_t *settings, ft2_font_t *font);
+static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean check_only);
 qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 {
 	int s, count, i;
@@ -343,7 +353,7 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 			break;
 	}
 
-	if (!Font_LoadFile(name, dpfnt->req_face, ft2))
+	if (!Font_LoadFile(name, dpfnt->req_face, &dpfnt->settings, ft2))
 	{
 		if (i >= MAX_FONT_FALLBACKS)
 		{
@@ -371,7 +381,8 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 			Con_Printf("Failed to allocate font for fallback %i of font %s\n", i, name);
 			break;
 		}
-		if (!Font_LoadFile(dpfnt->fallbacks[i], dpfnt->fallback_faces[i], fb))
+
+		if (!Font_LoadFile(dpfnt->fallbacks[i], dpfnt->fallback_faces[i], &dpfnt->settings, fb))
 		{
 			Con_Printf("Failed to allocate font for fallback %i of font %s\n", i, name);
 			Mem_Free(fb);
@@ -380,7 +391,7 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 		count = 0;
 		for (s = 0; s < MAX_FONT_SIZES && dpfnt->req_sizes[s] >= 0; ++s)
 		{
-			if (Font_LoadSize(fb, Font_VirtualToRealSize(dpfnt->req_sizes[s]), true, false))
+			if (Font_LoadSize(fb, Font_VirtualToRealSize(dpfnt->req_sizes[s]), true))
 				++count;
 		}
 		if (!count)
@@ -407,7 +418,7 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 	count = 0;
 	for (s = 0; s < MAX_FONT_SIZES && dpfnt->req_sizes[s] >= 0; ++s)
 	{
-		if (Font_LoadSize(ft2, Font_VirtualToRealSize(dpfnt->req_sizes[s]), false, false))
+		if (Font_LoadSize(ft2, Font_VirtualToRealSize(dpfnt->req_sizes[s]), false))
 			++count;
 	}
 	if (!count)
@@ -424,7 +435,7 @@ qboolean Font_LoadFont(const char *name, dp_font_t *dpfnt)
 	return true;
 }
 
-static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font)
+static qboolean Font_LoadFile(const char *name, int _face, ft2_settings_t *settings, ft2_font_t *font)
 {
 	size_t namelen;
 	char filename[MAX_QPATH];
@@ -445,6 +456,8 @@ static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font)
 		}
 		return false;
 	}
+
+	font->settings = settings;
 
 	namelen = strlen(name);
 
@@ -514,11 +527,180 @@ static qboolean Font_LoadFile(const char *name, int _face, ft2_font_t *font)
 	return true;
 }
 
+void Font_Postprocess_Update(ft2_font_t *fnt, int bpp, int w, int h)
+{
+	int needed, x, y;
+	float gausstable[2*POSTPROCESS_MAXRADIUS+1];
+	qboolean need_gauss  = (!pp.buf || pp.blur != fnt->settings->blur || pp.shadowz != fnt->settings->shadowz);
+	qboolean need_circle = (!pp.buf || pp.outline != fnt->settings->outline || pp.shadowx != fnt->settings->shadowx || pp.shadowy != fnt->settings->shadowy);
+	pp.blur = fnt->settings->blur;
+	pp.outline = fnt->settings->outline;
+	pp.shadowx = fnt->settings->shadowx;
+	pp.shadowy = fnt->settings->shadowy;
+	pp.shadowz = fnt->settings->shadowz;
+	pp.outlinepadding_l = bound(0, ceil(pp.outline - pp.shadowx), POSTPROCESS_MAXRADIUS);
+	pp.outlinepadding_r = bound(0, ceil(pp.outline + pp.shadowx), POSTPROCESS_MAXRADIUS);
+	pp.outlinepadding_t = bound(0, ceil(pp.outline - pp.shadowy), POSTPROCESS_MAXRADIUS);
+	pp.outlinepadding_b = bound(0, ceil(pp.outline + pp.shadowy), POSTPROCESS_MAXRADIUS);
+	pp.blurpadding_lt = bound(0, ceil(pp.blur - pp.shadowz), POSTPROCESS_MAXRADIUS);
+	pp.blurpadding_rb = bound(0, ceil(pp.blur + pp.shadowz), POSTPROCESS_MAXRADIUS);
+	pp.padding_l = pp.blurpadding_lt + pp.outlinepadding_l;
+	pp.padding_r = pp.blurpadding_rb + pp.outlinepadding_r;
+	pp.padding_t = pp.blurpadding_lt + pp.outlinepadding_t;
+	pp.padding_b = pp.blurpadding_rb + pp.outlinepadding_b;
+	if(need_gauss)
+	{
+		float sum = 0;
+		for(x = -POSTPROCESS_MAXRADIUS; x <= POSTPROCESS_MAXRADIUS; ++x)
+			gausstable[POSTPROCESS_MAXRADIUS+x] = (pp.blur > 0 ? exp(-(pow(x + pp.shadowz, 2))/(pp.blur*pp.blur * 2)) : (floor(x + pp.shadowz + 0.5) == 0));
+		for(x = -pp.blurpadding_rb; x <= pp.blurpadding_lt; ++x)
+			sum += gausstable[POSTPROCESS_MAXRADIUS+x];
+		for(x = -POSTPROCESS_MAXRADIUS; x <= POSTPROCESS_MAXRADIUS; ++x)
+			pp.gausstable[POSTPROCESS_MAXRADIUS+x] = floor(gausstable[POSTPROCESS_MAXRADIUS+x] / sum * 255 + 0.5);
+	}
+	if(need_circle)
+	{
+		for(y = -POSTPROCESS_MAXRADIUS; y <= POSTPROCESS_MAXRADIUS; ++y)
+			for(x = -POSTPROCESS_MAXRADIUS; x <= POSTPROCESS_MAXRADIUS; ++x)
+			{
+				float d = pp.outline + 1 - sqrt(pow(x + pp.shadowx, 2) + pow(y + pp.shadowy, 2));
+				pp.circlematrix[POSTPROCESS_MAXRADIUS+y][POSTPROCESS_MAXRADIUS+x] = (d >= 1) ? 255 : (d <= 0) ? 0 : floor(d * 255 + 0.5);
+			}
+	}
+	pp.bufwidth = w + pp.padding_l + pp.padding_r;
+	pp.bufheight = h + pp.padding_t + pp.padding_b;
+	pp.bufpitch = pp.bufwidth;
+	needed = pp.bufwidth * pp.bufheight;
+	if(!pp.buf || pp.bufsize < needed * 2)
+	{
+		if(pp.buf)
+			Mem_Free(pp.buf);
+		pp.bufsize = needed * 4;
+		pp.buf = Mem_Alloc(font_mempool, pp.bufsize);
+		pp.buf2 = pp.buf + needed;
+	}
+}
+
+void Font_Postprocess(ft2_font_t *fnt, unsigned char *imagedata, int pitch, int bpp, int w, int h, int *pad_l, int *pad_r, int *pad_t, int *pad_b)
+{
+	int x, y;
+	Font_Postprocess_Update(fnt, bpp, w, h);
+	if(imagedata)
+	{
+		// enlarge buffer
+
+		// perform operation, not exceeding the passed padding values,
+		// but possibly reducing them
+		*pad_l = min(*pad_l, pp.padding_l);
+		*pad_r = min(*pad_r, pp.padding_r);
+		*pad_t = min(*pad_t, pp.padding_t);
+		*pad_b = min(*pad_b, pp.padding_b);
+
+		// calculate gauss table
+		
+		// outline the font (RGBA only)
+		if(bpp == 4 && (pp.outline > 0 || pp.blur > 0 || pp.shadowx != 0 || pp.shadowy != 0 || pp.shadowz != 0)) // we can only do this in BGRA
+		{
+			// this is like mplayer subtitle rendering
+			// bbuffer, bitmap buffer: this is our font
+			// abuffer, alpha buffer: this is pp.buf
+			// tmp: this is pp.buf2
+
+			// create outline buffer
+			memset(pp.buf, 0, pp.bufwidth * pp.bufheight);
+			for(y = -*pad_t; y < h + *pad_b; ++y)
+				for(x = -*pad_l; x < w + *pad_r; ++x)
+				{
+					int x1 = max(-x, -pp.outlinepadding_r);
+					int y1 = max(-y, -pp.outlinepadding_b);
+					int x2 = min(pp.outlinepadding_l, w-1-x);
+					int y2 = min(pp.outlinepadding_t, h-1-y);
+					int mx, my;
+					int cur = 0;
+					int highest = 0;
+					for(my = y1; my <= y2; ++my)
+						for(mx = x1; mx <= x2; ++mx)
+						{
+							cur = pp.circlematrix[POSTPROCESS_MAXRADIUS+my][POSTPROCESS_MAXRADIUS+mx] * (int)imagedata[(x+mx) * bpp + pitch * (y+my) + (bpp - 1)];
+							if(cur > highest)
+								highest = cur;
+						}
+					pp.buf[((x + pp.padding_l) + pp.bufpitch * (y + pp.padding_t))] = (highest + 128) / 255;
+				}
+
+			// blur the outline buffer
+			if(pp.blur > 0 || pp.shadowz != 0)
+			{
+				// horizontal blur
+				for(y = 0; y < pp.bufheight; ++y)
+					for(x = 0; x < pp.bufwidth; ++x)
+					{
+						int x1 = max(-x, -pp.blurpadding_rb);
+						int x2 = min(pp.blurpadding_lt, pp.bufwidth-1-x);
+						int mx;
+						int blurred = 0;
+						for(mx = x1; mx <= x2; ++mx)
+							blurred += pp.gausstable[POSTPROCESS_MAXRADIUS+mx] * (int)pp.buf[(x+mx) + pp.bufpitch * y];
+						pp.buf2[x + pp.bufpitch * y] = bound(0, blurred, 65025) / 255;
+					}
+
+				// vertical blur
+				for(y = 0; y < pp.bufheight; ++y)
+					for(x = 0; x < pp.bufwidth; ++x)
+					{
+						int y1 = max(-y, -pp.blurpadding_rb);
+						int y2 = min(pp.blurpadding_lt, pp.bufheight-1-y);
+						int my;
+						int blurred = 0;
+						for(my = y1; my <= y2; ++my)
+							blurred += pp.gausstable[POSTPROCESS_MAXRADIUS+my] * (int)pp.buf2[x + pp.bufpitch * (y+my)];
+						pp.buf[x + pp.bufpitch * y] = bound(0, blurred, 65025) / 255;
+					}
+			}
+
+			// paste the outline below the font
+			for(y = -*pad_t; y < h + *pad_b; ++y)
+				for(x = -*pad_l; x < w + *pad_r; ++x)
+				{
+					unsigned char outlinealpha = pp.buf[(x + pp.padding_l) + pp.bufpitch * (y + pp.padding_t)];
+					if(outlinealpha > 0)
+					{
+						unsigned char oldalpha = imagedata[x * bpp + pitch * y + (bpp - 1)];
+						// a' = 1 - (1 - a1) (1 - a2)
+						unsigned char newalpha = 255 - ((255 - (int)outlinealpha) * (255 - (int)oldalpha)) / 255; // this is >= oldalpha
+						// c' = (a2 c2 - a1 a2 c1 + a1 c1) / a' = (a2 c2 + a1 (1 - a2) c1) / a'
+						unsigned char oldfactor     = (255 * (int)oldalpha) / newalpha;
+						//unsigned char outlinefactor = ((255 - oldalpha) * (int)outlinealpha) / newalpha;
+						int i;
+						for(i = 0; i < bpp-1; ++i)
+						{
+							unsigned char c = imagedata[x * bpp + pitch * y + i];
+							c = (c * (int)oldfactor) / 255 /* + outlinecolor[i] * (int)outlinefactor */;
+							imagedata[x * bpp + pitch * y + i] = c;
+						}
+						imagedata[x * bpp + pitch * y + (bpp - 1)] = newalpha;
+					}
+					//imagedata[x * bpp + pitch * y + (bpp - 1)] |= 0x80;
+				}
+		}
+	}
+	else
+	{
+		// just calculate parameters
+		*pad_l = pp.padding_l;
+		*pad_r = pp.padding_r;
+		*pad_t = pp.padding_t;
+		*pad_b = pp.padding_b;
+	}
+}
+
+static float Font_SearchSize(ft2_font_t *font, FT_Face fontface, float size);
 static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _ch, ft2_font_map_t **outmap);
-static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean no_texture, qboolean no_kerning)
+static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean check_only)
 {
 	int map_index;
 	ft2_font_map_t *fmap, temp;
+	int gpad_l, gpad_r, gpad_t, gpad_b;
 
 	if (!(size > 0.001f && size < 1000.0f))
 		size = 0;
@@ -528,69 +710,74 @@ static qboolean Font_LoadSize(ft2_font_t *font, float size, qboolean no_texture,
 	if (size < 2) // bogus sizes are not allowed - and they screw up our allocations
 		return false;
 
-	if (!no_texture)
+	for (map_index = 0; map_index < MAX_FONT_SIZES; ++map_index)
 	{
-		for (map_index = 0; map_index < MAX_FONT_SIZES; ++map_index)
-		{
-			if (!font->font_maps[map_index])
-				break;
-			// if a similar size has already been loaded, ignore this one
-			//abs(font->font_maps[map_index]->size - size) < 4
-			if (font->font_maps[map_index]->size == size)
-				return true;
-		}
-
-		if (map_index >= MAX_FONT_SIZES)
-			return false;
-
-		memset(&temp, 0, sizeof(temp));
-		temp.size = size;
-		temp.glyphSize = CeilPowerOf2(size*2);
-		temp.sfx = (1.0/64.0)/(double)size;
-		temp.sfy = (1.0/64.0)/(double)size;
-		temp.intSize = -1; // negative value: LoadMap must search now :)
-		if (!Font_LoadMap(font, &temp, 0, &fmap))
-		{
-			Con_Printf("ERROR: can't load the first character map for %s\n"
-				   "This is fatal\n",
-				   font->name);
-			Font_UnloadFont(font);
-			return false;
-		}
-		font->font_maps[map_index] = temp.next;
-
-		fmap->sfx = temp.sfx;
-		fmap->sfy = temp.sfy;
+		if (!font->font_maps[map_index])
+			break;
+		// if a similar size has already been loaded, ignore this one
+		//abs(font->font_maps[map_index]->size - size) < 4
+		if (font->font_maps[map_index]->size == size)
+			return true;
 	}
-	if (!no_kerning)
+
+	if (map_index >= MAX_FONT_SIZES)
+		return false;
+
+	if (check_only) {
+		FT_Face fontface;
+		if (font->image_font)
+			fontface = (FT_Face)font->next->face;
+		else
+			fontface = (FT_Face)font->face;
+		return (Font_SearchSize(font, fontface, size) > 0);
+	}
+
+	Font_Postprocess(font, NULL, 0, 4, size*2, size*2, &gpad_l, &gpad_r, &gpad_t, &gpad_b);
+
+	memset(&temp, 0, sizeof(temp));
+	temp.size = size;
+	temp.glyphSize = CeilPowerOf2(size*2 + max(gpad_l + gpad_r, gpad_t + gpad_b));
+	temp.sfx = (1.0/64.0)/(double)size;
+	temp.sfy = (1.0/64.0)/(double)size;
+	temp.intSize = -1; // negative value: LoadMap must search now :)
+	if (!Font_LoadMap(font, &temp, 0, &fmap))
 	{
-		// load the default kerning vector:
-		if (font->has_kerning)
+		Con_Printf("ERROR: can't load the first character map for %s\n"
+			   "This is fatal\n",
+			   font->name);
+		Font_UnloadFont(font);
+		return false;
+	}
+	font->font_maps[map_index] = temp.next;
+
+	fmap->sfx = temp.sfx;
+	fmap->sfy = temp.sfy;
+
+	// load the default kerning vector:
+	if (font->has_kerning)
+	{
+		Uchar l, r;
+		FT_Vector kernvec;
+		for (l = 0; l < 256; ++l)
 		{
-			Uchar l, r;
-			FT_Vector kernvec;
-			for (l = 0; l < 256; ++l)
+			for (r = 0; r < 256; ++r)
 			{
-				for (r = 0; r < 256; ++r)
+				FT_ULong ul, ur;
+				ul = qFT_Get_Char_Index(font->face, l);
+				ur = qFT_Get_Char_Index(font->face, r);
+				if (qFT_Get_Kerning(font->face, ul, ur, FT_KERNING_DEFAULT, &kernvec))
 				{
-					FT_ULong ul, ur;
-					ul = qFT_Get_Char_Index(font->face, l);
-					ur = qFT_Get_Char_Index(font->face, r);
-					if (qFT_Get_Kerning(font->face, ul, ur, FT_KERNING_DEFAULT, &kernvec))
-					{
-						fmap->kerning.kerning[l][r][0] = 0;
-						fmap->kerning.kerning[l][r][1] = 0;
-					}
-					else
-					{
-						fmap->kerning.kerning[l][r][0] = Font_SnapTo((kernvec.x / 64.0) / fmap->size, 1 / fmap->size);
-						fmap->kerning.kerning[l][r][1] = Font_SnapTo((kernvec.y / 64.0) / fmap->size, 1 / fmap->size);
-					}
+					fmap->kerning.kerning[l][r][0] = 0;
+					fmap->kerning.kerning[l][r][1] = 0;
+				}
+				else
+				{
+					fmap->kerning.kerning[l][r][0] = Font_SnapTo((kernvec.x / 64.0) / fmap->size, 1 / fmap->size);
+					fmap->kerning.kerning[l][r][1] = Font_SnapTo((kernvec.y / 64.0) / fmap->size, 1 / fmap->size);
 				}
 			}
 		}
 	}
-
 	return true;
 }
 
@@ -782,6 +969,27 @@ void Font_UnloadFont(ft2_font_t *font)
 	}
 }
 
+static float Font_SearchSize(ft2_font_t *font, FT_Face fontface, float size)
+{
+	float intSize = size;
+	while (1)
+	{
+		if (!Font_SetSize(font, intSize, intSize))
+		{
+			Con_Printf("ERROR: can't set size for font %s: %f ((%f))\n", font->name, size, intSize);
+			return -1;
+		}
+		if ((fontface->size->metrics.height>>6) <= size)
+			return intSize;
+		if (intSize < 2)
+		{
+			Con_Printf("ERROR: no appropriate size found for font %s: %f\n", font->name, size);
+			return -1;
+		}
+		--intSize;
+	}
+}
+
 static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _ch, ft2_font_map_t **outmap)
 {
 	char map_identifier[MAX_QPATH];
@@ -791,6 +999,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 	int status;
 	int tp;
 	FT_Int32 load_flags;
+	int gpad_l, gpad_r, gpad_t, gpad_b;
 
 	int pitch;
 	int gR, gC; // glyph position: row and column
@@ -813,10 +1022,10 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 	else
 		fontface = (FT_Face)font->face;
 
-	switch(r_font_antialias.integer)
+	switch(font->settings->antialias)
 	{
 		case 0:
-			switch(r_font_hinting.integer)
+			switch(font->settings->hinting)
 			{
 				case 0:
 					load_flags = FT_LOAD_NO_HINTING | FT_LOAD_NO_AUTOHINT | FT_LOAD_TARGET_MONO | FT_LOAD_MONOCHROME;
@@ -833,7 +1042,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 			break;
 		default:
 		case 1:
-			switch(r_font_hinting.integer)
+			switch(font->settings->hinting)
 			{
 				case 0:
 					load_flags = FT_LOAD_NO_HINTING | FT_LOAD_NO_AUTOHINT | FT_LOAD_TARGET_NORMAL;
@@ -858,6 +1067,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		mapstart->intSize = mapstart->size;
 	if (mapstart->intSize < 0)
 	{
+		/*
 		mapstart->intSize = mapstart->size;
 		while (1)
 		{
@@ -875,6 +1085,9 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 			}
 			--mapstart->intSize;
 		}
+		*/
+		if ((mapstart->intSize = Font_SearchSize(font, fontface, mapstart->size)) <= 0)
+			return false;
 		Con_DPrintf("Using size: %f for requested size %f\n", mapstart->intSize, mapstart->size);
 	}
 
@@ -890,6 +1103,8 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		Con_Printf("ERROR: Out of memory when loading fontmap for %s\n", font->name);
 		return false;
 	}
+
+	Font_Postprocess(font, NULL, 0, bytesPerPixel, mapstart->size*2, mapstart->size*2, &gpad_l, &gpad_r, &gpad_t, &gpad_b);
 
 	// copy over the information
 	map->size = mapstart->size;
@@ -942,6 +1157,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		unsigned char *imagedata, *dst, *src;
 		glyph_slot_t *mapglyph;
 		FT_Face face;
+		int pad_l, pad_r, pad_t, pad_b;
 
 		mapch = ch - map->start;
 
@@ -956,6 +1172,7 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		}
 
 		imagedata = data + gR * pitch * map->glyphSize + gC * map->glyphSize * bytesPerPixel;
+		imagedata += gpad_t * pitch + gpad_l * bytesPerPixel;
 		//status = qFT_Load_Char(face, ch, FT_LOAD_RENDER);
 		// we need the glyphIndex
 		face = font->face;
@@ -1012,10 +1229,10 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 		w = bmp->width;
 		h = bmp->rows;
 
-		if (w > map->glyphSize || h > map->glyphSize) {
+		if (w > (map->glyphSize - gpad_l - gpad_r) || h > (map->glyphSize - gpad_t - gpad_b)) {
 			Con_Printf("WARNING: Glyph %lu is too big in font %s, size %g: %i x %i\n", ch, font->name, map->size, w, h);
 			if (w > map->glyphSize)
-				w = map->glyphSize;
+				w = map->glyphSize - gpad_l - gpad_r;
 			if (h > map->glyphSize)
 				h = map->glyphSize;
 		}
@@ -1100,6 +1317,12 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 			}
 		}
 
+		pad_l = gpad_l;
+		pad_r = gpad_r;
+		pad_t = gpad_t;
+		pad_b = gpad_b;
+		Font_Postprocess(font, imagedata, pitch, bytesPerPixel, w, h, &pad_l, &pad_r, &pad_t, &pad_b);
+
 		// now fill map->glyphs[ch - map->start]
 		mapglyph = &map->glyphs[mapch];
 
@@ -1113,18 +1336,18 @@ static qboolean Font_LoadMap(ft2_font_t *font, ft2_font_map_t *mapstart, Uchar _
 			//double mWidth = (glyph->metrics.width >> 6) / map->size;
 			//double mHeight = (glyph->metrics.height >> 6) / map->size;
 
-			mapglyph->txmin = ( (double)(gC * map->glyphSize) ) / ( (double)(map->glyphSize * FONT_CHARS_PER_LINE) );
-			mapglyph->txmax = mapglyph->txmin + (double)bmp->width / ( (double)(map->glyphSize * FONT_CHARS_PER_LINE) );
-			mapglyph->tymin = ( (double)(gR * map->glyphSize) ) / ( (double)(map->glyphSize * FONT_CHAR_LINES) );
-			mapglyph->tymax = mapglyph->tymin + (double)bmp->rows / ( (double)(map->glyphSize * FONT_CHAR_LINES) );
+			mapglyph->txmin = ( (double)(gC * map->glyphSize) + (double)(gpad_l - pad_l) ) / ( (double)(map->glyphSize * FONT_CHARS_PER_LINE) );
+			mapglyph->txmax = mapglyph->txmin + (double)(bmp->width + pad_l + pad_r) / ( (double)(map->glyphSize * FONT_CHARS_PER_LINE) );
+			mapglyph->tymin = ( (double)(gR * map->glyphSize) + (double)(gpad_r - pad_r) ) / ( (double)(map->glyphSize * FONT_CHAR_LINES) );
+			mapglyph->tymax = mapglyph->tymin + (double)(bmp->rows + pad_t + pad_b) / ( (double)(map->glyphSize * FONT_CHAR_LINES) );
 			//mapglyph->vxmin = bearingX;
 			//mapglyph->vxmax = bearingX + mWidth;
-			mapglyph->vxmin = glyph->bitmap_left / map->size;
-			mapglyph->vxmax = mapglyph->vxmin + bmp->width / map->size; // don't ask
+			mapglyph->vxmin = (glyph->bitmap_left - pad_l) / map->size;
+			mapglyph->vxmax = mapglyph->vxmin + (bmp->width + pad_l + pad_r) / map->size; // don't ask
 			//mapglyph->vymin = -bearingY;
 			//mapglyph->vymax = mHeight - bearingY;
-			mapglyph->vymin = -glyph->bitmap_top / map->size;
-			mapglyph->vymax = mapglyph->vymin + bmp->rows / map->size;
+			mapglyph->vymin = (-glyph->bitmap_top - pad_t) / map->size;
+			mapglyph->vymax = mapglyph->vymin + (bmp->rows + pad_t + pad_b) / map->size;
 			//Con_Printf("dpi = %f %f (%f %d) %d %d\n", bmp->width / (mapglyph->vxmax - mapglyph->vxmin), bmp->rows / (mapglyph->vymax - mapglyph->vymin), map->size, map->glyphSize, (int)fontface->size->metrics.x_ppem, (int)fontface->size->metrics.y_ppem);
 			//mapglyph->advance_x = advance * usefont->size;
 			//mapglyph->advance_x = advance;
@@ -1202,7 +1425,7 @@ qboolean Font_LoadMapForIndex(ft2_font_t *font, int map_index, Uchar _ch, ft2_fo
 
 ft2_font_map_t *FontMap_FindForChar(ft2_font_map_t *start, Uchar ch)
 {
-	while (start && start->start + FONT_CHARS_PER_MAP < ch)
+	while (start && start->start + FONT_CHARS_PER_MAP <= ch)
 		start = start->next;
 	if (start && start->start > ch)
 		return NULL;
