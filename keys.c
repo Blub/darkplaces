@@ -741,7 +741,7 @@ Key_Console (int key, int unicode)
 		else if(keydown[K_SHIFT]) // move cursor to the previous character ignoring colors
 		{
 			int		pos;
-			size_t          inchar;
+			size_t          inchar = 0;
 			pos = u8_prevbyte(key_line, key_linepos);
 			while (pos)
 				if(pos-1 > 0 && key_line[pos-1] == STRING_COLOR_TAG && isdigit(key_line[pos]))
@@ -1561,7 +1561,7 @@ Key_Event (int key, int ascii, qboolean down)
 					if(key_consoleactive & KEY_CONSOLEACTIVE_FORCED)
 					{
 						key_consoleactive &= ~KEY_CONSOLEACTIVE_USER;
-						MR_ToggleMenu_f ();
+						MR_ToggleMenu(1);
 					}
 					else
 						Con_ToggleConsole_f();
@@ -1582,7 +1582,7 @@ Key_Event (int key, int ascii, qboolean down)
 				// csqc has priority over toggle menu if it wants to (e.g. handling escape for UI stuff in-game.. :sick:)
 				q = CL_VM_InputEvent(down, key, ascii);
 				if (!q && down)
-					MR_ToggleMenu_f ();
+					MR_ToggleMenu(1);
 				break;
 
 			default:
