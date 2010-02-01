@@ -311,6 +311,31 @@ void Mod_FrameGroupify(dp_model_t *mod, const char *buf)
 	Mod_FrameGroupify_ParseGroups(buf, Mod_FrameGroupify_ParseGroups_Store, mod);
 }
 
+void Mod_FindPotentialDeforms(dp_model_t *mod)
+{
+	int i, j;
+	texture_t *texture;
+	mod->wantnormals = false;
+	mod->wanttangents = false;
+	for (i = 0;i < mod->num_textures;i++)
+	{
+		texture = mod->data_textures + i;
+		if (texture->tcgen.tcgen == Q3TCGEN_ENVIRONMENT)
+			mod->wantnormals = true;
+		for (j = 0;j < Q3MAXDEFORMS;j++)
+		{
+			if (texture->deforms[j].deform == Q3DEFORM_AUTOSPRITE)
+			{
+				mod->wanttangents = true;
+				mod->wantnormals = true;
+				break;
+			}
+			if (texture->deforms[j].deform != Q3DEFORM_NONE)
+				mod->wantnormals = true;
+		}
+	}
+}
+
 /*
 ==================
 Mod_LoadModel
@@ -447,6 +472,8 @@ dp_model_t *Mod_LoadModel(dp_model_t *mod, qboolean crash, qboolean checkdisk)
 		else Con_Printf("Mod_LoadModel: model \"%s\" is of unknown/unsupported type\n", mod->name);
 		Mem_Free(buf);
 
+		Mod_FindPotentialDeforms(mod);
+					
 		buf = FS_LoadFile (va("%s.framegroups", mod->name), tempmempool, false, &filesize);
 		if(buf)
 		{
@@ -2693,7 +2720,6 @@ static void Mod_Decompile_SMD(dp_model_t *model, const char *filename, int first
 			outbufferpos += l;
 		for (transformindex = 0;transformindex < model->num_bones;transformindex++)
 		{
-			float a, b, c;
 			float angles[3];
 			float mtest[4][3];
 			matrix4x4_t posematrix;
@@ -2715,12 +2741,11 @@ static void Mod_Decompile_SMD(dp_model_t *model, const char *filename, int first
 			if (angles[1] >= 180) angles[1] -= 360;
 			if (angles[2] >= 180) angles[2] -= 360;
 
-			a = DEG2RAD(angles[ROLL]);
-			b = DEG2RAD(angles[PITCH]);
-			c = DEG2RAD(angles[YAW]);
-
 #if 0
 {
+			float a = DEG2RAD(angles[ROLL]);
+			float b = DEG2RAD(angles[PITCH]);
+			float c = DEG2RAD(angles[YAW]);
 			float cy, sy, cp, sp, cr, sr;
 			float test[4][3];
 			// smd matrix construction, for comparing
@@ -3622,7 +3647,7 @@ static void Mod_GenerateLightmaps_CreateLightmaps(dp_model_t *model)
 	float lm_basescalepixels;
 	int lm_borderpixels;
 	int lm_texturesize;
-	int lm_maxpixels;
+	//int lm_maxpixels;
 	const int *e;
 	lightmaptriangle_t *triangle;
 	unsigned char *lightmappixels;
@@ -3635,7 +3660,7 @@ static void Mod_GenerateLightmaps_CreateLightmaps(dp_model_t *model)
 	lm_basescalepixels = 1.0f / max(0.0001f, mod_generatelightmaps_unitspersample.value);
 	lm_borderpixels = mod_generatelightmaps_borderpixels.integer;
 	lm_texturesize = bound(lm_borderpixels*2+1, 64, (int)vid.maxtexturesize_2d);
-	lm_maxpixels = lm_texturesize-(lm_borderpixels*2+1);
+	//lm_maxpixels = lm_texturesize-(lm_borderpixels*2+1);
 	Mod_AllocLightmap_Init(&lmstate, lm_texturesize, lm_texturesize);
 	lightmapnumber = 0;
 	for (surfaceindex = 0;surfaceindex < model->num_surfaces;surfaceindex++)

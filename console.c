@@ -2183,7 +2183,6 @@ int Nicks_CompleteCountPossible(char *line, int pos, char *s, qboolean isCon)
 {
 	char name[128];
 	int i, p;
-	int length;
 	int match;
 	int spos;
 	int count = 0;
@@ -2207,7 +2206,6 @@ int Nicks_CompleteCountPossible(char *line, int pos, char *s, qboolean isCon)
 		if(!name[0])
 			continue;
 
-		length = strlen(name);
 		match = -1;
 		spos = pos - 1; // no need for a minimum of characters :)
 
