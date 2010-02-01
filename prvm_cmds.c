@@ -191,11 +191,11 @@ void VM_UpdateEdictSkeleton(prvm_edict_t *ed, const dp_model_t *edmodel, const f
 		ed->priv.server->skeleton.relativetransforms = Mem_Alloc(prog->progs_mempool, ed->priv.server->skeleton.model->num_bones * sizeof(matrix4x4_t));
 	if (ed->priv.server->skeleton.relativetransforms)
 	{
-		int skeletonindex = 0;
+		int skeletonindex = -1;
 		skeleton_t *skeleton;
 		prvm_eval_t *val;
-		if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.skeletonindex))) skeletonindex = (int)val->_float;
-		if (skeletonindex > 0 && skeletonindex < MAX_EDICTS && (skeleton = prog->skeletons[skeletonindex]) && skeleton->model->num_bones == ed->priv.server->skeleton.model->num_bones)
+		if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.skeletonindex))) skeletonindex = (int)val->_float - 1;
+		if (skeletonindex >= 0 && skeletonindex < MAX_EDICTS && (skeleton = prog->skeletons[skeletonindex]) && skeleton->model->num_bones == ed->priv.server->skeleton.model->num_bones)
 		{
 			// custom skeleton controlled by the game (FTE_CSQC_SKELETONOBJECTS)
 			memcpy(ed->priv.server->skeleton.relativetransforms, skeleton->relativetransforms, ed->priv.server->skeleton.model->num_bones * sizeof(matrix4x4_t));
@@ -3346,7 +3346,7 @@ void VM_drawcolorcodedstring(void)
 {
 	float *pos,*scale;
 	const char  *string;
-	int flag,color;
+	int flag;
 	float sx, sy;
 	VM_SAFEPARMCOUNT(5,VM_drawstring);
 
@@ -3372,7 +3372,6 @@ void VM_drawcolorcodedstring(void)
 	if(pos[2] || scale[2])
 		Con_Printf("VM_drawcolorcodedstring: z value%s from %s discarded\n",(pos[2] && scale[2]) ? "s" : " ",((pos[2] && scale[2]) ? "pos and scale" : (pos[2] ? "pos" : "scale")));
 
-	color = -1;
 	getdrawfontscale(&sx, &sy);
 	DrawQ_String_Scale(pos[0], pos[1], string, 0, scale[0], scale[1], sx, sy, 1, 1, 1, PRVM_G_FLOAT(OFS_PARM3), flag, NULL, false, getdrawfont());
 	PRVM_G_FLOAT(OFS_RETURN) = 1;
@@ -4346,18 +4345,16 @@ string	altstr_ins(string altstr, float num, string set)
 void VM_altstr_ins(void)
 {
 	int num;
-	const char *setstr;
 	const char *set;
-	const char *instr;
 	const char *in;
 	char *out;
 	char outstr[VM_STRINGTEMP_LENGTH];
 
 	VM_SAFEPARMCOUNT(3, VM_altstr_ins);
 
-	in = instr = PRVM_G_STRING( OFS_PARM0 );
+	in = PRVM_G_STRING( OFS_PARM0 );
 	num = (int)PRVM_G_FLOAT( OFS_PARM1 );
-	set = setstr = PRVM_G_STRING( OFS_PARM2 );
+	set = PRVM_G_STRING( OFS_PARM2 );
 
 	out = outstr;
 	for( num = num * 2 + 2 ; *in && num > 0 ; *out++ = *in++ )
@@ -5732,7 +5729,6 @@ void VM_sprintf(void)
 		{
 			case 0:
 				goto finished;
-				break;
 			case '%':
 				++s;
 
@@ -6005,7 +6001,7 @@ void animatemodel(dp_model_t *model, prvm_edict_t *ed)
 {
 	prvm_eval_t *val;
 	skeleton_t *skeleton;
-	int skeletonindex = 0;
+	int skeletonindex = -1;
 	qboolean need = false;
 	if(!model->AnimateVertices)
 	{
@@ -6021,8 +6017,8 @@ void animatemodel(dp_model_t *model, prvm_edict_t *ed)
 	VM_GenerateFrameGroupBlend(ed->priv.server->framegroupblend, ed);
 	VM_FrameBlendFromFrameGroupBlend(ed->priv.server->frameblend, ed->priv.server->framegroupblend, model);
 	need |= (memcmp(&animatemodel_cache.frameblend, &ed->priv.server->frameblend, sizeof(ed->priv.server->frameblend)));
-	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.skeletonindex))) skeletonindex = (int)val->_float;
-	if (!(skeletonindex > 0 && skeletonindex < MAX_EDICTS && (skeleton = prog->skeletons[skeletonindex]) && skeleton->model->num_bones == ed->priv.server->skeleton.model->num_bones))
+	if ((val = PRVM_EDICTFIELDVALUE(ed, prog->fieldoffsets.skeletonindex))) skeletonindex = (int)val->_float - 1;
+	if (!(skeletonindex >= 0 && skeletonindex < MAX_EDICTS && (skeleton = prog->skeletons[skeletonindex]) && skeleton->model->num_bones == ed->priv.server->skeleton.model->num_bones))
 		skeleton = NULL;
 	need |= (animatemodel_cache.skeleton_p != skeleton);
 	if(skeleton)
