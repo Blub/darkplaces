@@ -817,12 +817,13 @@ static int		loadable[MAX_SAVEGAMES];
 
 static void M_ScanSaves (void)
 {
-	int		i, j, len;
+	int		i, j;
+	size_t	len;
 	char	name[MAX_OSPATH];
 	char	buf[SAVEGAME_COMMENT_LENGTH + 256];
 	const char *t;
 	qfile_t	*f;
-	int		version;
+//	int		version;
 
 	for (i=0 ; i<MAX_SAVEGAMES ; i++)
 	{
@@ -834,11 +835,12 @@ static void M_ScanSaves (void)
 			continue;
 		// read enough to get the comment
 		len = FS_Read(f, buf, sizeof(buf) - 1);
-		buf[sizeof(buf) - 1] = 0;
+		len = min(len, sizeof(buf)-1);
+		buf[len] = 0;
 		t = buf;
 		// version
 		COM_ParseToken_Simple(&t, false, false);
-		version = atoi(com_token);
+		//version = atoi(com_token);
 		// description
 		COM_ParseToken_Simple(&t, false, false);
 		strlcpy (m_filenames[i], com_token, sizeof (m_filenames[i]));
