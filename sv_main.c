@@ -47,8 +47,8 @@ cvar_t slowmo = {0, "slowmo", "1.0", "controls game speed, 0.5 is half speed, 2 
 
 cvar_t sv_accelerate = {0, "sv_accelerate", "10", "rate at which a player accelerates to sv_maxspeed"};
 cvar_t sv_aim = {CVAR_SAVE, "sv_aim", "2", "maximum cosine angle for quake's vertical autoaim, a value above 1 completely disables the autoaim, quake used 0.93"};
-cvar_t sv_airaccel_qw = {0, "sv_airaccel_qw", "1", "ratio of QW-style air control as opposed to simple acceleration"};
-cvar_t sv_airaccel_sideways_friction = {0, "sv_airaccel_sideways_friction", "", "anti-sideways movement stabilization (reduces speed gain when zigzagging)"};
+cvar_t sv_airaccel_qw = {0, "sv_airaccel_qw", "1", "ratio of QW-style air control as opposed to simple acceleration; when < 0, the speed is clamped against the maximum allowed forward speed after the move"};
+cvar_t sv_airaccel_sideways_friction = {0, "sv_airaccel_sideways_friction", "", "anti-sideways movement stabilization (reduces speed gain when zigzagging); when < 0, only so much friction is applied that braking (by accelerating backwards) cannot be stronger"};
 cvar_t sv_airaccelerate = {0, "sv_airaccelerate", "-1", "rate at which a player accelerates to sv_maxairspeed while in the air, if less than 0 the sv_accelerate variable is used instead"};
 cvar_t sv_airstopaccelerate = {0, "sv_airstopaccelerate", "0", "when set, replacement for sv_airaccelerate when moving backwards"};
 cvar_t sv_airstrafeaccelerate = {0, "sv_airstrafeaccelerate", "0", "when set, replacement for sv_airaccelerate when just strafing"};
@@ -104,6 +104,7 @@ cvar_t sv_gameplayfix_setmodelrealbox = {0, "sv_gameplayfix_setmodelrealbox", "1
 cvar_t sv_gameplayfix_slidemoveprojectiles = {0, "sv_gameplayfix_slidemoveprojectiles", "1", "allows MOVETYPE_FLY/FLYMISSILE/TOSS/BOUNCE/BOUNCEMISSILE entities to finish their move in a frame even if they hit something, fixes 'gravity accumulation' bug for grenades on steep slopes"};
 cvar_t sv_gameplayfix_stepdown = {0, "sv_gameplayfix_stepdown", "0", "attempts to step down stairs, not just up them (prevents the familiar thud..thud..thud.. when running down stairs and slopes)"};
 cvar_t sv_gameplayfix_stepwhilejumping = {0, "sv_gameplayfix_stepwhilejumping", "1", "applies step-up onto a ledge even while airborn, useful if you would otherwise just-miss the floor when running across small areas with gaps (for instance running across the moving platforms in dm2, or jumping to the megahealth and red armor in dm2 rather than using the bridge)"};
+cvar_t sv_gameplayfix_stepmultipletimes = {0, "sv_gameplayfix_stepmultipletimes", "1", "applies step-up onto a ledge more than once in a single frame, when running quickly up stairs"};
 cvar_t sv_gameplayfix_swiminbmodels = {0, "sv_gameplayfix_swiminbmodels", "1", "causes pointcontents (used to determine if you are in a liquid) to check bmodel entities as well as the world model, so you can swim around in (possibly moving) water bmodel entities"};
 cvar_t sv_gameplayfix_upwardvelocityclearsongroundflag = {0, "sv_gameplayfix_upwardvelocityclearsongroundflag", "1", "prevents monsters, items, and most other objects from being stuck to the floor when pushed around by damage, and other situations in mods"};
 cvar_t sv_gameplayfix_downtracesupportsongroundflag = {0, "sv_gameplayfix_downtracesupportsongroundflag", "1", "prevents very short moves from clearing onground (which may make the player stick to the floor at high netfps)"};
@@ -115,7 +116,6 @@ cvar_t sv_maxairspeed = {0, "sv_maxairspeed", "30", "maximum speed a player can 
 cvar_t sv_maxrate = {CVAR_SAVE | CVAR_NOTIFY, "sv_maxrate", "1000000", "upper limit on client rate cvar, should reflect your network connection quality"};
 cvar_t sv_maxspeed = {CVAR_NOTIFY, "sv_maxspeed", "320", "maximum speed a player can accelerate to when on ground (can be exceeded by tricks)"};
 cvar_t sv_maxvelocity = {CVAR_NOTIFY, "sv_maxvelocity","2000", "universal speed limit on all entities"};
-cvar_t sv_newflymove = {CVAR_NOTIFY, "sv_newflymove", "0", "enables simpler/buggier player physics (not recommended)"};
 cvar_t sv_nostep = {CVAR_NOTIFY, "sv_nostep","0", "prevents MOVETYPE_STEP entities (monsters) from moving"};
 cvar_t sv_playerphysicsqc = {CVAR_NOTIFY, "sv_playerphysicsqc", "1", "enables QuakeC function to override player physics"};
 cvar_t sv_progs = {0, "sv_progs", "progs.dat", "selects which quakec progs.dat file to run" };
@@ -416,6 +416,7 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_gameplayfix_slidemoveprojectiles);
 	Cvar_RegisterVariable (&sv_gameplayfix_stepdown);
 	Cvar_RegisterVariable (&sv_gameplayfix_stepwhilejumping);
+	Cvar_RegisterVariable (&sv_gameplayfix_stepmultipletimes);
 	Cvar_RegisterVariable (&sv_gameplayfix_swiminbmodels);
 	Cvar_RegisterVariable (&sv_gameplayfix_upwardvelocityclearsongroundflag);
 	Cvar_RegisterVariable (&sv_gameplayfix_downtracesupportsongroundflag);
@@ -427,7 +428,6 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_maxrate);
 	Cvar_RegisterVariable (&sv_maxspeed);
 	Cvar_RegisterVariable (&sv_maxvelocity);
-	Cvar_RegisterVariable (&sv_newflymove);
 	Cvar_RegisterVariable (&sv_nostep);
 	Cvar_RegisterVariable (&sv_playerphysicsqc);
 	Cvar_RegisterVariable (&sv_progs);
@@ -507,8 +507,8 @@ void SV_Init (void)
 		Cvar_SetValueQuick (&sv_gameplayfix_blowupfallenzombies, 0);
 		// hipnotic mission pack has issues with bobbing water entities 'jittering' between different heights on alternate frames at the default 0.0138889 ticrate, 0.02 avoids this issue
 		Cvar_SetValueQuick (&sys_ticrate, 0.02);
-		// hipnotic mission pack has issues in their proximity mine sticking code, which causes them to bounce off.                                                                                     
-		Cvar_SetValueQuick (&sv_gameplayfix_slidemoveprojectiles, 0);                                                                                                                                   
+		// hipnotic mission pack has issues in their proximity mine sticking code, which causes them to bounce off.
+		Cvar_SetValueQuick (&sv_gameplayfix_slidemoveprojectiles, 0);
 	}
 	if (gamemode == GAME_ROGUE)
 	{
@@ -863,7 +863,7 @@ void SV_SendServerinfo (client_t *client)
 		if(client->sv_demo_file != NULL)
 		{
 			int i;
-			char buf[NET_MAXMESSAGE];
+			static char buf[NET_MAXMESSAGE];
 			sizebuf_t sb;
 
 			sb.data = (unsigned char *) buf;
@@ -2055,7 +2055,7 @@ static void SV_SendClientDatagram (client_t *client)
 	int clientrate, maxrate, maxsize, maxsize2, downloadsize;
 	sizebuf_t msg;
 	int stats[MAX_CL_STATS];
-	unsigned char sv_sendclientdatagram_buf[NET_MAXMESSAGE];
+	static unsigned char sv_sendclientdatagram_buf[NET_MAXMESSAGE];
 
 	// obey rate limit by limiting packet frequency if the packet size
 	// limiting fails
@@ -2705,7 +2705,9 @@ int SV_ParticleEffectIndex(const char *name)
 	int filepass;
 	fs_offset_t filesize;
 	unsigned char *filedata;
-	const char *text, *textstart, *textend;
+	const char *text;
+	const char *textstart;
+	//const char *textend;
 	char argv[16][1024];
 	char filename[MAX_QPATH];
 	if (!sv.particleeffectnamesloaded)
@@ -2726,7 +2728,7 @@ int SV_ParticleEffectIndex(const char *name)
 			if (!filedata)
 				continue;
 			textstart = (const char *)filedata;
-			textend = (const char *)filedata + filesize;
+			//textend = (const char *)filedata + filesize;
 			text = textstart;
 			for (linenumber = 1;;linenumber++)
 			{
