@@ -433,7 +433,7 @@ typedef enum gl20_texunit_e
 	// material properties for a colormapped material
 	// conflicts with secondary material
 	GL20TU_PANTS = 4,
-	GL20TU_SHIRT = 5,
+	GL20TU_SHIRT = 7,
 	// fog fade in the distance
 	GL20TU_FOGMASK = 8,
 	// compiled ambient lightmap and deluxemap
@@ -452,6 +452,9 @@ typedef enum gl20_texunit_e
 	GL20TU_SHADOWMAPCUBE = 11,
 	GL20TU_SHADOWMAP2D = 11,
 	GL20TU_CUBEPROJECTION = 12,
+	// orthographic-projection shadowmapping
+	GL20TU_SHADOWMAPORTHORECT = 15,
+	GL20TU_SHADOWMAPORTHO2D = 15,
 	// rtlight prepass data (screenspace depth and normalmap)
 	GL20TU_SCREENDEPTH = 13,
 	GL20TU_SCREENNORMALMAP = 14,
@@ -459,8 +462,8 @@ typedef enum gl20_texunit_e
 	GL20TU_SCREENDIFFUSE = 11,
 	GL20TU_SCREENSPECULAR = 12,
 	// fake reflections
-	GL20TU_REFLECTMASK = 14,
-	GL20TU_REFLECTCUBE = 15
+	GL20TU_REFLECTMASK = 5,
+	GL20TU_REFLECTCUBE = 6
 }
 gl20_texunit;
 
@@ -486,6 +489,7 @@ typedef struct r_waterstate_s
 	qboolean enabled;
 
 	qboolean renderingscene; // true while rendering a refraction or reflection texture, disables water surfaces
+	qboolean renderingrefraction;
 
 	int waterwidth, waterheight;
 	int texturewidth, textureheight;
