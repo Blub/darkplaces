@@ -665,7 +665,7 @@ void *Mem_ExpandableArray_AllocRecordAtIndex(memexpandablearray_t *l, size_t ind
 	return NULL;
 }
 
-void *Mem_ExpandableArray_AllocRecord(memexpandablearray_t *l)
+void *Mem_ExpandableArray_AllocRecord(memexpandablearray_t *l, size_t *out_id)
 {
 	size_t i, j;
 	for (i = 0;;i++)
