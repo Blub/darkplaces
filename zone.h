@@ -121,7 +121,8 @@ memexpandablearray_t;
 
 void Mem_ExpandableArray_NewArray(memexpandablearray_t *l, mempool_t *mempool, size_t recordsize, int numrecordsperarray);
 void Mem_ExpandableArray_FreeArray(memexpandablearray_t *l);
-void *Mem_ExpandableArray_AllocRecord_Id(memexpandablearray_t *l, size_t *out_id = 0);
+void *Mem_ExpandableArray_AllocRecord(memexpandablearray_t *l);
+void *Mem_ExpandableArray_AllocRecord_Id(memexpandablearray_t *l, size_t *out_id);
 void *Mem_ExpandableArray_AllocRecordAtIndex(memexpandablearray_t *l, size_t index);
 void Mem_ExpandableArray_FreeRecord(memexpandablearray_t *l, void *record);
 size_t Mem_ExpandableArray_IndexRange(const memexpandablearray_t *l) DP_FUNC_PURE;
