@@ -271,11 +271,11 @@ void Host_SaveConfig_to(const char *file)
 }
 void Host_SaveConfig(void)
 {
-	Host_SaveConfig_to("config.cfg");
+	Host_SaveConfig_to(CONFIGFILENAME);
 }
 void Host_SaveConfig_f(void)
 {
-	const char *file = "config.cfg";
+	const char *file = CONFIGFILENAME;
 
 	if(Cmd_Argc() >= 2) {
 		file = Cmd_Argv(1);
@@ -297,7 +297,7 @@ void Host_LoadConfig_f(void)
 	// unlock the cvar default strings so they can be updated by the new default.cfg
 	Cvar_UnlockDefaults();
 	// reset cvars to their defaults, and then exec startup scripts again
-	Cbuf_InsertText("cvar_resettodefaults_all;exec quake.rc\n");
+	Cbuf_InsertText("cvar_resettodefaults_all;exec " STARTCONFIGFILENAME "\n");
 }
 
 /*
@@ -700,8 +700,10 @@ void Host_Main(void)
 		if (sv.active ? sv_timer > 0 : cl_timer > 0)
 		{
 			// process console commands
+			R_TimeReport("preconsole");
 			CL_VM_PreventInformationLeaks();
 			Cbuf_Execute();
+			R_TimeReport("console");
 		}
 
 		//Con_Printf("%6.0f %6.0f\n", cl_timer * 1000000.0, sv_timer * 1000000.0);
@@ -723,6 +725,7 @@ void Host_Main(void)
 			else
 				Sys_Sleep((int)wait);
 			svs.perf_acc_sleeptime += Sys_DoubleTime() - time0;
+			R_TimeReport("sleep");
 			continue;
 		}
 
@@ -812,6 +815,7 @@ void Host_Main(void)
 				if (framelimit > 1 && Sys_DoubleTime() >= aborttime)
 					break;
 			}
+			R_TimeReport("serverphysics");
 
 			// send all messages to the clients
 			SV_SendClientMessages();
@@ -826,6 +830,7 @@ void Host_Main(void)
 
 			// send an heartbeat if enough time has passed since the last one
 			NetConn_Heartbeat(0);
+			R_TimeReport("servernetwork");
 		}
 
 	//-------------------
@@ -836,6 +841,7 @@ void Host_Main(void)
 
 		if (cls.state != ca_dedicated && (cl_timer > 0 || cls.timedemo || ((vid_activewindow ? cl_maxfps : cl_maxidlefps).value < 1)))
 		{
+			R_TimeReport("---");
 			// decide the simulation time
 			if (cls.capturevideo.active)
 			{
@@ -891,24 +897,32 @@ void Host_Main(void)
 			// update video
 			if (host_speeds.integer)
 				time1 = Sys_DoubleTime();
+			R_TimeReport("pre-input");
 
 			// Collect input into cmd
 			CL_Input();
+
+			R_TimeReport("input");
 
 			// check for new packets
 			NetConn_ClientFrame();
 
 			// read a new frame from a demo if needed
 			CL_ReadDemoMessage();
+			R_TimeReport("clientnetwork");
 
 			// now that packets have been read, send input to server
 			CL_SendMove();
+			R_TimeReport("sendmove");
 
 			// update client world (interpolate entities, create trails, etc)
 			CL_UpdateWorld();
+			R_TimeReport("lerpworld");
 
 			CL_Video_Frame();
 			CL_Gecko_Frame();
+
+			R_TimeReport("client");
 
 			CL_UpdateScreen();
 
@@ -925,6 +939,7 @@ void Host_Main(void)
 				S_Update(&r_refdef.view.matrix);
 
 			CDAudio_Update();
+			R_TimeReport("audio");
 
 			// reset gathering of mouse input
 			in_mouse_x = in_mouse_y = 0;
@@ -1113,19 +1128,19 @@ static void Host_Init (void)
 	// set up the default startmap_sp and startmap_dm aliases (mods can
 	// override these) and then execute the quake.rc startup script
 	if (gamemode == GAME_NEHAHRA)
-		Cbuf_AddText("alias startmap_sp \"map nehstart\"\nalias startmap_dm \"map nehstart\"\nexec quake.rc\n");
+		Cbuf_AddText("alias startmap_sp \"map nehstart\"\nalias startmap_dm \"map nehstart\"\nexec " STARTCONFIGFILENAME "\n");
 	else if (gamemode == GAME_TRANSFUSION)
-		Cbuf_AddText("alias startmap_sp \"map e1m1\"\n""alias startmap_dm \"map bb1\"\nexec quake.rc\n");
+		Cbuf_AddText("alias startmap_sp \"map e1m1\"\n""alias startmap_dm \"map bb1\"\nexec " STARTCONFIGFILENAME "\n");
 	else if (gamemode == GAME_TEU)
 		Cbuf_AddText("alias startmap_sp \"map start\"\nalias startmap_dm \"map start\"\nexec teu.rc\n");
 	else
-		Cbuf_AddText("alias startmap_sp \"map start\"\nalias startmap_dm \"map start\"\nexec quake.rc\n");
+		Cbuf_AddText("alias startmap_sp \"map start\"\nalias startmap_dm \"map start\"\nexec " STARTCONFIGFILENAME "\n");
 	Cbuf_Execute();
 
 	// if stuffcmds wasn't run, then quake.rc is probably missing, use default
 	if (!host_stuffcmdsrun)
 	{
-		Cbuf_AddText("exec default.cfg\nexec config.cfg\nexec autoexec.cfg\nstuffcmds\n");
+		Cbuf_AddText("exec default.cfg\nexec " CONFIGFILENAME "\nexec autoexec.cfg\nstuffcmds\n");
 		Cbuf_Execute();
 	}
 

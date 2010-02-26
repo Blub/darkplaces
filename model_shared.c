@@ -92,6 +92,7 @@ static void mod_shutdown(void)
 			Mod_UnloadModel(mod);
 
 	Mod_FreeQ3Shaders();
+	Mod_Skeletal_FreeBuffers();
 }
 
 static void mod_newmap(void)
@@ -1539,6 +1540,7 @@ static void Q3Shader_AddToHash (q3shaderinfo_t* shader)
 }
 
 extern cvar_t r_picmipworld;
+extern cvar_t mod_q3shader_default_offsetmapping;
 void Mod_LoadQ3Shaders(void)
 {
 	int j;
@@ -1579,6 +1581,8 @@ void Mod_LoadQ3Shaders(void)
 			shader.reflectfactor = 1;
 			Vector4Set(shader.reflectcolor4f, 1, 1, 1, 1);
 			shader.r_water_wateralpha = 1;
+			shader.offsetmapping = (mod_q3shader_default_offsetmapping.value) ? OFFSETMAPPING_DEFAULT : OFFSETMAPPING_OFF;
+			shader.offsetscale = 1;
 			shader.specularscalemod = 1;
 			shader.specularpowermod = 1;
 
@@ -1621,7 +1625,11 @@ void Mod_LoadQ3Shaders(void)
 						{
 							if (j < TEXTURE_MAXFRAMES + 4)
 							{
-								strlcpy(parameter[j], com_token, sizeof(parameter[j]));
+								// remap dp_water to dpwater, dp_reflect to dpreflect, etc.
+								if(j == 0 && !strncasecmp(com_token, "dp_", 3))
+									dpsnprintf(parameter[j], sizeof(parameter[j]), "dp%s", &com_token[3]);
+								else
+									strlcpy(parameter[j], com_token, sizeof(parameter[j]));
 								numparameters = j + 1;
 							}
 							if (!COM_ParseToken_QuakeC(&text, true))
@@ -1840,7 +1848,11 @@ void Mod_LoadQ3Shaders(void)
 				{
 					if (j < TEXTURE_MAXFRAMES + 4)
 					{
-						strlcpy(parameter[j], com_token, sizeof(parameter[j]));
+						// remap dp_water to dpwater, dp_reflect to dpreflect, etc.
+						if(j == 0 && !strncasecmp(com_token, "dp_", 3))
+							dpsnprintf(parameter[j], sizeof(parameter[j]), "dp%s", &com_token[3]);
+						else
+							strlcpy(parameter[j], com_token, sizeof(parameter[j]));
 						numparameters = j + 1;
 					}
 					if (!COM_ParseToken_QuakeC(&text, true))
@@ -1934,6 +1946,8 @@ void Mod_LoadQ3Shaders(void)
 					shader.dpnoshadow = true;
 				else if (!strcasecmp(parameter[0], "dpreflectcube"))
 					strlcpy(shader.dpreflectcube, parameter[1], sizeof(shader.dpreflectcube));
+				else if (!strcasecmp(parameter[0], "dpmeshcollisions"))
+					shader.dpmeshcollisions = true;
 				else if (!strcasecmp(parameter[0], "sky") && numparameters >= 2)
 				{
 					// some q3 skies don't have the sky parm set
@@ -1958,19 +1972,19 @@ void Mod_LoadQ3Shaders(void)
 					shader.textureflags |= Q3TEXTUREFLAG_NOPICMIP;
 				else if (!strcasecmp(parameter[0], "polygonoffset"))
 					shader.textureflags |= Q3TEXTUREFLAG_POLYGONOFFSET;
-				else if (!strcasecmp(parameter[0], "dp_refract") && numparameters >= 5)
+				else if (!strcasecmp(parameter[0], "dprefract") && numparameters >= 5)
 				{
 					shader.textureflags |= Q3TEXTUREFLAG_REFRACTION;
 					shader.refractfactor = atof(parameter[1]);
 					Vector4Set(shader.refractcolor4f, atof(parameter[2]), atof(parameter[3]), atof(parameter[4]), 1);
 				}
-				else if (!strcasecmp(parameter[0], "dp_reflect") && numparameters >= 6)
+				else if (!strcasecmp(parameter[0], "dpreflect") && numparameters >= 6)
 				{
 					shader.textureflags |= Q3TEXTUREFLAG_REFLECTION;
 					shader.reflectfactor = atof(parameter[1]);
 					Vector4Set(shader.reflectcolor4f, atof(parameter[2]), atof(parameter[3]), atof(parameter[4]), atof(parameter[5]));
 				}
-				else if (!strcasecmp(parameter[0], "dp_water") && numparameters >= 12)
+				else if (!strcasecmp(parameter[0], "dpwater") && numparameters >= 12)
 				{
 					shader.textureflags |= Q3TEXTUREFLAG_WATERSHADER;
 					shader.reflectmin = atof(parameter[1]);
@@ -1981,13 +1995,25 @@ void Mod_LoadQ3Shaders(void)
 					Vector4Set(shader.reflectcolor4f, atof(parameter[8]), atof(parameter[9]), atof(parameter[10]), 1);
 					shader.r_water_wateralpha = atof(parameter[11]);
 				}
-				else if (!strcasecmp(parameter[0], "dp_glossintensitymod") && numparameters >= 2)
+				else if (!strcasecmp(parameter[0], "dpglossintensitymod") && numparameters >= 2)
 				{
 					shader.specularscalemod = atof(parameter[1]);
 				}
-				else if (!strcasecmp(parameter[0], "dp_glossexponentmod") && numparameters >= 2)
+				else if (!strcasecmp(parameter[0], "dpglossexponentmod") && numparameters >= 2)
 				{
 					shader.specularpowermod = atof(parameter[1]);
+				}
+				else if (!strcasecmp(parameter[0], "dpoffsetmapping") && numparameters >= 3)
+				{
+					if (!strcasecmp(parameter[1], "disable") || !strcasecmp(parameter[1], "none") || !strcasecmp(parameter[1], "off"))
+						shader.offsetmapping = OFFSETMAPPING_OFF;
+					else if (!strcasecmp(parameter[1], "default"))
+						shader.offsetmapping = OFFSETMAPPING_DEFAULT;
+					else if (!strcasecmp(parameter[1], "linear"))
+						shader.offsetmapping = OFFSETMAPPING_LINEAR;
+					else if (!strcasecmp(parameter[1], "relief"))
+						shader.offsetmapping = OFFSETMAPPING_RELIEF;
+					shader.offsetscale = atof(parameter[2]);
 				}
 				else if (!strcasecmp(parameter[0], "deformvertexes") && numparameters >= 2)
 				{
@@ -2097,8 +2123,11 @@ qboolean Mod_LoadTextureFromQ3Shader(texture_t *texture, const char *name, qbool
 		texflagsmask &= ~TEXF_PICMIP;
 	if(!(defaulttexflags & TEXF_COMPRESS))
 		texflagsmask &= ~TEXF_COMPRESS;
-	texture->specularscalemod = 1; // unless later loaded from the shader
-	texture->specularpowermod = 1; // unless later loaded from the shader
+	// unless later loaded from the shader
+	texture->offsetmapping = (mod_q3shader_default_offsetmapping.value) ? OFFSETMAPPING_DEFAULT : OFFSETMAPPING_OFF;
+	texture->offsetscale = 1;
+	texture->specularscalemod = 1;
+	texture->specularpowermod = 1; 
 	// WHEN ADDING DEFAULTS HERE, REMEMBER TO SYNC TO SHADER LOADING ABOVE
 	// HERE, AND Q1BSP LOADING
 	// JUST GREP FOR "specularscalemod = 1".
@@ -2236,16 +2265,65 @@ nothing                GL_ZERO GL_ONE
 		texture->reflectfactor = shader->reflectfactor;
 		Vector4Copy(shader->reflectcolor4f, texture->reflectcolor4f);
 		texture->r_water_wateralpha = shader->r_water_wateralpha;
+		texture->offsetmapping = shader->offsetmapping;
+		texture->offsetscale = shader->offsetscale;
 		texture->specularscalemod = shader->specularscalemod;
 		texture->specularpowermod = shader->specularpowermod;
 		if (shader->dpreflectcube[0])
 			texture->reflectcubetexture = R_GetCubemap(shader->dpreflectcube);
+
+		// set up default supercontents (on q3bsp this is overridden by the q3bsp loader)
+		texture->supercontents = SUPERCONTENTS_SOLID | SUPERCONTENTS_OPAQUE;
+		if (shader->surfaceparms & Q3SURFACEPARM_LAVA         ) texture->supercontents  = SUPERCONTENTS_LAVA         ;
+		if (shader->surfaceparms & Q3SURFACEPARM_SLIME        ) texture->supercontents  = SUPERCONTENTS_SLIME        ;
+		if (shader->surfaceparms & Q3SURFACEPARM_WATER        ) texture->supercontents  = SUPERCONTENTS_WATER        ;
+		if (shader->surfaceparms & Q3SURFACEPARM_NONSOLID     ) texture->supercontents  = 0                          ;
+		if (shader->surfaceparms & Q3SURFACEPARM_PLAYERCLIP   ) texture->supercontents  = SUPERCONTENTS_PLAYERCLIP   ;
+		if (shader->surfaceparms & Q3SURFACEPARM_BOTCLIP      ) texture->supercontents  = SUPERCONTENTS_MONSTERCLIP  ;
+		if (shader->surfaceparms & Q3SURFACEPARM_SKY          ) texture->supercontents  = SUPERCONTENTS_SKY          ;
+
+	//	if (shader->surfaceparms & Q3SURFACEPARM_ALPHASHADOW  ) texture->supercontents |= SUPERCONTENTS_ALPHASHADOW  ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_AREAPORTAL   ) texture->supercontents |= SUPERCONTENTS_AREAPORTAL   ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_CLUSTERPORTAL) texture->supercontents |= SUPERCONTENTS_CLUSTERPORTAL;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_DETAIL       ) texture->supercontents |= SUPERCONTENTS_DETAIL       ;
+		if (shader->surfaceparms & Q3SURFACEPARM_DONOTENTER   ) texture->supercontents |= SUPERCONTENTS_DONOTENTER   ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_FOG          ) texture->supercontents |= SUPERCONTENTS_FOG          ;
+		if (shader->surfaceparms & Q3SURFACEPARM_LAVA         ) texture->supercontents |= SUPERCONTENTS_LAVA         ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_LIGHTFILTER  ) texture->supercontents |= SUPERCONTENTS_LIGHTFILTER  ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_METALSTEPS   ) texture->supercontents |= SUPERCONTENTS_METALSTEPS   ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_NODAMAGE     ) texture->supercontents |= SUPERCONTENTS_NODAMAGE     ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_NODLIGHT     ) texture->supercontents |= SUPERCONTENTS_NODLIGHT     ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_NODRAW       ) texture->supercontents |= SUPERCONTENTS_NODRAW       ;
+		if (shader->surfaceparms & Q3SURFACEPARM_NODROP       ) texture->supercontents |= SUPERCONTENTS_NODROP       ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_NOIMPACT     ) texture->supercontents |= SUPERCONTENTS_NOIMPACT     ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_NOLIGHTMAP   ) texture->supercontents |= SUPERCONTENTS_NOLIGHTMAP   ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_NOMARKS      ) texture->supercontents |= SUPERCONTENTS_NOMARKS      ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_NOMIPMAPS    ) texture->supercontents |= SUPERCONTENTS_NOMIPMAPS    ;
+		if (shader->surfaceparms & Q3SURFACEPARM_NONSOLID     ) texture->supercontents &=~SUPERCONTENTS_SOLID        ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_ORIGIN       ) texture->supercontents |= SUPERCONTENTS_ORIGIN       ;
+		if (shader->surfaceparms & Q3SURFACEPARM_PLAYERCLIP   ) texture->supercontents |= SUPERCONTENTS_PLAYERCLIP   ;
+		if (shader->surfaceparms & Q3SURFACEPARM_SKY          ) texture->supercontents |= SUPERCONTENTS_SKY          ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_SLICK        ) texture->supercontents |= SUPERCONTENTS_SLICK        ;
+		if (shader->surfaceparms & Q3SURFACEPARM_SLIME        ) texture->supercontents |= SUPERCONTENTS_SLIME        ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_STRUCTURAL   ) texture->supercontents |= SUPERCONTENTS_STRUCTURAL   ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_TRANS        ) texture->supercontents |= SUPERCONTENTS_TRANS        ;
+		if (shader->surfaceparms & Q3SURFACEPARM_WATER        ) texture->supercontents |= SUPERCONTENTS_WATER        ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_POINTLIGHT   ) texture->supercontents |= SUPERCONTENTS_POINTLIGHT   ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_HINT         ) texture->supercontents |= SUPERCONTENTS_HINT         ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_DUST         ) texture->supercontents |= SUPERCONTENTS_DUST         ;
+		if (shader->surfaceparms & Q3SURFACEPARM_BOTCLIP      ) texture->supercontents |= SUPERCONTENTS_BOTCLIP      | SUPERCONTENTS_MONSTERCLIP;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_LIGHTGRID    ) texture->supercontents |= SUPERCONTENTS_LIGHTGRID    ;
+	//	if (shader->surfaceparms & Q3SURFACEPARM_ANTIPORTAL   ) texture->supercontents |= SUPERCONTENTS_ANTIPORTAL   ;
+
+		if (shader->dpmeshcollisions)
+			texture->basematerialflags |= MATERIALFLAG_MESHCOLLISIONS;
 	}
 	else if (!strcmp(texture->name, "noshader") || !texture->name[0])
 	{
 		if (developer_extra.integer)
 			Con_DPrintf("^1%s:^7 using fallback noshader material for ^3\"%s\"\n", loadmodel->name, name);
 		texture->surfaceparms = 0;
+		texture->supercontents = SUPERCONTENTS_SOLID | SUPERCONTENTS_OPAQUE;
 	}
 	else if (!strcmp(texture->name, "common/nodraw") || !strcmp(texture->name, "textures/common/nodraw"))
 	{
@@ -2253,6 +2331,7 @@ nothing                GL_ZERO GL_ONE
 			Con_DPrintf("^1%s:^7 using fallback nodraw material for ^3\"%s\"\n", loadmodel->name, name);
 		texture->surfaceparms = 0;
 		texture->basematerialflags = MATERIALFLAG_NODRAW | MATERIALFLAG_NOSHADOW;
+		texture->supercontents = SUPERCONTENTS_SOLID;
 	}
 	else
 	{
@@ -2260,11 +2339,20 @@ nothing                GL_ZERO GL_ONE
 			Con_DPrintf("^1%s:^7 No shader found for texture ^3\"%s\"\n", loadmodel->name, texture->name);
 		texture->surfaceparms = 0;
 		if (texture->surfaceflags & Q3SURFACEFLAG_NODRAW)
+		{
 			texture->basematerialflags |= MATERIALFLAG_NODRAW | MATERIALFLAG_NOSHADOW;
+			texture->supercontents = SUPERCONTENTS_SOLID;
+		}
 		else if (texture->surfaceflags & Q3SURFACEFLAG_SKY)
+		{
 			texture->basematerialflags |= MATERIALFLAG_SKY | MATERIALFLAG_NOSHADOW;
+			texture->supercontents = SUPERCONTENTS_SKY;
+		}
 		else
+		{
 			texture->basematerialflags |= MATERIALFLAG_WALL;
+			texture->supercontents = SUPERCONTENTS_SOLID | SUPERCONTENTS_OPAQUE;
+		}
 		texture->numskinframes = 1;
 		if(cls.state == ca_dedicated)
 		{
@@ -2805,12 +2893,19 @@ static void Mod_Decompile_SMD(dp_model_t *model, const char *filename, int first
 					const float *v = model->surfmesh.data_vertex3f + index * 3;
 					const float *vn = model->surfmesh.data_normal3f + index * 3;
 					const float *vt = model->surfmesh.data_texcoordtexture2f + index * 2;
-					const int *wi = model->surfmesh.data_vertexweightindex4i + index * 4;
-					const float *wf = model->surfmesh.data_vertexweightinfluence4f + index * 4;
-					     if (wf[3]) l = dpsnprintf(outbuffer + outbufferpos, outbuffermax - outbufferpos, "%3i %f %f %f %f %f %f %f %f 4 %i %f %i %f %i %f %i %f\n", wi[0], v[0], v[1], v[2], vn[0], vn[1], vn[2], vt[0], 1 - vt[1], wi[0], wf[0], wi[1], wf[1], wi[2], wf[2], wi[3], wf[3]);
-					else if (wf[2]) l = dpsnprintf(outbuffer + outbufferpos, outbuffermax - outbufferpos, "%3i %f %f %f %f %f %f %f %f 3 %i %f %i %f %i %f\n"      , wi[0], v[0], v[1], v[2], vn[0], vn[1], vn[2], vt[0], 1 - vt[1], wi[0], wf[0], wi[1], wf[1], wi[2], wf[2]);
-					else if (wf[1]) l = dpsnprintf(outbuffer + outbufferpos, outbuffermax - outbufferpos, "%3i %f %f %f %f %f %f %f %f 2 %i %f %i %f\n"            , wi[0], v[0], v[1], v[2], vn[0], vn[1], vn[2], vt[0], 1 - vt[1], wi[0], wf[0], wi[1], wf[1]);
-					else            l = dpsnprintf(outbuffer + outbufferpos, outbuffermax - outbufferpos, "%3i %f %f %f %f %f %f %f %f\n"                          , wi[0], v[0], v[1], v[2], vn[0], vn[1], vn[2], vt[0], 1 - vt[1]);
+					const int b = model->surfmesh.blends[index];
+					if (b < model->num_bones)
+						l = dpsnprintf(outbuffer + outbufferpos, outbuffermax - outbufferpos, "%3i %f %f %f %f %f %f %f %f\n"                          , b, v[0], v[1], v[2], vn[0], vn[1], vn[2], vt[0], 1 - vt[1]);
+					else
+					{
+						const blendweights_t *w = model->surfmesh.data_blendweights + b - model->num_bones;
+						const unsigned char *wi = w->index;
+						const unsigned char *wf = w->influence;
+					    if (wf[3]) l = dpsnprintf(outbuffer + outbufferpos, outbuffermax - outbufferpos, "%3i %f %f %f %f %f %f %f %f 4 %i %f %i %f %i %f %i %f\n", wi[0], v[0], v[1], v[2], vn[0], vn[1], vn[2], vt[0], 1 - vt[1], wi[0], wf[0]/255.0f, wi[1], wf[1]/255.0f, wi[2], wf[2]/255.0f, wi[3], wf[3]/255.0f);
+						else if (wf[2]) l = dpsnprintf(outbuffer + outbufferpos, outbuffermax - outbufferpos, "%3i %f %f %f %f %f %f %f %f 3 %i %f %i %f %i %f\n"      , wi[0], v[0], v[1], v[2], vn[0], vn[1], vn[2], vt[0], 1 - vt[1], wi[0], wf[0]/255.0f, wi[1], wf[1]/255.0f, wi[2], wf[2]/255.0f);
+						else if (wf[1]) l = dpsnprintf(outbuffer + outbufferpos, outbuffermax - outbufferpos, "%3i %f %f %f %f %f %f %f %f 2 %i %f %i %f\n"            , wi[0], v[0], v[1], v[2], vn[0], vn[1], vn[2], vt[0], 1 - vt[1], wi[0], wf[0]/255.0f, wi[1], wf[1]/255.0f);
+						else            l = dpsnprintf(outbuffer + outbufferpos, outbuffermax - outbufferpos, "%3i %f %f %f %f %f %f %f %f\n"                          , wi[0], v[0], v[1], v[2], vn[0], vn[1], vn[2], vt[0], 1 - vt[1]);
+					}
 					if (l > 0)
 						outbufferpos += l;
 				}
