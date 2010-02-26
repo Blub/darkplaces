@@ -94,6 +94,13 @@ typedef struct texvecvertex_s
 }
 texvecvertex_t;
 
+typedef struct blendweights_s
+{
+	unsigned char index[4];
+	unsigned char influence[4];
+}
+blendweights_t;
+
 // used for mesh lists in q1bsp/q3bsp map models
 // (the surfaces reference portions of these meshes)
 typedef struct surfmesh_s
@@ -134,8 +141,9 @@ typedef struct surfmesh_s
 	float num_morphmdlframescale[3];
 	float num_morphmdlframetranslate[3];
 	// skeletal blending, these are NULL if model is morph or static
-	int *data_vertexweightindex4i;
-	float *data_vertexweightinfluence4f;
+	struct blendweights_s *data_blendweights;
+	int num_blends;
+	unsigned short *blends;
 	// set if there is some kind of animation on this model
 	qboolean isanimated;
 }
@@ -363,6 +371,15 @@ typedef struct q3shaderinfo_deform_s
 }
 q3shaderinfo_deform_t;
 
+typedef enum dpoffsetmapping_technique_s
+{
+	OFFSETMAPPING_OFF,			// none
+	OFFSETMAPPING_DEFAULT,		// cvar-set
+	OFFSETMAPPING_LINEAR,		// linear
+	OFFSETMAPPING_RELIEF		// relief
+}dpoffsetmapping_technique_t;
+
+
 typedef struct q3shaderinfo_s
 {
 	char name[Q3PATHLENGTH];
@@ -384,6 +401,9 @@ typedef struct q3shaderinfo_s
 	qboolean dpshadow;
 	qboolean dpnoshadow;
 
+	// add collisions to all triangles of the surface
+	qboolean dpmeshcollisions;
+
 	// fake reflection
 	char dpreflectcube[Q3PATHLENGTH];
 
@@ -395,6 +415,10 @@ typedef struct q3shaderinfo_s
 	float reflectfactor; // amount of reflection distort (1.0 = like the cvar specifies)
 	vec4_t reflectcolor4f; // color tint of reflection (including alpha factor)
 	float r_water_wateralpha; // additional wateralpha to apply when r_water is active
+
+	// offsetmapping
+	dpoffsetmapping_technique_t offsetmapping;
+	float offsetscale;
 
 	// gloss
 	float specularscalemod;
@@ -528,11 +552,15 @@ typedef struct texture_s
 	vec4_t reflectcolor4f; // color tint of reflection (including alpha factor)
 	float r_water_wateralpha; // additional wateralpha to apply when r_water is active
 
+	// offsetmapping
+	dpoffsetmapping_technique_t offsetmapping;
+	float offsetscale;
+
 	// gloss
 	float specularscalemod;
 	float specularpowermod;
 }
-texture_t;
+ texture_t;
 
 typedef struct mtexinfo_s
 {
@@ -577,10 +605,11 @@ typedef struct msurface_s
 	// fog volume info in q3bsp
 	struct q3deffect_s *effect; // q3bsp
 	// mesh information for collisions (only used by q3bsp curves)
-	int *data_collisionelement3i; // q3bsp
-	float *data_collisionvertex3f; // q3bsp
-	float *data_collisionbbox6f; // collision optimization - contains combined bboxes of every data_collisionstride triangles
-	float *data_bbox6f; // collision optimization - contains combined bboxes of every data_collisionstride triangles
+	int num_firstcollisiontriangle;
+	int *deprecatedq3data_collisionelement3i; // q3bsp
+	float *deprecatedq3data_collisionvertex3f; // q3bsp
+	float *deprecatedq3data_collisionbbox6f; // collision optimization - contains combined bboxes of every data_collisionstride triangles
+	float *deprecatedq3data_bbox6f; // collision optimization - contains combined bboxes of every data_collisionstride triangles
 
 	// surfaces own ranges of vertices and triangles in the model->surfmesh
 	int num_triangles; // number of triangles
@@ -594,14 +623,15 @@ typedef struct msurface_s
 	// mesh information for collisions (only used by q3bsp curves)
 	int num_collisiontriangles; // q3bsp
 	int num_collisionvertices; // q3bsp
-	int num_collisionbboxstride;
-	int num_bboxstride;
+	int deprecatedq3num_collisionbboxstride;
+	int deprecatedq3num_bboxstride;
 	// FIXME: collisionmarkframe should be kept in a separate array
-	int collisionmarkframe; // q3bsp // don't collide twice in one trace
+	int deprecatedq3collisionmarkframe; // q3bsp // don't collide twice in one trace
 }
 msurface_t;
 
 #include "matrixlib.h"
+#include "bih.h"
 
 #include "model_brush.h"
 #include "model_sprite.h"
@@ -680,6 +710,12 @@ typedef struct model_brush_s
 	// example
 	//pvschain = model->brush.data_pvsclusters + mycluster * model->brush.num_pvsclusterbytes;
 	//if (pvschain[thatcluster >> 3] & (1 << (thatcluster & 7)))
+
+	// collision geometry for q3 curves
+	int num_collisionvertices;
+	int num_collisiontriangles;
+	float *data_collisionvertex3f;
+	int *data_collisionelement3i;
 
 	// a mesh containing all shadow casting geometry for the whole model (including submodels), portions of this are referenced by each surface's num_firstshadowmeshtriangle
 	shadowmesh_t *shadowmesh;
@@ -866,6 +902,8 @@ typedef struct model_s
 	// range of collision brush numbers in this (sub)model
 	int				firstmodelbrush;
 	int				nummodelbrushes;
+	// BIH (Bounding Interval Hierarchy) for this (sub)model
+	bih_t			collision_bih;
 	// for md3 models
 	int				num_tags;
 	int				num_tagframes;
@@ -894,7 +932,7 @@ typedef struct model_s
 	// data type of model
 	const char		*modeldatatypestring;
 	// generates vertex data for a given frameblend
-	void(*AnimateVertices)(const struct model_s *model, const struct frameblend_s *frameblend, const struct skeleton_s *skeleton, float *vertex3f, float *normal3f, float *svector3f, float *tvector3f);
+	void(*AnimateVertices)(const struct model_s * RESTRICT model, const struct frameblend_s * RESTRICT frameblend, const struct skeleton_s *skeleton, float * RESTRICT vertex3f, float * RESTRICT normal3f, float * RESTRICT svector3f, float * RESTRICT tvector3f);
 	// draw the model's sky polygons (only used by brush models)
 	void(*DrawSky)(struct entity_render_s *ent);
 	// draw refraction/reflection textures for the model's water polygons (only used by brush models)
@@ -1069,6 +1107,14 @@ void R_Q1BSP_CompileShadowVolume(struct entity_render_s *ent, vec3_t relativelig
 void R_Q1BSP_DrawShadowVolume(struct entity_render_s *ent, const vec3_t relativelightorigin, const vec3_t relativelightdirection, float lightradius, int numsurfaces, const int *surfacelist, const vec3_t lightmins, const vec3_t lightmaxs);
 void R_Q1BSP_DrawLight(struct entity_render_s *ent, int numsurfaces, const int *surfacelist, const unsigned char *trispvs);
 
+// Collision optimization using Bounding Interval Hierarchy
+void Mod_CollisionBIH_TracePoint(dp_model_t *model, const struct frameblend_s *frameblend, const skeleton_t *skeleton, struct trace_s *trace, const vec3_t start, int hitsupercontentsmask);
+void Mod_CollisionBIH_TraceLine(dp_model_t *model, const struct frameblend_s *frameblend, const skeleton_t *skeleton, struct trace_s *trace, const vec3_t start, const vec3_t end, int hitsupercontentsmask);
+void Mod_CollisionBIH_TraceBox(dp_model_t *model, const struct frameblend_s *frameblend, const skeleton_t *skeleton, struct trace_s *trace, const vec3_t start, const vec3_t boxmins, const vec3_t boxmaxs, const vec3_t end, int hitsupercontentsmask);
+void Mod_CollisionBIH_TracePoint_Mesh(dp_model_t *model, const struct frameblend_s *frameblend, const skeleton_t *skeleton, struct trace_s *trace, const vec3_t start, int hitsupercontentsmask);
+int Mod_CollisionBIH_PointSuperContents_Mesh(struct model_s *model, int frame, const vec3_t point);
+void Mod_MakeCollisionBIH(dp_model_t *model, qboolean userendersurfaces);
+
 // alias models
 struct frameblend_s;
 struct skeleton_s;
@@ -1076,6 +1122,8 @@ void Mod_AliasInit(void);
 int Mod_Alias_GetTagMatrix(const dp_model_t *model, const struct frameblend_s *frameblend, const struct skeleton_s *skeleton, int tagindex, matrix4x4_t *outmatrix);
 int Mod_Alias_GetTagIndexForName(const dp_model_t *model, unsigned int skin, const char *tagname);
 int Mod_Alias_GetExtendedTagInfoForIndex(const dp_model_t *model, unsigned int skin, const struct frameblend_s *frameblend, const struct skeleton_s *skeleton, int tagindex, int *parentindex, const char **tagname, matrix4x4_t *tag_localmatrix);
+
+void Mod_Skeletal_FreeBuffers(void);
 
 // sprite models
 void Mod_SpriteInit(void);
