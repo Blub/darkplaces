@@ -176,6 +176,7 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed, int edictnum)
 		r_refdef.scene.entities[r_refdef.scene.numentities++] = entrender;
 		entrender->entitynumber = edictnum;
 		//entrender->shadertime = 0; // shadertime was set by spawn()
+		entrender->flags = 0;
 		entrender->alpha = 1;
 		entrender->scale = 1;
 		VectorSet(entrender->colormod, 1, 1, 1);
@@ -255,7 +256,6 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed, int edictnum)
 		if(renderflags & RF_NOCULL)		entrender->flags |= RENDER_NOCULL;
 		if(renderflags & RF_DEPTHHACK)	entrender->flags |= RENDER_NODEPTHTEST;
 		if(renderflags & RF_ADDITIVE)		entrender->flags |= RENDER_ADDITIVE;
-
 	}
 
 	c = (int)ed->fields.client->colormap;
@@ -270,7 +270,7 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed, int edictnum)
 	// either fullbright or lit
 	if(!r_fullbright.integer)
 	{
-		if (!(entrender->effects & EF_FULLBRIGHT))
+		if (!(entrender->effects & EF_FULLBRIGHT) && !(renderflags & RF_FULLBRIGHT))
 			entrender->flags |= RENDER_LIGHT;
 		else if(r_equalize_entities_fullbright.integer)
 			entrender->flags |= RENDER_LIGHT | RENDER_EQUALIZE;
@@ -278,6 +278,7 @@ qboolean CSQC_AddRenderEdict(prvm_edict_t *ed, int edictnum)
 	// hide player shadow during intermission or nehahra movie
 	if (!(entrender->effects & (EF_NOSHADOW | EF_ADDITIVE | EF_NODEPTHTEST))
 	 &&  (entrender->alpha >= 1)
+	 && !(renderflags & RF_NOSHADOW)
 	 && !(entrender->flags & RENDER_VIEWMODEL)
 	 && (!(entrender->flags & RENDER_EXTERIORMODEL) || (!cl.intermission && cls.protocol != PROTOCOL_NEHAHRAMOVIE && !cl_noplayershadow.integer)))
 		entrender->flags |= RENDER_SHADOW;
@@ -338,6 +339,7 @@ qboolean CL_VM_UpdateView (void)
 //	vec3_t oldangles;
 	if(!cl.csqc_loaded)
 		return false;
+	R_TimeReport("pre-UpdateView");
 	CSQC_BEGIN
 		//VectorCopy(cl.viewangles, oldangles);
 		prog->globals.client->time = cl.time;
@@ -355,6 +357,7 @@ qboolean CL_VM_UpdateView (void)
 		// Dresk : Reset Dmg Globals Here
 		CL_VM_UpdateDmgGlobals(0, 0, emptyvector);
 	CSQC_END
+	R_TimeReport("UpdateView");
 	return true;
 }
 
