@@ -4439,18 +4439,33 @@ static int BufStr_SortStringsDOWN (const void *in1, const void *in2)
 VM_buf_create
 creates new buffer, and returns it's index, returns -1 if failed
 float buf_create(void) = #460;
+float newbuf(string format, float flags) = #460;
 ========================
 */
+
 void VM_buf_create (void)
 {
 	prvm_stringbuffer_t *stringbuffer;
 	int i;
-	VM_SAFEPARMCOUNT(0, VM_buf_create);
+	
+	VM_SAFEPARMCOUNTRANGE(0, 2, VM_buf_create);
+
+	// VorteX: optional parm1 (buffer format) is unfinished, to keep intact with future databuffers extension must be set to "string"
+	if(prog->argc >= 1 && strcmp(PRVM_G_STRING(OFS_PARM0), "string"))
+	{
+		PRVM_G_FLOAT(OFS_RETURN) = -1;
+		return;
+	}
 	stringbuffer = (prvm_stringbuffer_t *) Mem_ExpandableArray_AllocRecord(&prog->stringbuffersarray);
 	for (i = 0;stringbuffer != Mem_ExpandableArray_RecordAtIndex(&prog->stringbuffersarray, i);i++);
 	stringbuffer->origin = PRVM_AllocationOrigin();
+	// optional flags parm
+	if(prog->argc == 2)
+		stringbuffer->flags = (int)PRVM_G_FLOAT(OFS_PARM1) & 0xFF;
 	PRVM_G_FLOAT(OFS_RETURN) = i;
 }
+
+
 
 /*
 ========================
@@ -5041,7 +5056,7 @@ void VM_strstrofs (void)
 	if (!match)
 		PRVM_G_FLOAT(OFS_RETURN) = -1;
 	else
-		PRVM_G_FLOAT(OFS_RETURN) = match - instr;
+		PRVM_G_FLOAT(OFS_RETURN) = u8_strnlen(instr, match-instr);
 }
 
 //#222 string(string s, float index) str2chr (FTE_STRINGS)
@@ -5558,7 +5573,7 @@ void VM_uri_get (void)
 	handle->prognr = PRVM_GetProgNr();
 	handle->starttime = prog->starttime;
 	handle->id = id;
-	ret = Curl_Begin_ToMemory(url, (unsigned char *) handle->buffer, sizeof(handle->buffer), uri_to_string_callback, handle);
+	ret = Curl_Begin_ToMemory(url, 0, (unsigned char *) handle->buffer, sizeof(handle->buffer), uri_to_string_callback, handle);
 	if(ret)
 	{
 		PRVM_G_INT(OFS_RETURN) = 1;
@@ -6366,6 +6381,7 @@ void VM_getsurfacenumtriangles(void)
 //PF_getsurfacetriangle,     // #??? vector(entity e, float s, float n) getsurfacetriangle = #???;
 void VM_getsurfacetriangle(void)
 {
+       const vec3_t d = {-1, -1, -1};
        prvm_edict_t *ed;
        dp_model_t *model;
        msurface_t *surface;
@@ -6379,5 +6395,5 @@ void VM_getsurfacetriangle(void)
        if (trinum < 0 || trinum >= surface->num_triangles)
                return;
        // FIXME: implement rotation/scaling
-       VectorCopy(&(model->surfmesh.data_element3i + 3 * surface->num_firsttriangle)[trinum * 3], PRVM_G_VECTOR(OFS_RETURN));
+       VectorMA(&(model->surfmesh.data_element3i + 3 * surface->num_firsttriangle)[trinum * 3], surface->num_firstvertex, d, PRVM_G_VECTOR(OFS_RETURN));
 }

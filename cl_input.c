@@ -450,7 +450,7 @@ cvar_t m_accelerate_minspeed = {CVAR_SAVE, "m_accelerate_minspeed","5000", "belo
 cvar_t m_accelerate_maxspeed = {CVAR_SAVE, "m_accelerate_maxspeed","10000", "above this speed, full acceleration is done"};
 cvar_t m_accelerate_filter = {CVAR_SAVE, "m_accelerate_filter","0.1", "mouse acceleration factor filtering"};
 
-cvar_t cl_netfps = {CVAR_SAVE, "cl_netfps","20", "how many input packets to send to server each second"};
+cvar_t cl_netfps = {CVAR_SAVE, "cl_netfps","72", "how many input packets to send to server each second"};
 cvar_t cl_netrepeatinput = {CVAR_SAVE, "cl_netrepeatinput", "1", "how many packets in a row can be lost without movement issues when using cl_movement (technically how many input messages to repeat in each packet that have not yet been acknowledged by the server), only affects DP7 and later servers (Quake uses 0, QuakeWorld uses 2, and just for comparison Quake3 uses 1)"};
 cvar_t cl_netimmediatebuttons = {CVAR_SAVE, "cl_netimmediatebuttons", "1", "sends extra packets whenever your buttons change or an impulse is used (basically: whenever you click fire or change weapon)"};
 
@@ -625,7 +625,7 @@ void CL_Input (void)
 	if (!key_consoleactive && key_dest == key_game && !cl.csqc_wantsmousemove)
 	{
 		float modulatedsensitivity = sensitivity.value * cl.sensitivityscale;
-		if (cl_prydoncursor.integer)
+		if (cl_prydoncursor.integer > 0)
 		{
 			// mouse interacting with the scene, mostly stationary view
 			V_StopPitchDrift();
@@ -743,7 +743,7 @@ void CL_UpdatePrydonCursor(void)
 {
 	vec3_t temp;
 
-	if (!cl_prydoncursor.integer)
+	if (cl_prydoncursor.integer <= 0)
 		VectorClear(cl.cmd.cursor_screen);
 
 	/*
@@ -778,7 +778,15 @@ void CL_UpdatePrydonCursor(void)
 	VectorSet(temp, cl.cmd.cursor_screen[2] * 1000000, (v_flipped.integer ? -1 : 1) * cl.cmd.cursor_screen[0] * -r_refdef.view.frustum_x * 1000000, cl.cmd.cursor_screen[1] * -r_refdef.view.frustum_y * 1000000);
 	Matrix4x4_Transform(&r_refdef.view.matrix, temp, cl.cmd.cursor_end);
 	// trace from view origin to the cursor
-	cl.cmd.cursor_fraction = CL_SelectTraceLine(cl.cmd.cursor_start, cl.cmd.cursor_end, cl.cmd.cursor_impact, cl.cmd.cursor_normal, &cl.cmd.cursor_entitynumber, (chase_active.integer || cl.intermission) ? &cl.entities[cl.playerentity].render : NULL);
+	if (cl_prydoncursor_notrace.integer)
+	{
+		cl.cmd.cursor_fraction = 1.0f;
+		VectorCopy(cl.cmd.cursor_end, cl.cmd.cursor_impact);
+		VectorClear(cl.cmd.cursor_normal);
+		cl.cmd.cursor_entitynumber = 0;
+	}
+	else
+		cl.cmd.cursor_fraction = CL_SelectTraceLine(cl.cmd.cursor_start, cl.cmd.cursor_end, cl.cmd.cursor_impact, cl.cmd.cursor_normal, &cl.cmd.cursor_entitynumber, (chase_active.integer || cl.intermission) ? &cl.entities[cl.playerentity].render : NULL);
 }
 
 typedef enum waterlevel_e
@@ -1161,18 +1169,23 @@ void CL_ClientMovement_Physics_PM_Accelerate(cl_clientmovement_state_t *s, vec3_
 		// negative: only apply so much sideways friction to stay below the speed you could get by "braking"
 	{
 		vec_t f, fmin;
-		f = 1 - s->cmd.frametime * wishspeed * sidefric;
+		f = max(0, 1 + s->cmd.frametime * wishspeed * sidefric);
 		fmin = (vel_xy_backward*vel_xy_backward - vel_straight*vel_straight) / VectorLength2(vel_perpend);
+		// assume: fmin > 1
+		// vel_xy_backward*vel_xy_backward - vel_straight*vel_straight > vel_perpend*vel_perpend
+		// vel_xy_backward*vel_xy_backward > vel_straight*vel_straight + vel_perpend*vel_perpend
+		// vel_xy_backward*vel_xy_backward > vel_xy * vel_xy
+		// obviously, this cannot be
 		if(fmin <= 0)
 			VectorScale(vel_perpend, f, vel_perpend);
 		else
 		{
 			fmin = sqrt(fmin);
-			VectorScale(vel_perpend, bound(fmin, f, 1.0f), vel_perpend);
+			VectorScale(vel_perpend, max(fmin, f), vel_perpend);
 		}
 	}
 	else
-		VectorScale(vel_perpend, 1 - s->cmd.frametime * wishspeed * sidefric, vel_perpend);
+		VectorScale(vel_perpend, max(0, 1 - s->cmd.frametime * wishspeed * sidefric), vel_perpend);
 
 	VectorMA(vel_perpend, vel_straight, wishdir, s->velocity);
 
@@ -1678,7 +1691,7 @@ void CL_SendMove(void)
 	if (in_button8.state  & 3) bits |= 128;
 	if (in_use.state      & 3) bits |= 256;
 	if (key_dest != key_game || key_consoleactive) bits |= 512;
-	if (cl_prydoncursor.integer) bits |= 1024;
+	if (cl_prydoncursor.integer > 0) bits |= 1024;
 	if (in_button9.state  & 3)  bits |=   2048;
 	if (in_button10.state  & 3) bits |=   4096;
 	if (in_button11.state  & 3) bits |=   8192;

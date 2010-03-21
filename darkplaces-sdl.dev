@@ -1,7 +1,7 @@
 [Project]
 FileName=darkplaces-sdl.dev
 Name=DarkPlaces
-UnitCount=181
+UnitCount=183
 Type=0
 Ver=1
 ObjFiles=
@@ -12,7 +12,7 @@ ResourceIncludes=
 MakeIncludes=
 Compiler=-Wall -O2 -fno-strict-aliasing -ffast-math -funroll-loops -D_GNU_SOURCE=1 -Dmain=SDL_main_@@__@@_
 CppCompiler=
-Linker=-lws2_32 -luser32 -lgdi32 -lcomctl32 -Wl,--large-address-aware -lmingw32 -lSDLmain -lSDL  -mwindows_@@__@@_
+Linker=-lwinmm -lws2_32 -luser32 -lgdi32 -lcomctl32 -Wl,--large-address-aware -lmingw32 -lSDLmain -lSDL  -mwindows_@@__@@_
 IsCpp=0
 Icon=
 ExeOutput=
@@ -1778,7 +1778,7 @@ OverrideBuildCmd=0
 BuildCmd=
 
 [Unit182]
-FileName=SDLMain.h
+FileName=bih.h
 CompileCpp=0
 Folder=Header Files
 Compile=1
@@ -1961,6 +1961,16 @@ BuildCmd=
 FileName=utf8lib.h
 CompileCpp=0
 Folder=Header Files
+Compile=1
+Link=1
+Priority=1000
+OverrideBuildCmd=0
+BuildCmd=
+
+[Unit183]
+FileName=bih.c
+CompileCpp=0
+Folder=Source Files
 Compile=1
 Link=1
 Priority=1000

@@ -46,6 +46,11 @@ cvar_t mod_q3bsp_debugtracebrush = {0, "mod_q3bsp_debugtracebrush", "0", "select
 cvar_t mod_q3bsp_lightmapmergepower = {CVAR_SAVE, "mod_q3bsp_lightmapmergepower", "4", "merges the quake3 128x128 lightmap textures into larger lightmap group textures to speed up rendering, 1 = 256x256, 2 = 512x512, 3 = 1024x1024, 4 = 2048x2048, 5 = 4096x4096, ..."};
 cvar_t mod_q3bsp_nolightmaps = {CVAR_SAVE, "mod_q3bsp_nolightmaps", "0", "do not load lightmaps in Q3BSP maps (to save video RAM, but be warned: it looks ugly)"};
 cvar_t mod_q3bsp_tracelineofsight_brushes = {0, "mod_q3bsp_tracelineofsight_brushes", "0", "enables culling of entities behind detail brushes, curves, etc"};
+cvar_t mod_q3shader_default_offsetmapping = {CVAR_SAVE, "mod_q3shader_default_offsetmapping", "1", "use offsetmapping by default on all surfaces"};
+
+cvar_t mod_q1bsp_polygoncollisions = {0, "mod_q1bsp_polygoncollisions", "0", "disables use of precomputed cliphulls and instead collides with polygons (uses Bounding Interval Hierarchy optimizations)"};
+cvar_t mod_collision_bih = {0, "mod_collision_bih", "1", "enables use of generated Bounding Interval Hierarchy tree instead of compiled bsp tree in collision code"};
+cvar_t mod_recalculatenodeboxes = {0, "mod_recalculatenodeboxes", "1", "enables use of generated node bounding boxes based on BSP tree portal reconstruction, rather than the node boxes supplied by the map compiler"};
 
 static texture_t mod_q1bsp_texture_solid;
 static texture_t mod_q1bsp_texture_sky;
@@ -75,6 +80,10 @@ void Mod_BrushInit(void)
 	Cvar_RegisterVariable(&mod_q3bsp_lightmapmergepower);
 	Cvar_RegisterVariable(&mod_q3bsp_nolightmaps);
 	Cvar_RegisterVariable(&mod_q3bsp_tracelineofsight_brushes);
+	Cvar_RegisterVariable(&mod_q3shader_default_offsetmapping);
+	Cvar_RegisterVariable(&mod_q1bsp_polygoncollisions);
+	Cvar_RegisterVariable(&mod_collision_bih);
+	Cvar_RegisterVariable(&mod_recalculatenodeboxes);
 
 	memset(&mod_q1bsp_texture_solid, 0, sizeof(mod_q1bsp_texture_solid));
 	strlcpy(mod_q1bsp_texture_solid.name, "solid" , sizeof(mod_q1bsp_texture_solid.name));
@@ -522,17 +531,17 @@ static void Mod_Q1BSP_FindNonSolidLocation_r_Leaf(findnonsolidlocationinfo_t *in
 		surface = info->model->data_surfaces + *mark;
 		if (surface->texture->supercontents & SUPERCONTENTS_SOLID)
 		{
-			if(surface->num_bboxstride > 0)
+			if(surface->deprecatedq3num_bboxstride > 0)
 			{
 				int i, cnt, tri;
-				cnt = (surface->num_triangles + surface->num_bboxstride - 1) / surface->num_bboxstride;
+				cnt = (surface->num_triangles + surface->deprecatedq3num_bboxstride - 1) / surface->deprecatedq3num_bboxstride;
 				for(i = 0; i < cnt; ++i)
 				{
-					if(BoxesOverlap(surface->data_bbox6f + i * 6, surface->data_bbox6f + i * 6 + 3, info->absmin, info->absmax))
+					if(BoxesOverlap(surface->deprecatedq3data_bbox6f + i * 6, surface->deprecatedq3data_bbox6f + i * 6 + 3, info->absmin, info->absmax))
 					{
-						for(k = 0; k < surface->num_bboxstride; ++k)
+						for(k = 0; k < surface->deprecatedq3num_bboxstride; ++k)
 						{
-							tri = i * surface->num_bboxstride + k;
+							tri = i * surface->deprecatedq3num_bboxstride + k;
 							if(tri >= surface->num_triangles)
 								break;
 							Mod_Q1BSP_FindNonSolidLocation_r_Triangle(info, surface, tri);
@@ -1017,7 +1026,7 @@ static int Mod_Q1BSP_PointSuperContents(struct model_s *model, int frame, const 
 	return Mod_Q1BSP_SuperContentsFromNativeContents(NULL, num);
 }
 
-void Collision_ClipTrace_Box(trace_t *trace, const vec3_t cmins, const vec3_t cmaxs, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int hitsupercontentsmask, int boxsupercontents, int boxq3surfaceflags, texture_t *boxtexture)
+void Collision_ClipTrace_Box(trace_t *trace, const vec3_t cmins, const vec3_t cmaxs, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int hitsupercontentsmask, int boxsupercontents, int boxq3surfaceflags, const texture_t *boxtexture)
 {
 #if 1
 	colbrushf_t cbox;
@@ -1123,7 +1132,7 @@ void Collision_ClipTrace_Box(trace_t *trace, const vec3_t cmins, const vec3_t cm
 #endif
 }
 
-void Collision_ClipTrace_Point(trace_t *trace, const vec3_t cmins, const vec3_t cmaxs, const vec3_t start, int hitsupercontentsmask, int boxsupercontents, int boxq3surfaceflags, texture_t *boxtexture)
+void Collision_ClipTrace_Point(trace_t *trace, const vec3_t cmins, const vec3_t cmaxs, const vec3_t start, int hitsupercontentsmask, int boxsupercontents, int boxq3surfaceflags, const texture_t *boxtexture)
 {
 	memset(trace, 0, sizeof(trace_t));
 	trace->fraction = 1;
@@ -1459,6 +1468,8 @@ static void Mod_Q1BSP_LoadTextures(lump_t *l)
 		tx->reflectfactor = 1;
 		Vector4Set(tx->reflectcolor4f, 1, 1, 1, 1);
 		tx->r_water_wateralpha = 1;
+		tx->offsetmapping = OFFSETMAPPING_OFF;
+		tx->offsetscale = 1;
 		tx->specularscalemod = 1;
 		tx->specularpowermod = 1;
 	}
@@ -2963,10 +2974,13 @@ static void Mod_Q1BSP_FinalizePortals(void)
 	// leafs (because qbsp is very sloppy)
 	leaf = loadmodel->brush.data_leafs;
 	endleaf = leaf + loadmodel->brush.num_leafs;
-	for (;leaf < endleaf;leaf++)
+	if (mod_recalculatenodeboxes.integer)
 	{
-		VectorSet(leaf->mins,  2000000000,  2000000000,  2000000000);
-		VectorSet(leaf->maxs, -2000000000, -2000000000, -2000000000);
+		for (;leaf < endleaf;leaf++)
+		{
+			VectorSet(leaf->mins,  2000000000,  2000000000,  2000000000);
+			VectorSet(leaf->maxs, -2000000000, -2000000000, -2000000000);
+		}
 	}
 	numportals = 0;
 	numpoints = 0;
@@ -3051,23 +3065,27 @@ static void Mod_Q1BSP_FinalizePortals(void)
 				portal++;
 			}
 			// add the portal's polygon points to the leaf bounding boxes
-			for (i = 0;i < 2;i++)
+			if (mod_recalculatenodeboxes.integer)
 			{
-				leaf = (mleaf_t *)p->nodes[i];
-				for (j = 0;j < p->numpoints;j++)
+				for (i = 0;i < 2;i++)
 				{
-					if (leaf->mins[0] > p->points[j*3+0]) leaf->mins[0] = p->points[j*3+0];
-					if (leaf->mins[1] > p->points[j*3+1]) leaf->mins[1] = p->points[j*3+1];
-					if (leaf->mins[2] > p->points[j*3+2]) leaf->mins[2] = p->points[j*3+2];
-					if (leaf->maxs[0] < p->points[j*3+0]) leaf->maxs[0] = p->points[j*3+0];
-					if (leaf->maxs[1] < p->points[j*3+1]) leaf->maxs[1] = p->points[j*3+1];
-					if (leaf->maxs[2] < p->points[j*3+2]) leaf->maxs[2] = p->points[j*3+2];
+					leaf = (mleaf_t *)p->nodes[i];
+					for (j = 0;j < p->numpoints;j++)
+					{
+						if (leaf->mins[0] > p->points[j*3+0]) leaf->mins[0] = p->points[j*3+0];
+						if (leaf->mins[1] > p->points[j*3+1]) leaf->mins[1] = p->points[j*3+1];
+						if (leaf->mins[2] > p->points[j*3+2]) leaf->mins[2] = p->points[j*3+2];
+						if (leaf->maxs[0] < p->points[j*3+0]) leaf->maxs[0] = p->points[j*3+0];
+						if (leaf->maxs[1] < p->points[j*3+1]) leaf->maxs[1] = p->points[j*3+1];
+						if (leaf->maxs[2] < p->points[j*3+2]) leaf->maxs[2] = p->points[j*3+2];
+					}
 				}
 			}
 		}
 	}
 	// now recalculate the node bounding boxes from the leafs
-	Mod_Q1BSP_RecursiveRecalcNodeBBox(loadmodel->brush.data_nodes + loadmodel->brushq1.hulls[0].firstclipnode);
+	if (mod_recalculatenodeboxes.integer)
+		Mod_Q1BSP_RecursiveRecalcNodeBBox(loadmodel->brush.data_nodes + loadmodel->brushq1.hulls[0].firstclipnode);
 }
 
 /*
@@ -3668,7 +3686,7 @@ void Mod_Q1BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 				mod->DrawSky = R_Q1BSP_DrawSky;
 
 			for (j = 0, surface = &mod->data_surfaces[mod->firstmodelsurface];j < mod->nummodelsurfaces;j++, surface++)
-				if (surface->texture->basematerialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION | MATERIALFLAG_REFLECTION))
+				if (surface->texture->basematerialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION | MATERIALFLAG_REFLECTION | MATERIALFLAG_CAMERA))
 					break;
 			if (j < mod->nummodelsurfaces)
 				mod->DrawAddWaterPlanes = R_Q1BSP_DrawAddWaterPlanes;
@@ -3717,6 +3735,14 @@ void Mod_Q1BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 			Con_Printf("warning: empty submodel *%i in %s\n", i+1, loadmodel->name);
 		}
 		//mod->brushq1.num_visleafs = bm->visleafs;
+
+		if (mod_q1bsp_polygoncollisions.integer)
+		{
+			Mod_MakeCollisionBIH(mod, true);
+			// point traces and contents checks still use the bsp tree
+			mod->TraceLine = Mod_CollisionBIH_TraceLine;
+			mod->TraceBox = Mod_CollisionBIH_TraceBox;
+		}
 
 		// generate VBOs and other shared data before cloning submodels
 		if (i == 0)
@@ -4255,13 +4281,11 @@ static void Mod_Q3BSP_LoadTextures(lump_t *l)
 		strlcpy (out[i].name, in[i].name, sizeof (out[i].name));
 		out[i].surfaceflags = LittleLong(in[i].surfaceflags);
 		out[i].supercontents = Mod_Q3BSP_SuperContentsFromNativeContents(loadmodel, LittleLong(in[i].contents));
+		Mod_LoadTextureFromQ3Shader(out + i, out[i].name, true, true, TEXF_MIPMAP | (r_picmipworld.integer ? TEXF_PICMIP : 0) | TEXF_COMPRESS);
+		// restore the surfaceflags and supercontents
+		out[i].surfaceflags = LittleLong(in[i].surfaceflags);
+		out[i].supercontents = Mod_Q3BSP_SuperContentsFromNativeContents(loadmodel, LittleLong(in[i].contents));
 	}
-
-	if (cls.state == ca_dedicated)
-		return;
-
-	for (i = 0;i < count;i++, in++, out++)
-		Mod_LoadTextureFromQ3Shader(out, out->name, true, true, TEXF_MIPMAP | (r_picmipworld.integer ? TEXF_PICMIP : 0) | TEXF_COMPRESS);
 }
 
 static void Mod_Q3BSP_LoadPlanes(lump_t *l)
@@ -4478,8 +4502,16 @@ static void Mod_Q3BSP_LoadTriangles(lump_t *l)
 	if (l->filelen % sizeof(int[3]))
 		Host_Error("Mod_Q3BSP_LoadTriangles: funny lump size in %s",loadmodel->name);
 	count = l->filelen / sizeof(*in);
-	out = (int *)Mem_Alloc(loadmodel->mempool, count * sizeof(*out));
 
+	if(!loadmodel->brushq3.num_vertices)
+	{
+		if (count)
+			Con_Printf("Mod_Q3BSP_LoadTriangles: %s has triangles but no vertexes, broken compiler, ignoring problem\n", loadmodel->name);
+		loadmodel->brushq3.num_triangles = 0;
+		return;
+	}
+
+	out = (int *)Mem_Alloc(loadmodel->mempool, count * sizeof(*out));
 	loadmodel->brushq3.num_triangles = count / 3;
 	loadmodel->brushq3.data_element3i = out;
 
@@ -4489,8 +4521,6 @@ static void Mod_Q3BSP_LoadTriangles(lump_t *l)
 		if (*out < 0 || *out >= loadmodel->brushq3.num_vertices)
 		{
 			Con_Printf("Mod_Q3BSP_LoadTriangles: invalid vertexindex %i (%i vertices), setting to 0\n", *out, loadmodel->brushq3.num_vertices);
-			if(!loadmodel->brushq3.num_vertices)
-				Host_Error("Mod_Q1BSP_LoadTrianglles: %s has triangles but no vertexes, cannot fix\n", loadmodel->name);
 			*out = 0;
 		}
 	}
@@ -4568,9 +4598,10 @@ static void Mod_Q3BSP_LoadLightmaps(lump_t *l, lump_t *faceslump)
 				break; // we got all of them
 			if(image_width != size || image_height != size)
 			{
-				for(i = 0; i <= count; ++i)
-					Mem_Free(inpixels[i]);
-				Host_Error("Mod_Q3BSP_LoadLightmaps: invalid external lightmap size in %s",loadmodel->name);
+				Mem_Free(inpixels[count]);
+				inpixels[count] = NULL;
+				Con_Printf("Mod_Q3BSP_LoadLightmaps: mismatched lightmap size in %s - external lightmap %s/lm_%04d does not match earlier ones\n", loadmodel->name, mapname, count);
+				break;
 			}
 		}
 	}
@@ -4797,7 +4828,7 @@ static void Mod_Q3BSP_LoadFaces(lump_t *l)
 {
 	q3dface_t *in, *oldin;
 	msurface_t *out, *oldout;
-	int i, oldi, j, n, count, invalidelements, patchsize[2], finalwidth, finalheight, xtess, ytess, finalvertices, finaltriangles, firstvertex, firstelement, type, oldnumtriangles, oldnumtriangles2, meshvertices, meshtriangles, numvertices, numtriangles, cxtess, cytess;
+	int i, oldi, j, n, count, invalidelements, patchsize[2], finalwidth, finalheight, xtess, ytess, finalvertices, finaltriangles, firstvertex, firstelement, type, oldnumtriangles, oldnumtriangles2, meshvertices, meshtriangles, collisionvertices, collisiontriangles, numvertices, numtriangles, cxtess, cytess;
 	float lightmaptcbase[2], lightmaptcscale[2];
 	//int *originalelement3i;
 	//int *originalneighbor3i;
@@ -4808,6 +4839,8 @@ static void Mod_Q3BSP_LoadFaces(lump_t *l)
 	float *originalcolor4f;
 	float *originaltexcoordtexture2f;
 	float *originaltexcoordlightmap2f;
+	float *surfacecollisionvertex3f;
+	int *surfacecollisionelement3i;
 	float *v;
 	patchtess_t *patchtess = NULL;
 	int patchtesscount = 0;
@@ -4989,6 +5022,8 @@ static void Mod_Q3BSP_LoadFaces(lump_t *l)
 	while (again);
 
 	// Calculate resulting number of triangles
+	collisionvertices = 0;
+	collisiontriangles = 0;
 	for(i = 0; i < patchtesscount; ++i)
 	{
 		finalwidth = Q3PatchDimForTess(patchtess[i].info.xsize, patchtess[i].info.lods[PATCH_LOD_VISUAL].xtess);
@@ -5000,14 +5035,31 @@ static void Mod_Q3BSP_LoadFaces(lump_t *l)
 		oldout[patchtess[i].surface_id].num_triangles = numtriangles;
 		meshvertices += oldout[patchtess[i].surface_id].num_vertices;
 		meshtriangles += oldout[patchtess[i].surface_id].num_triangles;
+
+		finalwidth = Q3PatchDimForTess(patchtess[i].info.xsize, patchtess[i].info.lods[PATCH_LOD_COLLISION].xtess);
+		finalheight = Q3PatchDimForTess(patchtess[i].info.ysize,patchtess[i].info.lods[PATCH_LOD_COLLISION].ytess);
+		numvertices = finalwidth * finalheight;
+		numtriangles = (finalwidth - 1) * (finalheight - 1) * 2;
+
+		oldout[patchtess[i].surface_id].num_collisionvertices = numvertices;
+		oldout[patchtess[i].surface_id].num_collisiontriangles = numtriangles;
+		collisionvertices += oldout[patchtess[i].surface_id].num_collisionvertices;
+		collisiontriangles += oldout[patchtess[i].surface_id].num_collisiontriangles;
 	}
 
 	i = oldi;
 	in = oldin;
 	out = oldout;
 	Mod_AllocSurfMesh(loadmodel->mempool, meshvertices, meshtriangles, false, true, false);
+	if (collisiontriangles)
+	{
+		loadmodel->brush.data_collisionvertex3f = Mem_Alloc(loadmodel->mempool, collisionvertices * sizeof(float[3]));
+		loadmodel->brush.data_collisionelement3i = Mem_Alloc(loadmodel->mempool, collisiontriangles * sizeof(int[3]));
+	}
 	meshvertices = 0;
 	meshtriangles = 0;
+	collisionvertices = 0;
+	collisiontriangles = 0;
 	for (;i < count && meshvertices + out->num_vertices <= loadmodel->surfmesh.num_vertices;i++, in++, out++)
 	{
 		if (out->num_vertices < 3 || out->num_triangles < 1)
@@ -5018,6 +5070,7 @@ static void Mod_Q3BSP_LoadFaces(lump_t *l)
 		firstelement = LittleLong(in->firstelement);
 		out->num_firstvertex = meshvertices;
 		out->num_firsttriangle = meshtriangles;
+		out->num_firstcollisiontriangle = collisiontriangles;
 		switch(type)
 		{
 		case Q3FACETYPE_FLAT:
@@ -5071,7 +5124,7 @@ static void Mod_Q3BSP_LoadFaces(lump_t *l)
 			finalwidth = Q3PatchDimForTess(patchsize[0],xtess); //((patchsize[0] - 1) * xtess) + 1;
 			finalheight = Q3PatchDimForTess(patchsize[1],ytess); //((patchsize[1] - 1) * ytess) + 1;
 			finalvertices = finalwidth * finalheight;
-			finaltriangles = (finalwidth - 1) * (finalheight - 1) * 2;
+			oldnumtriangles = finaltriangles = (finalwidth - 1) * (finalheight - 1) * 2;
 			type = Q3FACETYPE_MESH;
 			// generate geometry
 			// (note: normals are skipped because they get recalculated)
@@ -5096,28 +5149,50 @@ static void Mod_Q3BSP_LoadFaces(lump_t *l)
 			finalwidth = Q3PatchDimForTess(patchsize[0],cxtess); //((patchsize[0] - 1) * cxtess) + 1;
 			finalheight = Q3PatchDimForTess(patchsize[1],cytess); //((patchsize[1] - 1) * cytess) + 1;
 			finalvertices = finalwidth * finalheight;
-			finaltriangles = (finalwidth - 1) * (finalheight - 1) * 2;
+			oldnumtriangles2 = finaltriangles = (finalwidth - 1) * (finalheight - 1) * 2;
 
-			out->data_collisionvertex3f = (float *)Mem_Alloc(loadmodel->mempool, sizeof(float[3]) * finalvertices);
-			out->data_collisionelement3i = (int *)Mem_Alloc(loadmodel->mempool, sizeof(int[3]) * finaltriangles);
+			// legacy collision geometry implementation
+			out->deprecatedq3data_collisionvertex3f = (float *)Mem_Alloc(loadmodel->mempool, sizeof(float[3]) * finalvertices);
+			out->deprecatedq3data_collisionelement3i = (int *)Mem_Alloc(loadmodel->mempool, sizeof(int[3]) * finaltriangles);
 			out->num_collisionvertices = finalvertices;
 			out->num_collisiontriangles = finaltriangles;
-			Q3PatchTesselateFloat(3, sizeof(float[3]), out->data_collisionvertex3f, patchsize[0], patchsize[1], sizeof(float[3]), originalvertex3f, cxtess, cytess);
-			Q3PatchTriangleElements(out->data_collisionelement3i, finalwidth, finalheight, 0);
+			Q3PatchTesselateFloat(3, sizeof(float[3]), out->deprecatedq3data_collisionvertex3f, patchsize[0], patchsize[1], sizeof(float[3]), originalvertex3f, cxtess, cytess);
+			Q3PatchTriangleElements(out->deprecatedq3data_collisionelement3i, finalwidth, finalheight, 0);
 
 			//Mod_SnapVertices(3, out->num_vertices, (loadmodel->surfmesh.data_vertex3f + 3 * out->num_firstvertex), 0.25);
-			Mod_SnapVertices(3, out->num_collisionvertices, out->data_collisionvertex3f, 1);
+			Mod_SnapVertices(3, finalvertices, out->deprecatedq3data_collisionvertex3f, 1);
 
-			oldnumtriangles = out->num_triangles;
-			oldnumtriangles2 = out->num_collisiontriangles;
-			out->num_collisiontriangles = Mod_RemoveDegenerateTriangles(out->num_collisiontriangles, out->data_collisionelement3i, out->data_collisionelement3i, out->data_collisionvertex3f);
+			out->num_collisiontriangles = Mod_RemoveDegenerateTriangles(finaltriangles, out->deprecatedq3data_collisionelement3i, out->deprecatedq3data_collisionelement3i, out->deprecatedq3data_collisionvertex3f);
 
 			// now optimize the collision mesh by finding triangle bboxes...
-			Mod_Q3BSP_BuildBBoxes(out->data_collisionelement3i, out->num_collisiontriangles, out->data_collisionvertex3f, &out->data_collisionbbox6f, &out->num_collisionbboxstride, mod_q3bsp_curves_collisions_stride.integer);
-			Mod_Q3BSP_BuildBBoxes(loadmodel->surfmesh.data_element3i + 3 * out->num_firsttriangle, out->num_triangles, loadmodel->surfmesh.data_vertex3f, &out->data_bbox6f, &out->num_bboxstride, mod_q3bsp_curves_stride.integer);
+			Mod_Q3BSP_BuildBBoxes(out->deprecatedq3data_collisionelement3i, out->num_collisiontriangles, out->deprecatedq3data_collisionvertex3f, &out->deprecatedq3data_collisionbbox6f, &out->deprecatedq3num_collisionbboxstride, mod_q3bsp_curves_collisions_stride.integer);
+			Mod_Q3BSP_BuildBBoxes(loadmodel->surfmesh.data_element3i + 3 * out->num_firsttriangle, out->num_triangles, loadmodel->surfmesh.data_vertex3f, &out->deprecatedq3data_bbox6f, &out->deprecatedq3num_bboxstride, mod_q3bsp_curves_stride.integer);
+
+			// store collision geometry for BIH collision tree
+			surfacecollisionvertex3f = loadmodel->brush.data_collisionvertex3f + collisionvertices * 3;
+			surfacecollisionelement3i = loadmodel->brush.data_collisionelement3i + collisiontriangles * 3;
+			Q3PatchTesselateFloat(3, sizeof(float[3]), surfacecollisionvertex3f, patchsize[0], patchsize[1], sizeof(float[3]), originalvertex3f, cxtess, cytess);
+			Q3PatchTriangleElements(surfacecollisionelement3i, finalwidth, finalheight, collisionvertices);
+			Mod_SnapVertices(3, finalvertices, surfacecollisionvertex3f, 1);
+#if 1
+			// remove this once the legacy code is removed
+			{
+				int nc = out->num_collisiontriangles;
+#endif
+			out->num_collisiontriangles = Mod_RemoveDegenerateTriangles(finaltriangles, surfacecollisionelement3i, surfacecollisionelement3i, loadmodel->brush.data_collisionvertex3f);
+#if 1
+				if(nc != out->num_collisiontriangles)
+				{
+					Con_Printf("number of collision triangles differs between BIH and BSP. FAIL.\n");
+				}
+			}
+#endif
 
 			if (developer_extra.integer)
 				Con_DPrintf("Mod_Q3BSP_LoadFaces: %ix%i curve became %i:%i vertices / %i:%i triangles (%i:%i degenerate)\n", patchsize[0], patchsize[1], out->num_vertices, out->num_collisionvertices, oldnumtriangles, oldnumtriangles2, oldnumtriangles - out->num_triangles, oldnumtriangles2 - out->num_collisiontriangles);
+
+			collisionvertices += finalvertices;
+			collisiontriangles += out->num_collisiontriangles;
 			break;
 		default:
 			break;
@@ -5627,6 +5702,534 @@ static qboolean Mod_Q3BSP_TraceLineOfSight(struct model_s *model, const vec3_t s
 	}
 }
 
+static void Mod_CollisionBIH_TracePoint_RecursiveBIHNode(trace_t *trace, dp_model_t *model, int nodenum, const vec3_t point)
+{
+	const bih_leaf_t *leaf;
+	const bih_node_t *node;
+	const colbrushf_t *brush;
+	int axis;
+	while (nodenum >= 0)
+	{
+		node = model->collision_bih.nodes + nodenum;
+		axis = node->type - BIH_SPLITX;
+		if (point[axis] <= node->backmax)
+		{
+			if (point[axis] >= node->frontmin)
+				Mod_CollisionBIH_TracePoint_RecursiveBIHNode(trace, model, node->front, point);
+			nodenum = node->back;
+		}
+		else if (point[axis] >= node->frontmin)
+			nodenum = node->front;
+		else // no overlap with either child?  just return
+			return;
+	}
+	if (!model->collision_bih.leafs)
+		return;
+	leaf = model->collision_bih.leafs + (-1-nodenum);
+	switch(leaf->type)
+	{
+	case BIH_BRUSH:
+		brush = model->brush.data_brushes[leaf->itemindex].colbrushf;
+		Collision_TracePointBrushFloat(trace, point, brush);
+		break;
+	case BIH_COLLISIONTRIANGLE:
+		// collision triangle - skipped because they have no volume
+		break;
+	case BIH_RENDERTRIANGLE:
+		// render triangle - skipped because they have no volume
+		break;
+	}
+}
+
+static void Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace_t *trace, dp_model_t *model, int nodenum, const vec3_t start, const vec3_t end, const vec3_t linestart, const vec3_t lineend)
+{
+	const bih_leaf_t *leaf;
+	const bih_node_t *node;
+	const colbrushf_t *brush;
+	const int *e;
+	const texture_t *texture;
+	int axis;
+#define BIHLINECLIP
+#ifdef BIHLINECLIP
+	int sideflags;
+	vec_t frontdist1;
+	vec_t frontdist2;
+	vec_t frontfrac;
+	vec_t backdist1;
+	vec_t backdist2;
+	vec_t backfrac;
+	vec3_t clipped[2];
+#endif
+	vec3_t segmentmins;
+	vec3_t segmentmaxs;
+	segmentmins[0] = min(start[0], end[0]);
+	segmentmins[1] = min(start[1], end[1]);
+	segmentmins[2] = min(start[2], end[2]);
+	segmentmaxs[0] = max(start[0], end[0]);
+	segmentmaxs[1] = max(start[1], end[1]);
+	segmentmaxs[2] = max(start[2], end[2]);
+	while (nodenum >= 0)
+	{
+		node = model->collision_bih.nodes + nodenum;
+#if 0
+		if (!BoxesOverlap(segmentmins, segmentmaxs, node->mins, node->maxs))
+			return;
+#endif
+		axis = node->type - BIH_SPLITX;
+#if 0
+		if (segmentmins[axis] <= node->backmax)
+		{
+			if (segmentmaxs[axis] >= node->frontmin)
+				Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+			nodenum = node->back;
+		}
+		else if (segmentmaxs[axis] >= node->frontmin)
+			nodenum = node->front;
+		else
+			return; // trace falls between children
+#else
+		frontdist1 = start[axis] - node->frontmin;
+		frontdist2 = end[axis] - node->frontmin;
+		backdist1 = start[axis] - node->backmax;
+		backdist2 = end[axis] - node->backmax;
+		sideflags = 0;
+		if (frontdist1 < 0)
+			sideflags |= 1;
+		if (frontdist2 < 0)
+			sideflags |= 2;
+		if (backdist1 < 0)
+			sideflags |= 4;
+		if (backdist2 < 0)
+			sideflags |= 8;
+#if 0
+		if (sideflags & 12)
+		{
+			if ((sideflags & 3) != 3)
+				Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+			nodenum = node->back;
+		}
+		else if ((sideflags & 3) != 3)
+			nodenum = node->front;
+		else
+			return; // trace falls between children
+#else
+		switch(sideflags)
+		{
+		case 0:
+			// start end START END
+			nodenum = node->front;
+			continue;
+		case 1:
+			// START end START END
+#ifdef BIHLINECLIP
+			frontfrac = frontdist1 / (frontdist1 - frontdist2);
+			VectorLerp(start, frontfrac, end, clipped[0]);
+			start = clipped[0];
+			segmentmins[0] = min(start[0], end[0]);
+			segmentmins[1] = min(start[1], end[1]);
+			segmentmins[2] = min(start[2], end[2]);
+			segmentmaxs[0] = max(start[0], end[0]);
+			segmentmaxs[1] = max(start[1], end[1]);
+			segmentmaxs[2] = max(start[2], end[2]);
+#endif
+			nodenum = node->front;
+			break;
+		case 2:
+#ifdef BIHLINECLIP
+			// start END START END
+			frontfrac = frontdist1 / (frontdist1 - frontdist2);
+			VectorLerp(start, frontfrac, end, clipped[0]);
+			end = clipped[0];
+			segmentmins[0] = min(start[0], end[0]);
+			segmentmins[1] = min(start[1], end[1]);
+			segmentmins[2] = min(start[2], end[2]);
+			segmentmaxs[0] = max(start[0], end[0]);
+			segmentmaxs[1] = max(start[1], end[1]);
+			segmentmaxs[2] = max(start[2], end[2]);
+#endif
+			nodenum = node->front;
+			break;
+		case 3:
+			// START END START END
+			return; // line falls in gap between children
+		case 4:
+			// start end start END
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+#ifdef BIHLINECLIP
+			backfrac = backdist1 / (backdist1 - backdist2);
+			VectorLerp(start, backfrac, end, clipped[0]);
+			end = clipped[0];
+			segmentmins[0] = min(start[0], end[0]);
+			segmentmins[1] = min(start[1], end[1]);
+			segmentmins[2] = min(start[2], end[2]);
+			segmentmaxs[0] = max(start[0], end[0]);
+			segmentmaxs[1] = max(start[1], end[1]);
+			segmentmaxs[2] = max(start[2], end[2]);
+#endif
+			nodenum = node->back;
+			break;
+		case 5:
+			// START end start END
+#ifdef BIHLINECLIP
+			frontfrac = frontdist1 / (frontdist1 - frontdist2);
+			VectorLerp(start, frontfrac, end, clipped[1]);
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, clipped[1], end, linestart, lineend);
+			backfrac = backdist1 / (backdist1 - backdist2);
+			VectorLerp(start, backfrac, end, clipped[0]);
+			end = clipped[0];
+			segmentmins[0] = min(start[0], end[0]);
+			segmentmins[1] = min(start[1], end[1]);
+			segmentmins[2] = min(start[2], end[2]);
+			segmentmaxs[0] = max(start[0], end[0]);
+			segmentmaxs[1] = max(start[1], end[1]);
+			segmentmaxs[2] = max(start[2], end[2]);
+#else
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+#endif
+			nodenum = node->back;
+			break;
+		case 6:
+			// start END start END
+#ifdef BIHLINECLIP
+			frontfrac = frontdist1 / (frontdist1 - frontdist2);
+			VectorLerp(start, frontfrac, end, clipped[1]);
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, clipped[1], linestart, lineend);
+			backfrac = backdist1 / (backdist1 - backdist2);
+			VectorLerp(start, backfrac, end, clipped[0]);
+			end = clipped[0];
+			segmentmins[0] = min(start[0], end[0]);
+			segmentmins[1] = min(start[1], end[1]);
+			segmentmins[2] = min(start[2], end[2]);
+			segmentmaxs[0] = max(start[0], end[0]);
+			segmentmaxs[1] = max(start[1], end[1]);
+			segmentmaxs[2] = max(start[2], end[2]);
+#else
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+#endif
+			nodenum = node->back;
+			break;
+		case 7:
+			// START END start END
+#ifdef BIHLINECLIP
+			backfrac = backdist1 / (backdist1 - backdist2);
+			VectorLerp(start, backfrac, end, clipped[0]);
+			end = clipped[0];
+			segmentmins[0] = min(start[0], end[0]);
+			segmentmins[1] = min(start[1], end[1]);
+			segmentmins[2] = min(start[2], end[2]);
+			segmentmaxs[0] = max(start[0], end[0]);
+			segmentmaxs[1] = max(start[1], end[1]);
+			segmentmaxs[2] = max(start[2], end[2]);
+#endif
+			nodenum = node->back;
+			break;
+		case 8:
+			// start end START end
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+#ifdef BIHLINECLIP
+			backfrac = backdist1 / (backdist1 - backdist2);
+			VectorLerp(start, backfrac, end, clipped[0]);
+			start = clipped[0];
+			segmentmins[0] = min(start[0], end[0]);
+			segmentmins[1] = min(start[1], end[1]);
+			segmentmins[2] = min(start[2], end[2]);
+			segmentmaxs[0] = max(start[0], end[0]);
+			segmentmaxs[1] = max(start[1], end[1]);
+			segmentmaxs[2] = max(start[2], end[2]);
+#endif
+			nodenum = node->back;
+			break;
+		case 9:
+			// START end START end
+#ifdef BIHLINECLIP
+			frontfrac = frontdist1 / (frontdist1 - frontdist2);
+			VectorLerp(start, frontfrac, end, clipped[1]);
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, clipped[1], end, linestart, lineend);
+			backfrac = backdist1 / (backdist1 - backdist2);
+			VectorLerp(start, backfrac, end, clipped[0]);
+			start = clipped[0];
+			segmentmins[0] = min(start[0], end[0]);
+			segmentmins[1] = min(start[1], end[1]);
+			segmentmins[2] = min(start[2], end[2]);
+			segmentmaxs[0] = max(start[0], end[0]);
+			segmentmaxs[1] = max(start[1], end[1]);
+			segmentmaxs[2] = max(start[2], end[2]);
+#else
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+#endif
+			nodenum = node->back;
+			break;
+		case 10:
+			// start END START end
+#ifdef BIHLINECLIP
+			frontfrac = frontdist1 / (frontdist1 - frontdist2);
+			VectorLerp(start, frontfrac, end, clipped[1]);
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, clipped[1], linestart, lineend);
+			backfrac = backdist1 / (backdist1 - backdist2);
+			VectorLerp(start, backfrac, end, clipped[0]);
+			start = clipped[0];
+			segmentmins[0] = min(start[0], end[0]);
+			segmentmins[1] = min(start[1], end[1]);
+			segmentmins[2] = min(start[2], end[2]);
+			segmentmaxs[0] = max(start[0], end[0]);
+			segmentmaxs[1] = max(start[1], end[1]);
+			segmentmaxs[2] = max(start[2], end[2]);
+#else
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+#endif
+			nodenum = node->back;
+			break;
+		case 11:
+			// START END START end
+#ifdef BIHLINECLIP
+			backfrac = backdist1 / (backdist1 - backdist2);
+			VectorLerp(start, backfrac, end, clipped[0]);
+			start = clipped[0];
+			segmentmins[0] = min(start[0], end[0]);
+			segmentmins[1] = min(start[1], end[1]);
+			segmentmins[2] = min(start[2], end[2]);
+			segmentmaxs[0] = max(start[0], end[0]);
+			segmentmaxs[1] = max(start[1], end[1]);
+			segmentmaxs[2] = max(start[2], end[2]);
+#endif
+			nodenum = node->back;
+			break;
+		case 12:
+			// start end start end
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+			nodenum = node->back;
+			break;
+		case 13:
+			// START end start end
+#ifdef BIHLINECLIP
+			frontfrac = frontdist1 / (frontdist1 - frontdist2);
+			VectorLerp(start, frontfrac, end, clipped[1]);
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, clipped[1], end, linestart, lineend);
+#else
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+#endif
+			nodenum = node->back;
+			break;
+		case 14:
+			// start END start end
+#ifdef BIHLINECLIP
+			frontfrac = frontdist1 / (frontdist1 - frontdist2);
+			VectorLerp(start, frontfrac, end, clipped[1]);
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, clipped[1], linestart, lineend);
+#else
+			Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, node->front, start, end, linestart, lineend);
+#endif
+			nodenum = node->back;
+			break;
+		case 15:
+			// START END start end
+			nodenum = node->back;
+			continue;
+		}
+#endif
+#endif
+	}
+	if (!model->collision_bih.leafs)
+		return;
+	leaf = model->collision_bih.leafs + (-1-nodenum);
+#if 1
+	if (!BoxesOverlap(segmentmins, segmentmaxs, leaf->mins, leaf->maxs))
+		return;
+#endif
+	switch(leaf->type)
+	{
+	case BIH_BRUSH:
+		brush = model->brush.data_brushes[leaf->itemindex].colbrushf;
+		Collision_TraceLineBrushFloat(trace, linestart, lineend, brush, brush);
+		break;
+	case BIH_COLLISIONTRIANGLE:
+		if (!mod_q3bsp_curves_collisions.integer)
+			return;
+		e = model->brush.data_collisionelement3i + 3*leaf->itemindex;
+		texture = model->data_textures + leaf->textureindex;
+		Collision_TraceLineTriangleFloat(trace, linestart, lineend, model->brush.data_collisionvertex3f + e[0] * 3, model->brush.data_collisionvertex3f + e[1] * 3, model->brush.data_collisionvertex3f + e[2] * 3, texture->supercontents, texture->surfaceflags, texture);
+		break;
+	case BIH_RENDERTRIANGLE:
+		e = model->surfmesh.data_element3i + 3*leaf->itemindex;
+		texture = model->data_textures + leaf->textureindex;
+		Collision_TraceLineTriangleFloat(trace, linestart, lineend, model->surfmesh.data_vertex3f + e[0] * 3, model->surfmesh.data_vertex3f + e[1] * 3, model->surfmesh.data_vertex3f + e[2] * 3, texture->supercontents, texture->surfaceflags, texture);
+		break;
+	}
+}
+
+static void Mod_CollisionBIH_TraceBrush_RecursiveBIHNode(trace_t *trace, dp_model_t *model, int nodenum, const colbrushf_t *thisbrush_start, const colbrushf_t *thisbrush_end, const vec3_t segmentmins, const vec3_t segmentmaxs)
+{
+	const bih_leaf_t *leaf;
+	const bih_node_t *node;
+	const colbrushf_t *brush;
+	const int *e;
+	const texture_t *texture;
+	int axis;
+	while (nodenum >= 0)
+	{
+		node = model->collision_bih.nodes + nodenum;
+		axis = node->type - BIH_SPLITX;
+#if 1
+		if (!BoxesOverlap(segmentmins, segmentmaxs, node->mins, node->maxs))
+			return;
+#endif
+#if 0
+		Mod_CollisionBIH_TraceBrush_RecursiveBIHNode(trace, model, node->front, thisbrush_start, thisbrush_end, segmentmins, segmentmaxs);
+		nodenum = node->back;
+		continue;
+#endif
+		if (segmentmins[axis] <= node->backmax)
+		{
+			if (segmentmaxs[axis] >= node->frontmin)
+				Mod_CollisionBIH_TraceBrush_RecursiveBIHNode(trace, model, node->front, thisbrush_start, thisbrush_end, segmentmins, segmentmaxs);
+			nodenum = node->back;
+		}
+		else if (segmentmaxs[axis] >= node->frontmin)
+			nodenum = node->front;
+		else
+			return; // trace falls between children
+	}
+	if (!model->collision_bih.leafs)
+		return;
+	leaf = model->collision_bih.leafs + (-1-nodenum);
+#if 1
+	if (!BoxesOverlap(segmentmins, segmentmaxs, leaf->mins, leaf->maxs))
+		return;
+#endif
+	switch(leaf->type)
+	{
+	case BIH_BRUSH:
+		brush = model->brush.data_brushes[leaf->itemindex].colbrushf;
+		Collision_TraceBrushBrushFloat(trace, thisbrush_start, thisbrush_end, brush, brush);
+		break;
+	case BIH_COLLISIONTRIANGLE:
+		if (!mod_q3bsp_curves_collisions.integer)
+			return;
+		e = model->brush.data_collisionelement3i + 3*leaf->itemindex;
+		texture = model->data_textures + leaf->textureindex;
+		Collision_TraceBrushTriangleFloat(trace, thisbrush_start, thisbrush_end, model->brush.data_collisionvertex3f + e[0] * 3, model->brush.data_collisionvertex3f + e[1] * 3, model->brush.data_collisionvertex3f + e[2] * 3, texture->supercontents, texture->surfaceflags, texture);
+		break;
+	case BIH_RENDERTRIANGLE:
+		e = model->surfmesh.data_element3i + 3*leaf->itemindex;
+		texture = model->data_textures + leaf->textureindex;
+		Collision_TraceBrushTriangleFloat(trace, thisbrush_start, thisbrush_end, model->surfmesh.data_vertex3f + e[0] * 3, model->surfmesh.data_vertex3f + e[1] * 3, model->surfmesh.data_vertex3f + e[2] * 3, texture->supercontents, texture->surfaceflags, texture);
+		break;
+	}
+}
+
+void Mod_CollisionBIH_TracePoint(dp_model_t *model, const frameblend_t *frameblend, const skeleton_t *skeleton, trace_t *trace, const vec3_t start, int hitsupercontentsmask)
+{
+	memset(trace, 0, sizeof(*trace));
+	trace->fraction = 1;
+	trace->realfraction = 1;
+	trace->hitsupercontentsmask = hitsupercontentsmask;
+	Mod_CollisionBIH_TracePoint_RecursiveBIHNode(trace, model, model->collision_bih.rootnode, start);
+}
+
+void Mod_CollisionBIH_TraceLine(dp_model_t *model, const frameblend_t *frameblend, const skeleton_t *skeleton, trace_t *trace, const vec3_t start, const vec3_t end, int hitsupercontentsmask)
+{
+	if (VectorCompare(start, end))
+	{
+		Mod_CollisionBIH_TracePoint(model, frameblend, skeleton, trace, start, hitsupercontentsmask);
+		return;
+	}
+
+	memset(trace, 0, sizeof(*trace));
+	trace->fraction = 1;
+	trace->realfraction = 1;
+	trace->hitsupercontentsmask = hitsupercontentsmask;
+	Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, model->collision_bih.rootnode, start, end, start, end);
+}
+
+void Mod_CollisionBIH_TraceBox(dp_model_t *model, const frameblend_t *frameblend, const skeleton_t *skeleton, trace_t *trace, const vec3_t start, const vec3_t boxmins, const vec3_t boxmaxs, const vec3_t end, int hitsupercontentsmask)
+{
+	float segmentmins[3], segmentmaxs[3];
+	colboxbrushf_t thisbrush_start, thisbrush_end;
+	vec3_t boxstartmins, boxstartmaxs, boxendmins, boxendmaxs;
+
+	if (mod_q3bsp_optimizedtraceline.integer && VectorCompare(boxmins, boxmaxs))
+	{
+		vec3_t shiftstart, shiftend;
+		VectorAdd(start, boxmins, shiftstart);
+		VectorAdd(end, boxmins, shiftend);
+		if (VectorCompare(start, end))
+			Mod_CollisionBIH_TracePoint(model, frameblend, skeleton, trace, shiftstart, hitsupercontentsmask);
+		else
+		{
+			Mod_CollisionBIH_TraceLine(model, frameblend, skeleton, trace, shiftstart, shiftend, hitsupercontentsmask);
+			VectorSubtract(trace->endpos, boxmins, trace->endpos);
+		}
+		return;
+	}
+
+	// box trace, performed as brush trace
+	memset(trace, 0, sizeof(*trace));
+	trace->fraction = 1;
+	trace->realfraction = 1;
+	trace->hitsupercontentsmask = hitsupercontentsmask;
+	segmentmins[0] = min(start[0], end[0]) + boxmins[0] - 1;
+	segmentmins[1] = min(start[1], end[1]) + boxmins[1] - 1;
+	segmentmins[2] = min(start[2], end[2]) + boxmins[2] - 1;
+	segmentmaxs[0] = max(start[0], end[0]) + boxmaxs[0] + 1;
+	segmentmaxs[1] = max(start[1], end[1]) + boxmaxs[1] + 1;
+	segmentmaxs[2] = max(start[2], end[2]) + boxmaxs[2] + 1;
+	VectorAdd(start, boxmins, boxstartmins);
+	VectorAdd(start, boxmaxs, boxstartmaxs);
+	VectorAdd(end, boxmins, boxendmins);
+	VectorAdd(end, boxmaxs, boxendmaxs);
+	Collision_BrushForBox(&thisbrush_start, boxstartmins, boxstartmaxs, 0, 0, NULL);
+	Collision_BrushForBox(&thisbrush_end, boxendmins, boxendmaxs, 0, 0, NULL);
+	Mod_CollisionBIH_TraceBrush_RecursiveBIHNode(trace, model, model->collision_bih.rootnode, &thisbrush_start.brush, &thisbrush_end.brush, segmentmins, segmentmaxs);
+}
+
+int Mod_CollisionBIH_PointSuperContents(struct model_s *model, int frame, const vec3_t point)
+{
+	trace_t trace;
+	Mod_CollisionBIH_TracePoint(model, NULL, NULL, &trace, point, 0);
+	return trace.startsupercontents;
+}
+
+void Mod_CollisionBIH_TracePoint_Mesh(dp_model_t *model, const frameblend_t *frameblend, const skeleton_t *skeleton, trace_t *trace, const vec3_t start, int hitsupercontentsmask)
+{
+#if 0
+	// broken - needs to be modified to count front faces and backfaces to figure out if it is in solid
+	vec3_t end;
+	int hitsupercontents;
+	VectorSet(end, start[0], start[1], model->normalmins[2]);
+#endif
+	memset(trace, 0, sizeof(*trace));
+	trace->fraction = 1;
+	trace->realfraction = 1;
+	trace->hitsupercontentsmask = hitsupercontentsmask;
+#if 0
+	Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, model->collision_bih.rootnode, start, end, start, end);
+	hitsupercontents = trace->hitsupercontents;
+	memset(trace, 0, sizeof(*trace));
+	trace->fraction = 1;
+	trace->realfraction = 1;
+	trace->hitsupercontentsmask = hitsupercontentsmask;
+	trace->startsupercontents = hitsupercontents;
+#endif
+}
+
+int Mod_CollisionBIH_PointSuperContents_Mesh(struct model_s *model, int frame, const vec3_t start)
+{
+#if 0
+	// broken - needs to be modified to count front faces and backfaces to figure out if it is in solid
+	trace_t trace;
+	vec3_t end;
+	VectorSet(end, start[0], start[1], model->normalmins[2]);
+	memset(&trace, 0, sizeof(trace));
+	trace.fraction = 1;
+	trace.realfraction = 1;
+	trace.hitsupercontentsmask = 0;
+	Mod_CollisionBIH_TraceLine_RecursiveBIHNode(&trace, model, model->collision_bih.rootnode, start, end, start, end);
+	return trace.hitsupercontents;
+#else
+	return 0;
+#endif
+}
+
 static void Mod_Q3BSP_TracePoint_RecursiveBSPNode(trace_t *trace, dp_model_t *model, mnode_t *node, const vec3_t point, int markframe)
 {
 	int i;
@@ -5660,6 +6263,12 @@ static void Mod_Q3BSP_TraceLine_RecursiveBSPNode(trace_t *trace, dp_model_t *mod
 	// walk the tree until we hit a leaf, recursing for any split cases
 	while (node->plane)
 	{
+#if 0
+		if (!BoxesOverlap(segmentmins, segmentmaxs, node->mins, node->maxs))
+			return;
+		Mod_Q3BSP_TraceLine_RecursiveBSPNode(trace, model, node->children[0], start, end, startfrac, endfrac, linestart, lineend, markframe, segmentmins, segmentmaxs);
+		node = node->children[1];
+#else
 		// abort if this part of the bsp tree can not be hit by this trace
 //		if (!(node->combinedsupercontents & trace->hitsupercontentsmask))
 //			return;
@@ -5698,6 +6307,7 @@ static void Mod_Q3BSP_TraceLine_RecursiveBSPNode(trace_t *trace, dp_model_t *mod
 				Mod_Q3BSP_TraceLine_RecursiveBSPNode(trace, model, node->children[endside], mid, end, midfrac, endfrac, linestart, lineend, markframe, segmentmins, segmentmaxs);
 			return;
 		}
+#endif
 	}
 	// abort if this part of the bsp tree can not be hit by this trace
 //	if (!(node->combinedsupercontents & trace->hitsupercontentsmask))
@@ -5711,6 +6321,10 @@ static void Mod_Q3BSP_TraceLine_RecursiveBSPNode(trace_t *trace, dp_model_t *mod
 	nodesegmentmaxs[2] = max(start[2], end[2]) + 1;
 	// line trace the brushes
 	leaf = (mleaf_t *)node;
+#if 0
+	if (!BoxesOverlap(segmentmins, segmentmaxs, leaf->mins, leaf->maxs))
+		return;
+#endif
 	for (i = 0;i < leaf->numleafbrushes;i++)
 	{
 		brush = model->brush.data_brushes[leaf->firstleafbrush[i]].colbrushf;
@@ -5727,10 +6341,10 @@ static void Mod_Q3BSP_TraceLine_RecursiveBSPNode(trace_t *trace, dp_model_t *mod
 		for (i = 0;i < leaf->numleafsurfaces;i++)
 		{
 			surface = model->data_surfaces + leaf->firstleafsurface[i];
-			if (surface->num_collisiontriangles && surface->collisionmarkframe != markframe && BoxesOverlap(nodesegmentmins, nodesegmentmaxs, surface->mins, surface->maxs))
+			if (surface->num_collisiontriangles && surface->deprecatedq3collisionmarkframe != markframe && BoxesOverlap(nodesegmentmins, nodesegmentmaxs, surface->mins, surface->maxs))
 			{
-				surface->collisionmarkframe = markframe;
-				Collision_TraceLineTriangleMeshFloat(trace, linestart, lineend, surface->num_collisiontriangles, surface->data_collisionelement3i, surface->data_collisionvertex3f, surface->num_collisionbboxstride, surface->data_collisionbbox6f, surface->texture->supercontents, surface->texture->surfaceflags, surface->texture, segmentmins, segmentmaxs);
+				surface->deprecatedq3collisionmarkframe = markframe;
+				Collision_TraceLineTriangleMeshFloat(trace, linestart, lineend, surface->num_collisiontriangles, surface->deprecatedq3data_collisionelement3i, surface->deprecatedq3data_collisionvertex3f, surface->deprecatedq3num_collisionbboxstride, surface->deprecatedq3data_collisionbbox6f, surface->texture->supercontents, surface->texture->surfaceflags, surface->texture, segmentmins, segmentmaxs);
 			}
 		}
 	}
@@ -5748,6 +6362,12 @@ static void Mod_Q3BSP_TraceBrush_RecursiveBSPNode(trace_t *trace, dp_model_t *mo
 	// walk the tree until we hit a leaf, recursing for any split cases
 	while (node->plane)
 	{
+#if 0
+		if (!BoxesOverlap(segmentmins, segmentmaxs, node->mins, node->maxs))
+			return;
+		Mod_Q3BSP_TraceBrush_RecursiveBSPNode(trace, model, node->children[0], thisbrush_start, thisbrush_end, markframe, segmentmins, segmentmaxs);
+		node = node->children[1];
+#else
 		// abort if this part of the bsp tree can not be hit by this trace
 //		if (!(node->combinedsupercontents & trace->hitsupercontentsmask))
 //			return;
@@ -5782,6 +6402,7 @@ static void Mod_Q3BSP_TraceBrush_RecursiveBSPNode(trace_t *trace, dp_model_t *mo
 			return; // ERROR: NAN bounding box!
 		// take whichever side the segment box is on
 		node = node->children[sides - 1];
+#endif
 	}
 	// abort if this part of the bsp tree can not be hit by this trace
 //	if (!(node->combinedsupercontents & trace->hitsupercontentsmask))
@@ -5794,6 +6415,10 @@ static void Mod_Q3BSP_TraceBrush_RecursiveBSPNode(trace_t *trace, dp_model_t *mo
 	nodesegmentmaxs[2] = min(segmentmaxs[2], node->maxs[2] + 1);
 	// hit a leaf
 	leaf = (mleaf_t *)node;
+#if 0
+	if (!BoxesOverlap(segmentmins, segmentmaxs, leaf->mins, leaf->maxs))
+		return;
+#endif
 	for (i = 0;i < leaf->numleafbrushes;i++)
 	{
 		brush = model->brush.data_brushes[leaf->firstleafbrush[i]].colbrushf;
@@ -5808,14 +6433,15 @@ static void Mod_Q3BSP_TraceBrush_RecursiveBSPNode(trace_t *trace, dp_model_t *mo
 		for (i = 0;i < leaf->numleafsurfaces;i++)
 		{
 			surface = model->data_surfaces + leaf->firstleafsurface[i];
-			if (surface->num_collisiontriangles && surface->collisionmarkframe != markframe && BoxesOverlap(nodesegmentmins, nodesegmentmaxs, surface->mins, surface->maxs))
+			if (surface->num_collisiontriangles && surface->deprecatedq3collisionmarkframe != markframe && BoxesOverlap(nodesegmentmins, nodesegmentmaxs, surface->mins, surface->maxs))
 			{
-				surface->collisionmarkframe = markframe;
-				Collision_TraceBrushTriangleMeshFloat(trace, thisbrush_start, thisbrush_end, surface->num_collisiontriangles, surface->data_collisionelement3i, surface->data_collisionvertex3f, surface->num_collisionbboxstride, surface->data_collisionbbox6f, surface->texture->supercontents, surface->texture->surfaceflags, surface->texture, segmentmins, segmentmaxs);
+				surface->deprecatedq3collisionmarkframe = markframe;
+				Collision_TraceBrushTriangleMeshFloat(trace, thisbrush_start, thisbrush_end, surface->num_collisiontriangles, surface->deprecatedq3data_collisionelement3i, surface->deprecatedq3data_collisionvertex3f, surface->deprecatedq3num_collisionbboxstride, surface->deprecatedq3data_collisionbbox6f, surface->texture->supercontents, surface->texture->surfaceflags, surface->texture, segmentmins, segmentmaxs);
 			}
 		}
 	}
 }
+
 
 static int markframe = 0;
 
@@ -5827,7 +6453,9 @@ static void Mod_Q3BSP_TracePoint(dp_model_t *model, const frameblend_t *frameble
 	trace->fraction = 1;
 	trace->realfraction = 1;
 	trace->hitsupercontentsmask = hitsupercontentsmask;
-	if (model->brush.submodel)
+	if (mod_collision_bih.integer)
+		Mod_CollisionBIH_TracePoint_RecursiveBIHNode(trace, model, model->collision_bih.rootnode, start);
+	else if (model->brush.submodel)
 	{
 		for (i = 0, brush = model->brush.data_brushes + model->firstmodelbrush;i < model->nummodelbrushes;i++, brush++)
 			if (brush->colbrushf)
@@ -5860,15 +6488,17 @@ static void Mod_Q3BSP_TraceLine(dp_model_t *model, const frameblend_t *frameblen
 	segmentmaxs[0] = max(start[0], end[0]) + 1;
 	segmentmaxs[1] = max(start[1], end[1]) + 1;
 	segmentmaxs[2] = max(start[2], end[2]) + 1;
-	if (model->brush.submodel)
+	if (mod_collision_bih.integer)
+		Mod_CollisionBIH_TraceLine_RecursiveBIHNode(trace, model, model->collision_bih.rootnode, start, end, start, end);
+	else if (model->brush.submodel)
 	{
 		for (i = 0, brush = model->brush.data_brushes + model->firstmodelbrush;i < model->nummodelbrushes;i++, brush++)
-			if (brush->colbrushf)
+			if (brush->colbrushf && BoxesOverlap(segmentmins, segmentmaxs, brush->colbrushf->mins, brush->colbrushf->maxs))
 				Collision_TraceLineBrushFloat(trace, start, end, brush->colbrushf, brush->colbrushf);
 		if (mod_q3bsp_curves_collisions.integer)
 			for (i = 0, surface = model->data_surfaces + model->firstmodelsurface;i < model->nummodelsurfaces;i++, surface++)
-				if (surface->num_collisiontriangles)
-					Collision_TraceLineTriangleMeshFloat(trace, start, end, surface->num_collisiontriangles, surface->data_collisionelement3i, surface->data_collisionvertex3f, surface->num_collisionbboxstride, surface->data_collisionbbox6f, surface->texture->supercontents, surface->texture->surfaceflags, surface->texture, segmentmins, segmentmaxs);
+				if (surface->num_collisiontriangles && BoxesOverlap(segmentmins, segmentmaxs, surface->mins, surface->maxs))
+					Collision_TraceLineTriangleMeshFloat(trace, start, end, surface->num_collisiontriangles, surface->deprecatedq3data_collisionelement3i, surface->deprecatedq3data_collisionvertex3f, surface->deprecatedq3num_collisionbboxstride, surface->deprecatedq3data_collisionbbox6f, surface->texture->supercontents, surface->texture->surfaceflags, surface->texture, segmentmins, segmentmaxs);
 	}
 	else
 		Mod_Q3BSP_TraceLine_RecursiveBSPNode(trace, model, model->brush.data_nodes, start, end, 0, 1, start, end, ++markframe, segmentmins, segmentmaxs);
@@ -5915,15 +6545,17 @@ static void Mod_Q3BSP_TraceBox(dp_model_t *model, const frameblend_t *frameblend
 	VectorAdd(end, boxmaxs, boxendmaxs);
 	Collision_BrushForBox(&thisbrush_start, boxstartmins, boxstartmaxs, 0, 0, NULL);
 	Collision_BrushForBox(&thisbrush_end, boxendmins, boxendmaxs, 0, 0, NULL);
-	if (model->brush.submodel)
+	if (mod_collision_bih.integer)
+		Mod_CollisionBIH_TraceBrush_RecursiveBIHNode(trace, model, model->collision_bih.rootnode, &thisbrush_start.brush, &thisbrush_end.brush, segmentmins, segmentmaxs);
+	else if (model->brush.submodel)
 	{
 		for (i = 0, brush = model->brush.data_brushes + model->firstmodelbrush;i < model->nummodelbrushes;i++, brush++)
-			if (brush->colbrushf)
+			if (brush->colbrushf && BoxesOverlap(segmentmins, segmentmaxs, brush->colbrushf->mins, brush->colbrushf->maxs))
 				Collision_TraceBrushBrushFloat(trace, &thisbrush_start.brush, &thisbrush_end.brush, brush->colbrushf, brush->colbrushf);
 		if (mod_q3bsp_curves_collisions.integer)
 			for (i = 0, surface = model->data_surfaces + model->firstmodelsurface;i < model->nummodelsurfaces;i++, surface++)
-				if (surface->num_collisiontriangles)
-					Collision_TraceBrushTriangleMeshFloat(trace, &thisbrush_start.brush, &thisbrush_end.brush, surface->num_collisiontriangles, surface->data_collisionelement3i, surface->data_collisionvertex3f, surface->num_collisionbboxstride, surface->data_collisionbbox6f, surface->texture->supercontents, surface->texture->surfaceflags, surface->texture, segmentmins, segmentmaxs);
+				if (surface->num_collisiontriangles && BoxesOverlap(segmentmins, segmentmaxs, surface->mins, surface->maxs))
+					Collision_TraceBrushTriangleMeshFloat(trace, &thisbrush_start.brush, &thisbrush_end.brush, surface->num_collisiontriangles, surface->deprecatedq3data_collisionelement3i, surface->deprecatedq3data_collisionvertex3f, surface->deprecatedq3num_collisionbboxstride, surface->deprecatedq3data_collisionbbox6f, surface->texture->supercontents, surface->texture->surfaceflags, surface->texture, segmentmins, segmentmaxs);
 	}
 	else
 		Mod_Q3BSP_TraceBrush_RecursiveBSPNode(trace, model, model->brush.data_nodes, &thisbrush_start.brush, &thisbrush_end.brush, ++markframe, segmentmins, segmentmaxs);
@@ -5934,8 +6566,14 @@ static int Mod_Q3BSP_PointSuperContents(struct model_s *model, int frame, const 
 	int i;
 	int supercontents = 0;
 	q3mbrush_t *brush;
+	if (mod_collision_bih.integer)
+	{
+		trace_t trace;
+		Mod_Q3BSP_TracePoint(model, NULL, NULL, &trace, point, 0);
+		supercontents = trace.startsupercontents;
+	}
 	// test if the point is inside each brush
-	if (model->brush.submodel)
+	else if (model->brush.submodel)
 	{
 		// submodels are effectively one leaf
 		for (i = 0, brush = model->brush.data_brushes + model->firstmodelbrush;i < model->nummodelbrushes;i++, brush++)
@@ -5959,6 +6597,136 @@ static int Mod_Q3BSP_PointSuperContents(struct model_s *model, int frame, const 
 		}
 	}
 	return supercontents;
+}
+
+void Mod_MakeCollisionBIH(dp_model_t *model, qboolean userendersurfaces)
+{
+	int j;
+	int bihnumleafs;
+	int bihmaxnodes;
+	int brushindex;
+	int triangleindex;
+	int bihleafindex;
+	int nummodelbrushes = model->nummodelbrushes;
+	int nummodelsurfaces = model->nummodelsurfaces;
+	const int *e;
+	const int *collisionelement3i;
+	const float *collisionvertex3f;
+	const int *renderelement3i;
+	const float *rendervertex3f;
+	bih_leaf_t *bihleafs;
+	bih_node_t *bihnodes;
+	int *temp_leafsort;
+	int *temp_leafsortscratch;
+	const msurface_t *surface;
+	const q3mbrush_t *brush;
+
+	// find out how many BIH leaf nodes we need
+	bihnumleafs = 0;
+	if (userendersurfaces)
+	{
+		for (j = 0, surface = model->data_surfaces + model->firstmodelsurface;j < nummodelsurfaces;j++, surface++)
+			bihnumleafs += surface->num_triangles;
+	}
+	else
+	{
+		for (brushindex = 0, brush = model->brush.data_brushes + brushindex+model->firstmodelbrush;brushindex < nummodelbrushes;brushindex++, brush++)
+			if (brush->colbrushf)
+				bihnumleafs++;
+		for (j = 0, surface = model->data_surfaces + model->firstmodelsurface;j < nummodelsurfaces;j++, surface++)
+		{
+			if (surface->texture->basematerialflags & MATERIALFLAG_MESHCOLLISIONS)
+				bihnumleafs += surface->num_triangles;
+			else
+				bihnumleafs += surface->num_collisiontriangles;
+		}
+	}
+
+	if (!bihnumleafs)
+		return;
+
+	// allocate the memory for the BIH leaf nodes
+	bihleafs = Mem_Alloc(loadmodel->mempool, sizeof(bih_leaf_t) * bihnumleafs);
+
+	// now populate the BIH leaf nodes
+	bihleafindex = 0;
+
+	// add render surfaces
+	renderelement3i = model->surfmesh.data_element3i;
+	rendervertex3f = model->surfmesh.data_vertex3f;
+	for (j = 0, surface = model->data_surfaces + model->firstmodelsurface;j < nummodelsurfaces;j++, surface++)
+	{
+		for (triangleindex = 0, e = renderelement3i + 3*surface->num_firsttriangle;triangleindex < surface->num_triangles;triangleindex++, e += 3)
+		{
+			if (!userendersurfaces && !(surface->texture->basematerialflags & MATERIALFLAG_MESHCOLLISIONS))
+				continue;
+			bihleafs[bihleafindex].type = BIH_RENDERTRIANGLE;
+			bihleafs[bihleafindex].textureindex = surface->texture - model->data_textures;
+			bihleafs[bihleafindex].itemindex = triangleindex+surface->num_firsttriangle;
+			bihleafs[bihleafindex].mins[0] = min(rendervertex3f[3*e[0]+0], min(rendervertex3f[3*e[1]+0], rendervertex3f[3*e[2]+0])) - 1;
+			bihleafs[bihleafindex].mins[1] = min(rendervertex3f[3*e[0]+1], min(rendervertex3f[3*e[1]+1], rendervertex3f[3*e[2]+1])) - 1;
+			bihleafs[bihleafindex].mins[2] = min(rendervertex3f[3*e[0]+2], min(rendervertex3f[3*e[1]+2], rendervertex3f[3*e[2]+2])) - 1;
+			bihleafs[bihleafindex].maxs[0] = max(rendervertex3f[3*e[0]+0], max(rendervertex3f[3*e[1]+0], rendervertex3f[3*e[2]+0])) + 1;
+			bihleafs[bihleafindex].maxs[1] = max(rendervertex3f[3*e[0]+1], max(rendervertex3f[3*e[1]+1], rendervertex3f[3*e[2]+1])) + 1;
+			bihleafs[bihleafindex].maxs[2] = max(rendervertex3f[3*e[0]+2], max(rendervertex3f[3*e[1]+2], rendervertex3f[3*e[2]+2])) + 1;
+			bihleafindex++;
+		}
+	}
+
+	if (!userendersurfaces)
+	{
+		// add collision brushes
+		for (brushindex = 0, brush = model->brush.data_brushes + brushindex+model->firstmodelbrush;brushindex < nummodelbrushes;brushindex++, brush++)
+		{
+			if (!brush->colbrushf)
+				continue;
+			bihleafs[bihleafindex].type = BIH_BRUSH;
+			bihleafs[bihleafindex].textureindex = brush->texture - model->data_textures;
+			bihleafs[bihleafindex].itemindex = brushindex+model->firstmodelbrush;
+			VectorCopy(brush->colbrushf->mins, bihleafs[bihleafindex].mins);
+			VectorCopy(brush->colbrushf->maxs, bihleafs[bihleafindex].maxs);
+			bihleafindex++;
+		}
+
+		// add collision surfaces
+		collisionelement3i = model->brush.data_collisionelement3i;
+		collisionvertex3f = model->brush.data_collisionvertex3f;
+		for (j = 0, surface = model->data_surfaces + model->firstmodelsurface;j < nummodelsurfaces;j++, surface++)
+		{
+			for (triangleindex = 0, e = collisionelement3i + 3*surface->num_firstcollisiontriangle;triangleindex < surface->num_collisiontriangles;triangleindex++, e += 3)
+			{
+				bihleafs[bihleafindex].type = BIH_COLLISIONTRIANGLE;
+				bihleafs[bihleafindex].textureindex = surface->texture - model->data_textures;
+				bihleafs[bihleafindex].itemindex = triangleindex+surface->num_firstcollisiontriangle;
+				bihleafs[bihleafindex].mins[0] = min(collisionvertex3f[3*e[0]+0], min(collisionvertex3f[3*e[1]+0], collisionvertex3f[3*e[2]+0])) - 1;
+				bihleafs[bihleafindex].mins[1] = min(collisionvertex3f[3*e[0]+1], min(collisionvertex3f[3*e[1]+1], collisionvertex3f[3*e[2]+1])) - 1;
+				bihleafs[bihleafindex].mins[2] = min(collisionvertex3f[3*e[0]+2], min(collisionvertex3f[3*e[1]+2], collisionvertex3f[3*e[2]+2])) - 1;
+				bihleafs[bihleafindex].maxs[0] = max(collisionvertex3f[3*e[0]+0], max(collisionvertex3f[3*e[1]+0], collisionvertex3f[3*e[2]+0])) + 1;
+				bihleafs[bihleafindex].maxs[1] = max(collisionvertex3f[3*e[0]+1], max(collisionvertex3f[3*e[1]+1], collisionvertex3f[3*e[2]+1])) + 1;
+				bihleafs[bihleafindex].maxs[2] = max(collisionvertex3f[3*e[0]+2], max(collisionvertex3f[3*e[1]+2], collisionvertex3f[3*e[2]+2])) + 1;
+				bihleafindex++;
+			}
+		}
+	}
+
+	// allocate buffers for the produced and temporary data
+	bihmaxnodes = bihnumleafs - 1;
+	bihnodes = Mem_Alloc(loadmodel->mempool, sizeof(bih_node_t) * bihmaxnodes);
+	temp_leafsort = Mem_Alloc(loadmodel->mempool, sizeof(int) * bihnumleafs * 2);
+	temp_leafsortscratch = temp_leafsort + bihnumleafs;
+
+	// now build it
+	BIH_Build(&model->collision_bih, bihnumleafs, bihleafs, bihmaxnodes, bihnodes, temp_leafsort, temp_leafsortscratch);
+
+	// we're done with the temporary data
+	Mem_Free(temp_leafsort);
+
+	// resize the BIH nodes array if it over-allocated
+	if (model->collision_bih.maxnodes > model->collision_bih.numnodes)
+	{
+		model->collision_bih.maxnodes = model->collision_bih.numnodes;
+		model->collision_bih.nodes = Mem_Realloc(loadmodel->mempool, model->collision_bih.nodes, model->collision_bih.numnodes * sizeof(bih_node_t));
+	}
 }
 
 static int Mod_Q3BSP_SuperContentsFromNativeContents(dp_model_t *model, int nativecontents)
@@ -6170,7 +6938,8 @@ void Mod_Q3BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 			if (surface->num_triangles > 0)
 				Mod_ShadowMesh_AddMesh(loadmodel->mempool, loadmodel->brush.shadowmesh, NULL, NULL, NULL, loadmodel->surfmesh.data_vertex3f, NULL, NULL, NULL, NULL, surface->num_triangles, (loadmodel->surfmesh.data_element3i + 3 * surface->num_firsttriangle));
 		loadmodel->brush.shadowmesh = Mod_ShadowMesh_Finish(loadmodel->mempool, loadmodel->brush.shadowmesh, false, true, false);
-		Mod_BuildTriangleNeighbors(loadmodel->brush.shadowmesh->neighbor3i, loadmodel->brush.shadowmesh->element3i, loadmodel->brush.shadowmesh->numtriangles);
+		if (loadmodel->brush.shadowmesh)
+			Mod_BuildTriangleNeighbors(loadmodel->brush.shadowmesh->neighbor3i, loadmodel->brush.shadowmesh->element3i, loadmodel->brush.shadowmesh->numtriangles);
 	}
 
 	loadmodel->brush.num_leafs = 0;
@@ -6268,10 +7037,12 @@ void Mod_Q3BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 			mod->DrawSky = R_Q1BSP_DrawSky;
 
 		for (j = 0;j < mod->nummodelsurfaces;j++)
-			if (mod->data_surfaces[j + mod->firstmodelsurface].texture->basematerialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION | MATERIALFLAG_REFLECTION))
+			if (mod->data_surfaces[j + mod->firstmodelsurface].texture->basematerialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION | MATERIALFLAG_REFLECTION | MATERIALFLAG_CAMERA))
 				break;
 		if (j < mod->nummodelsurfaces)
 			mod->DrawAddWaterPlanes = R_Q1BSP_DrawAddWaterPlanes;
+
+		Mod_MakeCollisionBIH(mod, false);
 
 		// generate VBOs and other shared data before cloning submodels
 		if (i == 0)
@@ -6357,10 +7128,10 @@ void Mod_OBJ_Load(dp_model_t *mod, void *buffer, void *bufferend)
 
 	loadmodel->type = mod_obj;
 	loadmodel->soundfromcenter = true;
-	loadmodel->TraceBox = NULL;
-	loadmodel->TraceLine = NULL;
-	loadmodel->TracePoint = NULL;
-	loadmodel->PointSuperContents = NULL;
+	loadmodel->TraceBox = Mod_CollisionBIH_TraceBox;
+	loadmodel->TraceLine = Mod_CollisionBIH_TraceLine;
+	loadmodel->TracePoint = Mod_CollisionBIH_TracePoint_Mesh;
+	loadmodel->PointSuperContents = Mod_CollisionBIH_PointSuperContents_Mesh;
 	loadmodel->brush.TraceLineOfSight = NULL;
 	loadmodel->brush.SuperContentsFromNativeContents = NULL;
 	loadmodel->brush.NativeContentsFromSuperContents = NULL;
@@ -6707,6 +7478,8 @@ void Mod_OBJ_Load(dp_model_t *mod, void *buffer, void *bufferend)
 		Mod_BuildNormals(0, loadmodel->surfmesh.num_vertices, loadmodel->surfmesh.num_triangles, loadmodel->surfmesh.data_vertex3f, loadmodel->surfmesh.data_element3i, loadmodel->surfmesh.data_normal3f, true);
 	Mod_BuildTextureVectorsFromNormals(0, loadmodel->surfmesh.num_vertices, loadmodel->surfmesh.num_triangles, loadmodel->surfmesh.data_vertex3f, loadmodel->surfmesh.data_texcoordtexture2f, loadmodel->surfmesh.data_normal3f, loadmodel->surfmesh.data_element3i, loadmodel->surfmesh.data_svector3f, loadmodel->surfmesh.data_tvector3f, true);
 	Mod_BuildTriangleNeighbors(loadmodel->surfmesh.data_neighbor3i, loadmodel->surfmesh.data_element3i, loadmodel->surfmesh.num_triangles);
+
+	Mod_MakeCollisionBIH(loadmodel, true);
 }
 
 

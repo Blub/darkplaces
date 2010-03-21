@@ -266,6 +266,8 @@ typedef struct prvm_prog_fieldoffsets_s
 	int enemy; // ssqc / csqc (physics)
 	int aiment; // ssqc / csqc (physics)
 	int movedir; // ssqc / csqc (physics)
+
+	int camera_transform; // csqc (warpzones)
 }
 prvm_prog_fieldoffsets_t;
 
@@ -360,12 +362,16 @@ typedef struct prvm_prog_funcoffsets_s
 }
 prvm_prog_funcoffsets_t;
 
+// stringbuffer flags
+#define STRINGBUFFER_SAVED	1 // saved in savegames
+
 typedef struct prvm_stringbuffer_s
 {
 	int max_strings;
 	int num_strings;
 	char **strings;
 	const char *origin;
+	unsigned char flags;
 }
 prvm_stringbuffer_t;
 

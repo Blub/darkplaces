@@ -204,6 +204,7 @@ int COM_ParseToken_Console(const char **datapointer);
 
 extern int com_argc;
 extern const char **com_argv;
+extern int com_selffd;
 
 int COM_CheckParm (const char *parm);
 void COM_Init (void);
@@ -268,9 +269,9 @@ typedef enum gamemode_e
 	GAME_DARSANA,
 	GAME_CONTAGIONTHEORY,
 	GAME_EDU2P,
-	GAME_BLADEMASTER,
 	GAME_PROPHECY,
 	GAME_BLOODOMNICIDE,
+	GAME_STEELSTORM, // added by motorsep
 	GAME_COUNT
 }
 gamemode_t;

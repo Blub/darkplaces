@@ -51,6 +51,9 @@
 #define RF_USETRANSPARENTOFFSET 64 // Allows QC to customize origin used for transparent sorting via transparent_origin global, helps to fix transparent sorting bugs on a very large entities
 #define RF_NOCULL				128 // do not cull this entity using r_cullentities, for large outdoor entities (asteroids on the sky. etc)
 
+#define RF_FULLBRIGHT			256
+#define RF_NOSHADOW				512
+
 extern cvar_t csqc_progname;	//[515]: csqc crc check and right csprogs name according to progs.dat
 extern cvar_t csqc_progcrc;
 extern cvar_t csqc_progsize;
@@ -60,5 +63,7 @@ void CL_VM_PreventInformationLeaks(void);
 qboolean MakeDownloadPacket(const char *filename, unsigned char *data, size_t len, int crc, int cnt, sizebuf_t *buf, int protocol);
 
 qboolean CL_VM_GetEntitySoundOrigin(int entnum, vec3_t out);
+
+qboolean CL_VM_TransformView(int entnum, matrix4x4_t *viewmatrix, mplane_t *clipplane, vec3_t visorigin);
 
 #endif

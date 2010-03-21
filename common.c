@@ -33,6 +33,7 @@ cvar_t cmdline = {0, "cmdline","0", "contains commandline the engine was launche
 char com_token[MAX_INPUTLINE];
 int com_argc;
 const char **com_argv;
+int com_selffd = -1;
 
 gamemode_t gamemode;
 const char *gamename;
@@ -1498,15 +1499,15 @@ static const gamemode_info_t gamemode_info [GAME_COUNT] =
 // GAME_EDU2P
 // COMMANDLINEOPTION: Game: -edu2p runs the game Edu2 prototype
 { "edu2p", "-edu2p", "EDU2 Prototype", "id1", "edu2", "edu2_p", "edu2prototype" },
-// GAME_BLADEMASTER
-// COMMANDLINEOPTION: Game: -blademaster runs the game Prophecy: Return of the BladeMaster
-{ "blademaster", "-blademaster", "Prophecy: Return of the BladeMaster", "basebm", NULL, "blademaster", "blademaster" },
 // GAME_PROPHECY
-// COMMANDLINEOPTION: Game: -prophecy runs the game Quake (default)
+// COMMANDLINEOPTION: Game: -prophecy runs the game Prophecy
 { "prophecy",				"-prophecy",		"Prophecy",		"data",		NULL,			"prophecy",			"prophecy" },
 // GAME_BLOODOMNICIDE
 // COMMANDLINEOPTION: Game: -omnicide runs the game Blood Omnicide
 { "omnicide", "-omnicide", "Blood Omnicide", "kain", NULL, "omnicide", "omnicide" },
+// GAME_STEELSTORM
+// COMMANDLINEOPTION: Game: -steelstorm runs the game Steel Storm
+{ "steelstorm",				"-steelstorm",		"Steel-Storm",		"gamedata",		NULL,			"ss",			"steelstorm" },
 };
 
 void COM_InitGameType (void)

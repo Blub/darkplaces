@@ -24,6 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "cl_collision.h"
 #include "csprogs.h"
 #include "libcurl.h"
+#include "utf8lib.h"
 
 char *svc_strings[128] =
 {
@@ -388,6 +389,7 @@ void CL_ParseEntityLump(char *entdata)
 			R_SetSkyBox(value);
 		else if (!strcmp("fog", key))
 		{
+			FOG_clear(); // so missing values get good defaults
 			r_refdef.fog_start = 0;
 			r_refdef.fog_alpha = 1;
 			r_refdef.fog_end = 16384;
@@ -416,6 +418,16 @@ void CL_ParseEntityLump(char *entdata)
 			r_refdef.fog_height = atof(value);
 		else if (!strcmp("fog_fadedepth", key))
 			r_refdef.fog_fadedepth = atof(value);
+		else if (!strcmp("fog_heighttexture", key))
+		{
+			FOG_clear(); // so missing values get good defaults
+#if _MSC_VER >= 1400
+			sscanf_s(value, "%f %f %f %f %f %f %f %f %f %s", &r_refdef.fog_density, &r_refdef.fog_red, &r_refdef.fog_green, &r_refdef.fog_blue, &r_refdef.fog_alpha, &r_refdef.fog_start, &r_refdef.fog_end, &r_refdef.fog_height, &r_refdef.fog_fadedepth, r_refdef.fog_height_texturename, (unsigned int)sizeof(r_refdef.fog_height_texturename));
+#else
+			sscanf(value, "%f %f %f %f %f %f %f %f %f %63s", &r_refdef.fog_density, &r_refdef.fog_red, &r_refdef.fog_green, &r_refdef.fog_blue, &r_refdef.fog_alpha, &r_refdef.fog_start, &r_refdef.fog_end, &r_refdef.fog_height, &r_refdef.fog_fadedepth, r_refdef.fog_height_texturename);
+#endif
+			r_refdef.fog_height_texturename[63] = 0;
+		}
 	}
 }
 
@@ -1088,13 +1100,18 @@ void CL_BeginDownloads(qboolean aborteddownload)
 			}
 			CL_KeepaliveMessage(true);
 
-			if(cl.loadmodel_current == 1)
+			// if running a local game, calling Mod_ForName is a completely wasted effort...
+			if (sv.active)
+				cl.model_precache[cl.loadmodel_current] = sv.models[cl.loadmodel_current];
+			else
 			{
-				// they'll be soon loaded, but make sure we apply freshly downloaded shaders from a curled pk3
-				Mod_FreeQ3Shaders();
+				if(cl.loadmodel_current == 1)
+				{
+					// they'll be soon loaded, but make sure we apply freshly downloaded shaders from a curled pk3
+					Mod_FreeQ3Shaders();
+				}
+				cl.model_precache[cl.loadmodel_current] = Mod_ForName(cl.model_name[cl.loadmodel_current], false, false, cl.model_name[cl.loadmodel_current][0] == '*' ? cl.model_name[1] : NULL);
 			}
-
-			cl.model_precache[cl.loadmodel_current] = Mod_ForName(cl.model_name[cl.loadmodel_current], false, false, cl.model_name[cl.loadmodel_current][0] == '*' ? cl.model_name[1] : NULL);
 			SCR_PopLoadingScreen(false);
 			if (cl.model_precache[cl.loadmodel_current] && cl.model_precache[cl.loadmodel_current]->Draw && cl.loadmodel_current == 1)
 			{
@@ -3231,6 +3248,7 @@ void CL_ParseServerMessage(void)
 	char		*cmdlogname[32], *temp;
 	int			cmdindex, cmdcount = 0;
 	qboolean	qwplayerupdatereceived;
+	qboolean	strip_pqc;
 
 	// LordHavoc: moved demo message writing from before the packet parse to
 	// after the packet parse so that CL_Stop_f can be called by cl_autodemo
@@ -3623,6 +3641,7 @@ void CL_ParseServerMessage(void)
 
 			if (cmd == -1)
 			{
+//				R_TimeReport("END OF MESSAGE");
 				SHOWNET("END OF MESSAGE");
 				break;		// end of message
 			}
@@ -3727,7 +3746,42 @@ void CL_ParseServerMessage(void)
 				break;
 
 			case svc_stufftext:
-				CL_VM_Parse_StuffCmd(MSG_ReadString ());	//[515]: csqc
+				temp = MSG_ReadString();
+				/* if(utf8_enable.integer)
+				{
+					strip_pqc = true;
+					// we can safely strip and even
+					// interpret these in utf8 mode
+				}
+				else */ switch(cls.protocol)
+				{
+					case PROTOCOL_QUAKE:
+					case PROTOCOL_QUAKEDP:
+						// maybe add other protocols if
+						// so desired, but not DP7
+						strip_pqc = true;
+						break;
+					case PROTOCOL_DARKPLACES7:
+					default:
+						// ProQuake does not support
+						// these protocols
+						strip_pqc = false;
+						break;
+				}
+				if(strip_pqc)
+				{
+					// skip over ProQuake messages,
+					// TODO actually interpret them
+					// (they are sbar team score
+					// updates), see proquake cl_parse.c
+					if(*temp == 0x01)
+					{
+						++temp;
+						while(*temp >= 0x01 && *temp <= 0x1F)
+							++temp;
+					}
+				}
+				CL_VM_Parse_StuffCmd(temp);	//[515]: csqc
 				break;
 
 			case svc_damage:
@@ -4032,22 +4086,29 @@ void CL_ParseServerMessage(void)
 				CL_ParsePointParticles1();
 				break;
 			}
+//			R_TimeReport(svc_strings[cmd]);
 		}
 	}
 
 	if (cls.signon == SIGNONS)
 		CL_UpdateItemsAndWeapon();
+//	R_TimeReport("UpdateItems");
 
 	EntityFrameQuake_ISeeDeadEntities();
+//	R_TimeReport("ISeeDeadEntities");
 
 	CL_UpdateMoveVars();
+//	R_TimeReport("UpdateMoveVars");
 
 	parsingerror = false;
 
 	// LordHavoc: this was at the start of the function before cl_autodemo was
 	// implemented
 	if (cls.demorecording)
+	{
 		CL_WriteDemoMessage (&net_message);
+//		R_TimeReport("WriteDemo");
+	}
 }
 
 void CL_Parse_DumpPacket(void)

@@ -1599,8 +1599,9 @@ Key_Event (int key, int ascii, qboolean down)
 			Key_Message(key, ascii);
 		return;
 	}
+	// VorteX: Omnicide does bind F* keys
 	if (keydest != key_menu_grabbed)
-	if (key >= K_F1 && key <= K_F12)
+	if (key >= K_F1 && key <= K_F12 && gamemode != GAME_BLOODOMNICIDE)
 	{
 		if (bind)
 		{
