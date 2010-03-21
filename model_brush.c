@@ -3686,7 +3686,7 @@ void Mod_Q1BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 				mod->DrawSky = R_Q1BSP_DrawSky;
 
 			for (j = 0, surface = &mod->data_surfaces[mod->firstmodelsurface];j < mod->nummodelsurfaces;j++, surface++)
-				if (surface->texture->basematerialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION | MATERIALFLAG_REFLECTION))
+				if (surface->texture->basematerialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION | MATERIALFLAG_REFLECTION | MATERIALFLAG_CAMERA))
 					break;
 			if (j < mod->nummodelsurfaces)
 				mod->DrawAddWaterPlanes = R_Q1BSP_DrawAddWaterPlanes;
@@ -4281,13 +4281,10 @@ static void Mod_Q3BSP_LoadTextures(lump_t *l)
 		strlcpy (out[i].name, in[i].name, sizeof (out[i].name));
 		out[i].surfaceflags = LittleLong(in[i].surfaceflags);
 		out[i].supercontents = Mod_Q3BSP_SuperContentsFromNativeContents(loadmodel, LittleLong(in[i].contents));
-		if (cls.state != ca_dedicated)
-		{
-			Mod_LoadTextureFromQ3Shader(out + i, out[i].name, true, true, TEXF_MIPMAP | (r_picmipworld.integer ? TEXF_PICMIP : 0) | TEXF_COMPRESS);
-			// restore the surfaceflags and supercontents
-			out[i].surfaceflags = LittleLong(in[i].surfaceflags);
-			out[i].supercontents = Mod_Q3BSP_SuperContentsFromNativeContents(loadmodel, LittleLong(in[i].contents));
-		}
+		Mod_LoadTextureFromQ3Shader(out + i, out[i].name, true, true, TEXF_MIPMAP | (r_picmipworld.integer ? TEXF_PICMIP : 0) | TEXF_COMPRESS);
+		// restore the surfaceflags and supercontents
+		out[i].surfaceflags = LittleLong(in[i].surfaceflags);
+		out[i].supercontents = Mod_Q3BSP_SuperContentsFromNativeContents(loadmodel, LittleLong(in[i].contents));
 	}
 }
 
@@ -7040,7 +7037,7 @@ void Mod_Q3BSP_Load(dp_model_t *mod, void *buffer, void *bufferend)
 			mod->DrawSky = R_Q1BSP_DrawSky;
 
 		for (j = 0;j < mod->nummodelsurfaces;j++)
-			if (mod->data_surfaces[j + mod->firstmodelsurface].texture->basematerialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION | MATERIALFLAG_REFLECTION))
+			if (mod->data_surfaces[j + mod->firstmodelsurface].texture->basematerialflags & (MATERIALFLAG_WATERSHADER | MATERIALFLAG_REFRACTION | MATERIALFLAG_REFLECTION | MATERIALFLAG_CAMERA))
 				break;
 		if (j < mod->nummodelsurfaces)
 			mod->DrawAddWaterPlanes = R_Q1BSP_DrawAddWaterPlanes;

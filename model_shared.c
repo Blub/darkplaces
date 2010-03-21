@@ -283,7 +283,7 @@ void Mod_FrameGroupify_ParseGroups_Store (unsigned int i, int start, int len, fl
 {
 	dp_model_t *mod = (dp_model_t *) pass;
 	animscene_t *anim = &mod->animscenes[i];
-	dpsnprintf(anim->name, sizeof(anim[i].name), "groupified_%d", i);
+	dpsnprintf(anim->name, sizeof(anim[i].name), "groupified_%d_anim", i);
 	anim->firstframe = bound(0, start, mod->num_poses - 1);
 	anim->framecount = bound(1, len, mod->num_poses - anim->firstframe);
 	anim->framerate = max(1, fps);
@@ -458,7 +458,7 @@ dp_model_t *Mod_LoadModel(dp_model_t *mod, qboolean crash, qboolean checkdisk)
 		num = LittleLong(*((int *)buf));
 		// call the apropriate loader
 		loadmodel = mod;
-		     if (!strcasecmp(FS_FileExtension(mod->name), "obj")) Mod_OBJ_Load(mod, buf, bufend);
+		if (!strcasecmp(FS_FileExtension(mod->name), "obj")) Mod_OBJ_Load(mod, buf, bufend);
 		else if (!memcmp(buf, "IDPO", 4)) Mod_IDP0_Load(mod, buf, bufend);
 		else if (!memcmp(buf, "IDP2", 4)) Mod_IDP2_Load(mod, buf, bufend);
 		else if (!memcmp(buf, "IDP3", 4)) Mod_IDP3_Load(mod, buf, bufend);
@@ -468,6 +468,7 @@ dp_model_t *Mod_LoadModel(dp_model_t *mod, qboolean crash, qboolean checkdisk)
 		else if (!memcmp(buf, "ZYMOTICMODEL", 12)) Mod_ZYMOTICMODEL_Load(mod, buf, bufend);
 		else if (!memcmp(buf, "DARKPLACESMODEL", 16)) Mod_DARKPLACESMODEL_Load(mod, buf, bufend);
 		else if (!memcmp(buf, "ACTRHEAD", 8)) Mod_PSKMODEL_Load(mod, buf, bufend);
+		else if (!memcmp(buf, "INTERQUAKEMODEL", 16)) Mod_INTERQUAKEMODEL_Load(mod, buf, bufend);
 		else if (strlen(mod->name) >= 4 && !strcmp(mod->name + strlen(mod->name) - 4, ".map")) Mod_MAP_Load(mod, buf, bufend);
 		else if (num == BSPVERSION || num == 30) Mod_Q1BSP_Load(mod, buf, bufend);
 		else Con_Printf("Mod_LoadModel: model \"%s\" is of unknown/unsupported type\n", mod->name);
@@ -1984,6 +1985,10 @@ void Mod_LoadQ3Shaders(void)
 					shader.reflectfactor = atof(parameter[1]);
 					Vector4Set(shader.reflectcolor4f, atof(parameter[2]), atof(parameter[3]), atof(parameter[4]), atof(parameter[5]));
 				}
+				else if (!strcasecmp(parameter[0], "dpcamera"))
+				{
+					shader.textureflags |= Q3TEXTUREFLAG_CAMERA;
+				}
 				else if (!strcasecmp(parameter[0], "dpwater") && numparameters >= 12)
 				{
 					shader.textureflags |= Q3TEXTUREFLAG_WATERSHADER;
@@ -2081,7 +2086,7 @@ void Mod_LoadQ3Shaders(void)
 			}
 			// fix up multiple reflection types
 			if(shader.textureflags & Q3TEXTUREFLAG_WATERSHADER)
-				shader.textureflags &= ~(Q3TEXTUREFLAG_REFRACTION | Q3TEXTUREFLAG_REFLECTION);
+				shader.textureflags &= ~(Q3TEXTUREFLAG_REFRACTION | Q3TEXTUREFLAG_REFLECTION | Q3TEXTUREFLAG_CAMERA);
 
 			Q3Shader_AddToHash (&shader);
 		}
@@ -2167,6 +2172,8 @@ qboolean Mod_LoadTextureFromQ3Shader(texture_t *texture, const char *name, qbool
 			texture->basematerialflags |= MATERIALFLAG_REFLECTION;
 		if (shader->textureflags & Q3TEXTUREFLAG_WATERSHADER)
 			texture->basematerialflags |= MATERIALFLAG_WATERSHADER;
+		if (shader->textureflags & Q3TEXTUREFLAG_CAMERA)
+			texture->basematerialflags |= MATERIALFLAG_CAMERA;
 		texture->customblendfunc[0] = GL_ONE;
 		texture->customblendfunc[1] = GL_ZERO;
 		if (shader->numlayers > 0)
@@ -2941,8 +2948,10 @@ static void Mod_Decompile_f(void)
 	char animname2[MAX_QPATH];
 	char zymtextbuffer[16384];
 	char dpmtextbuffer[16384];
+	char framegroupstextbuffer[16384];
 	int zymtextsize = 0;
 	int dpmtextsize = 0;
+	int framegroupstextsize = 0;
 
 	if (Cmd_Argc() != 2)
 	{
@@ -3004,16 +3013,20 @@ static void Mod_Decompile_f(void)
 				// individual frame
 				// check for additional frames with same name
 				for (l = 0, k = strlen(animname);animname[l];l++)
-					if ((animname[l] < '0' || animname[l] > '9') && animname[l] != '_')
+					if(animname[l] < '0' || animname[l] > '9')
 						k = l + 1;
+				if(k > 0 && animname[k-1] == '_')
+					--k;
 				animname[k] = 0;
 				count = mod->num_poses - first;
 				for (j = i + 1;j < mod->numframes;j++)
 				{
 					strlcpy(animname2, mod->animscenes[j].name, sizeof(animname2));
 					for (l = 0, k = strlen(animname2);animname2[l];l++)
-						if ((animname2[l] < '0' || animname2[l] > '9') && animname2[l] != '_')
+						if(animname2[l] < '0' || animname2[l] > '9')
 							k = l + 1;
+					if(k > 0 && animname[k-1] == '_')
+						--k;
 					animname2[k] = 0;
 					if (strcmp(animname2, animname) || mod->animscenes[j].framecount > 1)
 					{
@@ -3030,19 +3043,26 @@ static void Mod_Decompile_f(void)
 			Mod_Decompile_SMD(mod, outname, first, count, false);
 			if (zymtextsize < (int)sizeof(zymtextbuffer) - 100)
 			{
-				l = dpsnprintf(zymtextbuffer + zymtextsize, sizeof(zymtextbuffer) - zymtextsize, "scene %s.smd fps %g\n", animname, mod->animscenes[i].framerate);
+				l = dpsnprintf(zymtextbuffer + zymtextsize, sizeof(zymtextbuffer) - zymtextsize, "scene %s.smd fps %g %s\n", animname, mod->animscenes[i].framerate, mod->animscenes[i].loop ? "" : " noloop");
 				if (l > 0) zymtextsize += l;
 			}
 			if (dpmtextsize < (int)sizeof(dpmtextbuffer) - 100)
 			{
-				l = dpsnprintf(dpmtextbuffer + dpmtextsize, sizeof(dpmtextbuffer) - dpmtextsize, "scene %s.smd\n", animname);
+				l = dpsnprintf(dpmtextbuffer + dpmtextsize, sizeof(dpmtextbuffer) - dpmtextsize, "scene %s.smd fps %g %s\n", animname, mod->animscenes[i].framerate, mod->animscenes[i].loop ? "" : " noloop");
 				if (l > 0) dpmtextsize += l;
+			}
+			if (framegroupstextsize < (int)sizeof(framegroupstextbuffer) - 100)
+			{
+				l = dpsnprintf(framegroupstextbuffer + framegroupstextsize, sizeof(framegroupstextbuffer) - framegroupstextsize, "%d %d %f %d // %s\n", first, count, mod->animscenes[i].framerate, mod->animscenes[i].loop, animname);
+				if (l > 0) framegroupstextsize += l;
 			}
 		}
 		if (zymtextsize)
 			FS_WriteFile(va("%s_decompiled/out_zym.txt", basename), zymtextbuffer, (fs_offset_t)zymtextsize);
 		if (dpmtextsize)
 			FS_WriteFile(va("%s_decompiled/out_dpm.txt", basename), dpmtextbuffer, (fs_offset_t)dpmtextsize);
+		if (framegroupstextsize)
+			FS_WriteFile(va("%s_decompiled.framegroups", basename), framegroupstextbuffer, (fs_offset_t)framegroupstextsize);
 	}
 }
 
