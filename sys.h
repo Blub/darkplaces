@@ -22,6 +22,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #ifndef SYS_H
 #define SYS_H
 
+extern cvar_t sys_usenoclockbutbenchmark;
 
 //
 // DLL management
@@ -85,6 +86,8 @@ void Sys_AllowProfiling (qboolean enable);
 
 double Sys_DoubleTime (void);
 
+void Sys_ProvideSelfFD (void);
+
 char *Sys_ConsoleInput (void);
 
 /// called to yield for a little bit so as not to hog cpu when paused or debugging
@@ -94,6 +97,10 @@ void Sys_Sleep(int microseconds);
 void Sys_SendKeyEvents (void);
 
 char *Sys_GetClipboardData (void);
+
+extern qboolean sys_supportsdlgetticks;
+unsigned int Sys_SDL_GetTicks (void); // wrapper to call SDL_GetTicks
+void Sys_SDL_Delay (unsigned int milliseconds); // wrapper to call SDL_Delay
 
 #endif
 
