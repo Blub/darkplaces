@@ -700,10 +700,10 @@ void Host_Main(void)
 		if (sv.active ? sv_timer > 0 : cl_timer > 0)
 		{
 			// process console commands
-			R_TimeReport("preconsole");
+//			R_TimeReport("preconsole");
 			CL_VM_PreventInformationLeaks();
 			Cbuf_Execute();
-			R_TimeReport("console");
+//			R_TimeReport("console");
 		}
 
 		//Con_Printf("%6.0f %6.0f\n", cl_timer * 1000000.0, sv_timer * 1000000.0);
@@ -720,14 +720,16 @@ void Host_Main(void)
 		if (!cls.timedemo && wait >= 1)
 		{
 			double time0 = Sys_DoubleTime();
-			if (sv_checkforpacketsduringsleep.integer)
+			if (sv_checkforpacketsduringsleep.integer && !sys_usenoclockbutbenchmark.integer)
 				NetConn_SleepMicroseconds((int)wait);
 			else
 				Sys_Sleep((int)wait);
 			svs.perf_acc_sleeptime += Sys_DoubleTime() - time0;
-			R_TimeReport("sleep");
+//			R_TimeReport("sleep");
 			continue;
 		}
+
+		R_TimeReport("---");
 
 	//-------------------
 	//
@@ -832,6 +834,12 @@ void Host_Main(void)
 			NetConn_Heartbeat(0);
 			R_TimeReport("servernetwork");
 		}
+		else
+		{
+			// don't let r_speeds display jump around
+			R_TimeReport("serverphysics");
+			R_TimeReport("servernetwork");
+		}
 
 	//-------------------
 	//
@@ -925,6 +933,7 @@ void Host_Main(void)
 			R_TimeReport("client");
 
 			CL_UpdateScreen();
+			R_TimeReport("render");
 
 			if (host_speeds.integer)
 				time2 = Sys_DoubleTime();
@@ -997,6 +1006,7 @@ qboolean sys_nostdout = false;
 extern void u8_Init(void);
 extern void Render_Init(void);
 extern void Mathlib_Init(void);
+extern void FS_Init_SelfPack(void);
 extern void FS_Init(void);
 extern void FS_Shutdown(void);
 extern void PR_Cmd_Init(void);
@@ -1079,6 +1089,9 @@ static void Host_Init (void)
 
 	// initialize console window (only used by sys_win.c)
 	Sys_InitConsole();
+
+	// initialize the self-pack (must be before COM_InitGameType as it may add command line options)
+	FS_Init_SelfPack();
 
 	// detect gamemode from commandline options or executable name
 	COM_InitGameType();

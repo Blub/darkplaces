@@ -5056,7 +5056,7 @@ void VM_strstrofs (void)
 	if (!match)
 		PRVM_G_FLOAT(OFS_RETURN) = -1;
 	else
-		PRVM_G_FLOAT(OFS_RETURN) = match - instr;
+		PRVM_G_FLOAT(OFS_RETURN) = u8_strnlen(instr, match-instr);
 }
 
 //#222 string(string s, float index) str2chr (FTE_STRINGS)
@@ -5573,7 +5573,7 @@ void VM_uri_get (void)
 	handle->prognr = PRVM_GetProgNr();
 	handle->starttime = prog->starttime;
 	handle->id = id;
-	ret = Curl_Begin_ToMemory(url, (unsigned char *) handle->buffer, sizeof(handle->buffer), uri_to_string_callback, handle);
+	ret = Curl_Begin_ToMemory(url, 0, (unsigned char *) handle->buffer, sizeof(handle->buffer), uri_to_string_callback, handle);
 	if(ret)
 	{
 		PRVM_G_INT(OFS_RETURN) = 1;
