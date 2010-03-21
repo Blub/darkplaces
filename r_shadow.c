@@ -442,6 +442,12 @@ void R_Shadow_SetShadowMode(void)
 					r_shadow_shadowmode = R_SHADOW_SHADOWMODE_SHADOWMAP2D;
 				break;
 			}
+			// Cg has very little choice in depth texture sampling
+			if (vid.cgcontext)
+			{
+				r_shadow_shadowmapsampler = false;
+				r_shadow_shadowmode = R_SHADOW_SHADOWMODE_SHADOWMAP2D;
+			}
 		}
 		break;
 	case RENDERPATH_GL13:
@@ -3485,19 +3491,19 @@ void R_Shadow_PrepareLight(rtlight_t *rtlight)
 	static entity_render_t *lightentities_noselfshadow[MAX_EDICTS];
 	static entity_render_t *shadowentities[MAX_EDICTS];
 	static entity_render_t *shadowentities_noselfshadow[MAX_EDICTS];
+	qboolean nolight;
 
 	rtlight->draw = false;
 
 	// skip lights that don't light because of ambientscale+diffusescale+specularscale being 0 (corona only lights)
 	// skip lights that are basically invisible (color 0 0 0)
-	if (VectorLength2(rtlight->color) * (rtlight->ambientscale + rtlight->diffusescale + rtlight->specularscale) < (1.0f / 1048576.0f))
-		return;
+	nolight = VectorLength2(rtlight->color) * (rtlight->ambientscale + rtlight->diffusescale + rtlight->specularscale) < (1.0f / 1048576.0f);
 
 	// loading is done before visibility checks because loading should happen
 	// all at once at the start of a level, not when it stalls gameplay.
 	// (especially important to benchmarks)
 	// compile light
-	if (rtlight->isstatic && (!rtlight->compiled || (rtlight->shadow && rtlight->shadowmode != (int)r_shadow_shadowmode)) && r_shadow_realtime_world_compile.integer)
+	if (rtlight->isstatic && !nolight && (!rtlight->compiled || (rtlight->shadow && rtlight->shadowmode != (int)r_shadow_shadowmode)) && r_shadow_realtime_world_compile.integer)
 	{
 		if (rtlight->compiled)
 			R_RTLight_Uncompile(rtlight);
@@ -3520,6 +3526,10 @@ void R_Shadow_PrepareLight(rtlight_t *rtlight)
 
 	// if lightstyle is currently off, don't draw the light
 	if (VectorLength2(rtlight->currentcolor) < (1.0f / 1048576.0f))
+		return;
+
+	// skip processing on corona-only lights
+	if (nolight)
 		return;
 
 	// if the light box is offscreen, skip it
@@ -4248,7 +4258,9 @@ void R_Shadow_PrepareModelShadows(void)
 	{
 	case R_SHADOW_SHADOWMODE_SHADOWMAP2D:
 	case R_SHADOW_SHADOWMODE_SHADOWMAPRECTANGLE:
-		break;
+		if (r_shadows.integer >= 2) 
+			break;
+		// fall through
 	case R_SHADOW_SHADOWMODE_STENCIL:
 		for (i = 0;i < r_refdef.scene.numentities;i++)
 		{
@@ -4476,7 +4488,7 @@ void R_DrawModelShadows(void)
 	vec3_t relativeshadowmins, relativeshadowmaxs;
 	vec3_t tmp, shadowdir;
 
-	if (!r_refdef.scene.numentities || !vid.stencil || r_shadow_shadowmode != R_SHADOW_SHADOWMODE_STENCIL)
+	if (!r_refdef.scene.numentities || !vid.stencil || (r_shadow_shadowmode != R_SHADOW_SHADOWMODE_STENCIL && r_shadows.integer != 1))
 		return;
 
 	CHECKGLERROR
@@ -4516,26 +4528,34 @@ void R_DrawModelShadows(void)
 			{
 				if(ent->entitynumber != 0)
 				{
-					// networked entity - might be attached in some way (then we should use the parent's light direction, to not tear apart attached entities)
-					int entnum, entnum2, recursion;
-					entnum = entnum2 = ent->entitynumber;
-					for(recursion = 32; recursion > 0; --recursion)
+					if(ent->entitynumber >= MAX_EDICTS) // csqc entity
 					{
-						entnum2 = cl.entities[entnum].state_current.tagentity;
-						if(entnum2 >= 1 && entnum2 < cl.num_entities && cl.entities_active[entnum2])
-							entnum = entnum2;
-						else
-							break;
-					}
-					if(recursion && recursion != 32) // if we followed a valid non-empty attachment chain
-					{
-						VectorNegate(cl.entities[entnum].render.modellight_lightdir, relativelightdirection);
-						// transform into modelspace of OUR entity
-						Matrix4x4_Transform3x3(&cl.entities[entnum].render.matrix, relativelightdirection, tmp);
-						Matrix4x4_Transform3x3(&ent->inversematrix, tmp, relativelightdirection);
+						// FIXME handle this
+						VectorNegate(ent->modellight_lightdir, relativelightdirection);
 					}
 					else
-						VectorNegate(ent->modellight_lightdir, relativelightdirection);
+					{
+						// networked entity - might be attached in some way (then we should use the parent's light direction, to not tear apart attached entities)
+						int entnum, entnum2, recursion;
+						entnum = entnum2 = ent->entitynumber;
+						for(recursion = 32; recursion > 0; --recursion)
+						{
+							entnum2 = cl.entities[entnum].state_current.tagentity;
+							if(entnum2 >= 1 && entnum2 < cl.num_entities && cl.entities_active[entnum2])
+								entnum = entnum2;
+							else
+								break;
+						}
+						if(recursion && recursion != 32) // if we followed a valid non-empty attachment chain
+						{
+							VectorNegate(cl.entities[entnum].render.modellight_lightdir, relativelightdirection);
+							// transform into modelspace of OUR entity
+							Matrix4x4_Transform3x3(&cl.entities[entnum].render.matrix, relativelightdirection, tmp);
+							Matrix4x4_Transform3x3(&ent->inversematrix, tmp, relativelightdirection);
+						}
+						else
+							VectorNegate(ent->modellight_lightdir, relativelightdirection);
+					}
 				}
 				else
 					VectorNegate(ent->modellight_lightdir, relativelightdirection);
