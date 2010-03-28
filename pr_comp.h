@@ -328,7 +328,7 @@ enum opcode_e
 //extensions for fixing stuff
 	OP_IF_F,
 	OP_IFNOT_F,
-	
+
 	OP_NUMOPS
 };
 

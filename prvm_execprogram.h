@@ -387,7 +387,7 @@ ptrvalC = 0;
                                        prog->xfunction->profile += (st - startst);
                                        st += st->b - 1;        // offset the s++
                                        startst = st;
-                                                                               
+
                                        // no bounds check needed, it is done when loading progs
 					RUNAWAYCHECK();
 				}
